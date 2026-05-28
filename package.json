@@ -28,6 +28,7 @@
     "dev:web": "live-server public --host=127.0.0.1 --port=1420 --no-browser",
     "dev": "PATH=\"$HOME/.cargo/bin:$PATH\" tauri dev",
     "build": "PATH=\"$HOME/.cargo/bin:$PATH\" tauri build",
+    "release": "bash scripts/release.sh",
     "release:mac:dmg": "bash scripts/release-macos-dmg.sh",
     "test": "vitest run && node scripts/check-tauri-permissions.js",
     "test:watch": "vitest",
