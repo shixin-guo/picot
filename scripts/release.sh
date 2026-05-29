@@ -81,8 +81,11 @@ if (updated === cargo) {
 fs.writeFileSync(cargoPath, updated);
 EOF
 
+echo "Regenerating package-lock.json..."
+npm install --package-lock-only
+
 echo "Committing release version bump..."
-git add src-tauri/tauri.conf.json src-tauri/Cargo.toml package.json
+git add src-tauri/tauri.conf.json src-tauri/Cargo.toml package.json package-lock.json
 git commit -m "chore(release): $TAG"
 
 echo "Creating tag $TAG..."
