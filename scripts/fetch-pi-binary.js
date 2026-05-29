@@ -201,25 +201,72 @@ function extractTarGz(archivePath, outDir) {
   flattenWrapperDir(outDir, "pi");
 }
 
-function extractZip(archivePath, outDir) {
-  let result;
-  if (process.platform === "win32") {
-    result = spawnSync(
+function sleepSync(ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    // Busy-wait is fine here: extraction retry loop, ms is small.
+  }
+}
+
+function extractZipWindows(archivePath, outDir) {
+  // Strategy:
+  //   1) Prefer `tar.exe` (bundled with Windows 10 1803+, including
+  //      GitHub Actions windows-latest runners). It can unpack .zip via
+  //      libarchive, is much faster than Expand-Archive, and does not
+  //      hold exclusive locks on the source archive the way
+  //      Microsoft.PowerShell.Archive does.
+  //   2) Fall back to PowerShell `Expand-Archive`, but with
+  //      $ErrorActionPreference='Stop' so errors actually propagate as a
+  //      non-zero exit code (otherwise the script silently continues
+  //      and only fails at the post-extraction binary-existence check).
+  //      Retry a few times on the classic "file is being used by another
+  //      process" error caused by antivirus scanning the freshly
+  //      downloaded archive.
+  const tarResult = spawnSync("tar", ["-xf", archivePath, "-C", outDir], {
+    stdio: "inherit",
+  });
+  if (tarResult.status === 0) return;
+  if (tarResult.error && tarResult.error.code !== "ENOENT") {
+    warn(`tar.exe extraction failed (${tarResult.error.message}); falling back to Expand-Archive.`);
+  } else if (tarResult.status !== null) {
+    warn(`tar.exe extraction exited ${tarResult.status}; falling back to Expand-Archive.`);
+  }
+
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const psResult = spawnSync(
       "powershell",
       [
         "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
         "-Command",
-        `Expand-Archive -Force -Path '${archivePath}' -DestinationPath '${outDir}'`,
+        `$ErrorActionPreference='Stop'; Expand-Archive -Force -Path '${archivePath}' -DestinationPath '${outDir}'`,
       ],
       { stdio: "inherit" },
     );
+    if (psResult.status === 0) return;
+    if (attempt < maxAttempts) {
+      warn(
+        `Expand-Archive failed (exit ${psResult.status}); retrying in 1s (attempt ${attempt}/${maxAttempts})…`,
+      );
+      sleepSync(1000);
+    } else {
+      fail(`zip extraction failed on Windows after ${maxAttempts} attempts (exit ${psResult.status})`);
+    }
+  }
+}
+
+function extractZip(archivePath, outDir) {
+  if (process.platform === "win32") {
+    extractZipWindows(archivePath, outDir);
   } else {
-    result = spawnSync("unzip", ["-q", "-o", archivePath, "-d", outDir], {
+    const result = spawnSync("unzip", ["-q", "-o", archivePath, "-d", outDir], {
       stdio: "inherit",
     });
-  }
-  if (result.status !== 0) {
-    fail(`zip extraction failed (exit ${result.status})`);
+    if (result.status !== 0) {
+      fail(`zip extraction failed (exit ${result.status})`);
+    }
   }
   // Note: Windows zip archives may or may not have a wrapper dir depending
   // on how they were created. Run flatten unconditionally; it's a no-op if
