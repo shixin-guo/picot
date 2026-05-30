@@ -52,9 +52,12 @@ function syncThemeFromParent() {
     return;
   }
 
-  // Cross-origin fallback: read the same key the parent persists.
+  // Cross-origin fallback: read the same cookie the parent persists.
+  // (Themes are stored in a cookie rather than localStorage so they
+  // survive across the different `localhost:<port>` origins Pi Studio
+  // uses for each workspace — see public/themes.js for details.)
   try {
-    const saved = localStorage.getItem('pi-studio-theme');
+    const saved = readThemeCookie();
     if (saved === 'dark') applyTheme('night');
     else if (saved === 'light') applyTheme('terracotta');
     else if (saved) applyTheme(saved);
@@ -63,6 +66,26 @@ function syncThemeFromParent() {
   } catch {
     applyTheme('night');
   }
+}
+
+function readThemeCookie() {
+  try {
+    const cookies = document.cookie ? document.cookie.split('; ') : [];
+    for (const entry of cookies) {
+      const eq = entry.indexOf('=');
+      if (eq === -1) continue;
+      if (entry.slice(0, eq) !== 'pi-studio-theme') continue;
+      const raw = entry.slice(eq + 1);
+      try {
+        return decodeURIComponent(raw);
+      } catch {
+        return raw;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
 }
 
 function formatUsd(value) {

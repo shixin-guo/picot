@@ -10,7 +10,6 @@ import { DialogHandler } from './dialogs.js';
 import { SessionSidebar } from './session-sidebar.js';
 import { themes, applyTheme, getCurrentTheme } from './themes.js';
 import { FileBrowser } from './file-browser.js';
-import { Launcher } from './launcher.js';
 import {
   startNewProjectChat,
   openProjectWorkspace,
@@ -37,6 +36,80 @@ const getCurrentPort = () => {
 const navigateInWindow = (url) => {
   window.location.href = url;
 };
+
+// ──────────────────────────────────────────────────────────────────────
+// Instance-swap overlay
+// ──────────────────────────────────────────────────────────────────────
+// `+ New Session`, `start new chat`, `Open Project`, and `Open Folder`
+// all end with `window.location.href = http://localhost:<newPort>/`,
+// which is a full-page navigation and would otherwise show a 1–2s
+// freeze (while pi spawns) and then a white flash (while the WebView
+// reloads). To make this look like a single smooth transition we:
+//
+//   1. Open a fullscreen spinner overlay BEFORE awaiting openWorkspace.
+//   2. Persist a sessionStorage flag so the new page boots into the
+//      same overlay (see <head> bootstrap script in index.html).
+//   3. After the new page's WebSocket first connects, fade out.
+//
+// Returns a `dismiss` function that rolls back the overlay if the
+// swap fails before navigation (e.g. openWorkspace rejects).
+function showSwapOverlay(label) {
+  try {
+    sessionStorage.setItem('pi-studio:swapping-instance', '1');
+  } catch {}
+  document.body.classList.add('swapping-instance');
+  const overlay = document.getElementById('instance-swap-overlay');
+  if (overlay) overlay.setAttribute('data-visible', 'true');
+  const labelEl = document.getElementById('instance-swap-overlay-label');
+  if (labelEl && typeof label === 'string' && label) labelEl.textContent = label;
+  return hideSwapOverlay;
+}
+
+function hideSwapOverlay() {
+  try {
+    sessionStorage.removeItem('pi-studio:swapping-instance');
+  } catch {}
+  document.body.classList.remove('swapping-instance');
+  const overlay = document.getElementById('instance-swap-overlay');
+  if (overlay) overlay.setAttribute('data-visible', 'false');
+}
+
+// Returned to workspace-actions.js — they call this BEFORE openWorkspace
+// (so the overlay covers spawn latency) and the returned dismiss is only
+// invoked on error (success path lets the overlay persist across the
+// navigation boundary).
+const onBeforeInstanceSwap = (label) => showSwapOverlay(label);
+
+// If the page booted into the overlay (because we just navigated from
+// a previous instance), fade it out as soon as the WebSocket reaches
+// the new pi. The post-connect wait avoids a brief flash of empty
+// chat UI before /api/sessions and get_state finish populating things.
+function dismissBootSwapOverlayWhenReady() {
+  if (!document.body.classList.contains('swapping-instance')) return;
+  const fade = () => {
+    requestAnimationFrame(() => {
+      const overlay = document.getElementById('instance-swap-overlay');
+      if (overlay) overlay.setAttribute('data-visible', 'false');
+      document.body.classList.remove('swapping-instance');
+      try {
+        sessionStorage.removeItem('pi-studio:swapping-instance');
+      } catch {}
+    });
+  };
+  const alreadyOpen = wsClient.ws && wsClient.ws.readyState === WebSocket.OPEN;
+  if (alreadyOpen) {
+    fade();
+  } else {
+    const onConnect = () => {
+      wsClient.removeEventListener('connected', onConnect);
+      fade();
+    };
+    wsClient.addEventListener('connected', onConnect);
+  }
+  setTimeout(() => {
+    if (document.body.classList.contains('swapping-instance')) hideSwapOverlay();
+  }, 5000);
+}
 
 
 // Initialize components
@@ -1183,15 +1256,19 @@ async function resetUiForNewSession() {
 
 async function newSession() {
   if (window.tauriNative) {
-    // In Pi Studio, "New Session" spawns a *new* pi process in a new OS
-    // window for the current cwd. A single pi process can only drive one
-    // active session at a time, so a parallel task needs its own process.
-    // The current window/session keeps running undisturbed. See
-    // workspace-actions.js for the full rationale.
+    // In Pi Studio, "+ New Session" spawns a fresh headless pi process for
+    // the current cwd and navigates THIS window's WebView to it. The
+    // previous pi process keeps running in the background (PiManager
+    // retains it; the user can return to it via the running-instances
+    // list). A single pi process can only drive one active session at a
+    // time, so a parallel task structurally needs its own process — but
+    // it does NOT need its own OS window. See workspace-actions.js.
     await startInWindowNewSession({
       tauriNative: window.tauriNative,
       fetchInstances,
       getCurrentPort,
+      navigate: navigateInWindow,
+      onBeforeSwap: onBeforeInstanceSwap,
       renderError: (message) => messageRenderer.renderError(message),
     });
     return;
@@ -1217,12 +1294,14 @@ async function handleNewProjectChat(project) {
   if (workspaceLaunchInProgress) return;
   setWorkspaceLaunchInProgress(true);
   try {
-    // startNewProjectChat always spawns a fresh pi + window, so the
-    // current window/session is left untouched. We only reset the local
-    // cost counters when the user *navigates away* from this window.
+    // startNewProjectChat spawns a fresh headless pi for the project's
+    // cwd and navigates THIS window to it. The previously-attached pi
+    // process keeps running in the background.
     const launched = await startNewProjectChat({
       project,
       tauriNative: window.tauriNative,
+      navigate: navigateInWindow,
+      onBeforeSwap: onBeforeInstanceSwap,
       renderError: (message) => messageRenderer.renderError(message),
     });
     if (!launched) return;
@@ -2022,7 +2101,6 @@ function buildThemeGrid() {
 }
 
 async function openSettings() {
-  hideLauncher();
   settingsPanel.classList.remove('hidden');
   messagesContainer.style.display = 'none';
   document.querySelector('.input-area').style.display = 'none';
@@ -2806,88 +2884,9 @@ if (isMobile()) {
   });
 }
 
-// Launcher
-const launcherEl = document.getElementById('launcher');
-const launcher = new Launcher(launcherEl, async (projectPath) => {
-  if (workspaceLaunchInProgress) return;
-  setWorkspaceLaunchInProgress(true);
-  try {
-    // Launcher bubble click: open the workspace, but DON'T force a new
-    // chat. If a fresh pi has to be spawned it already boots into a new
-    // session; if an instance is already running for this cwd we attach
-    // to it as-is. This shaves the second extension reload that used to
-    // dominate launcher-to-ready latency.
-    await openProjectWorkspace({
-      project: { path: projectPath, sessions: [] },
-      tauriNative: window.tauriNative,
-      fetchInstances,
-      getCurrentPort,
-      navigate: navigateInWindow,
-      renderError: (message) => messageRenderer.renderError(message),
-    });
-  } finally {
-    setWorkspaceLaunchInProgress(false);
-  }
-});
-
-// Check if launcher should show (projects configured)
-async function initLauncher() {
-  try {
-    const res = await fetch('/api/projects');
-    const data = await res.json();
-    if (data.projects && data.projects.length > 0) {
-      launcher.projects = data.projects;
-      launcher.render();
-      // Show launcher by default, add a nav link in the sidebar
-      addLauncherNav();
-    }
-  } catch {}
-}
-
-function addLauncherNav() {
-  const modeToggle = document.getElementById('mode-toggle');
-  if (!modeToggle || modeToggle.querySelector('.mode-link-launcher')) return;
-
-  const launcherLink = document.createElement('span');
-  launcherLink.className = 'mode-link mode-link-launcher';
-  launcherLink.title = 'Projects';
-  launcherLink.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
-  launcherLink.addEventListener('click', () => {
-    showLauncher();
-  });
-  modeToggle.appendChild(launcherLink);
-}
-
-function showLauncher() {
-  settingsPanel.classList.add('hidden');
-  launcherEl.classList.remove('hidden');
-  messagesContainer.style.display = 'none';
-  document.querySelector('.input-area').style.display = 'none';
-  document.querySelector('.welcome')?.remove();
-
-  // Update nav state
-  document.querySelectorAll('.mode-link').forEach(l => l.classList.remove('active'));
-  document.querySelector('.mode-link-launcher')?.classList.add('active');
-
-  launcher.load();
-}
-
-function hideLauncher() {
-  launcherEl.classList.add('hidden');
-  if (settingsPanel.classList.contains('hidden')) {
-    messagesContainer.style.display = '';
-    document.querySelector('.input-area').style.display = '';
-  }
-
-  // Update nav state
-  document.querySelectorAll('.mode-link').forEach(l => l.classList.remove('active'));
-  document.querySelector('.mode-link:first-child')?.classList.add('active');
-}
-
 // Make the Pi Studio icon in sidebar switch back to chat
 document.querySelector('.mode-link:first-child')?.addEventListener('click', () => {
   closeSettings();
-  hideLauncher();
 });
 
 // ═══════════════════════════════════════
@@ -2903,6 +2902,7 @@ openFolderBtn?.addEventListener('click', async () => {
       fetchInstances,
       getCurrentPort,
       navigate: navigateInWindow,
+      onBeforeSwap: onBeforeInstanceSwap,
       renderError: (message) => messageRenderer.renderError(message),
     });
   } finally {
@@ -2911,6 +2911,7 @@ openFolderBtn?.addEventListener('click', async () => {
 });
 
 wsClient.connect();
+dismissBootSwapOverlayWhenReady();
 renderWorkspaceWelcome();
 sidebar.loadSessions().then(() => {
   sessionsLoaded = true;
@@ -2924,7 +2925,6 @@ sidebar.loadSessions().then(() => {
   }
   if (isMirrorMode) updateMirrorLiveIndicator();
 });
-initLauncher();
 
 // Register service worker for PWA
 if ('serviceWorker' in navigator) {

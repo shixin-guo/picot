@@ -84,8 +84,29 @@ EOF
 echo "Regenerating package-lock.json..."
 npm install --package-lock-only
 
+echo "Refreshing src-tauri/Cargo.lock..."
+# Cargo.lock contains a `pi-studio` entry whose version tracks Cargo.toml.
+# Run `cargo update -p pi-studio` so the lockfile is in sync with the bumped
+# Cargo.toml *before* we commit, otherwise the next local cargo invocation
+# will leave a dirty Cargo.lock behind after the release commit is pushed.
+# Ensure ~/.cargo/bin is on PATH (rustup default install location), since
+# `npm run release` is often launched from a shell where it isn't sourced.
+CARGO_BIN=""
+if command -v cargo >/dev/null 2>&1; then
+  CARGO_BIN="cargo"
+elif [[ -x "$HOME/.cargo/bin/cargo" ]]; then
+  CARGO_BIN="$HOME/.cargo/bin/cargo"
+fi
+if [[ -n "$CARGO_BIN" ]]; then
+  ( cd src-tauri && "$CARGO_BIN" update -p pi-studio --offline >/dev/null 2>&1 \
+      || "$CARGO_BIN" update -p pi-studio >/dev/null 2>&1 \
+      || true )
+else
+  echo "  (cargo not found; skipping Cargo.lock refresh)"
+fi
+
 echo "Committing release version bump..."
-git add src-tauri/tauri.conf.json src-tauri/Cargo.toml package.json package-lock.json
+git add src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock package.json package-lock.json
 git commit -m "chore(release): $TAG"
 
 echo "Creating tag $TAG..."

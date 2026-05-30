@@ -12,8 +12,36 @@
   <meta name="apple-mobile-web-app-title" content="Pi Studio">
   <meta name="theme-color" content="#f5f3ef">
   <link rel="stylesheet" href="style.css">
+  <script>
+    // Boot-time instance-swap overlay gate.
+    // Set by workspace-actions.js right before window.location.href changes
+    // to a new pi instance's port. Read here synchronously (before <body>
+    // renders) so the new page's very first paint is the overlay, not a
+    // half-loaded chat UI. Cleared by app.js after the first WebSocket
+    // connection on the new page.
+    try {
+      if (sessionStorage.getItem('pi-studio:swapping-instance') === '1') {
+        document.documentElement.classList.add('swapping-instance-pending');
+      }
+    } catch (e) {}
+  </script>
 </head>
-<body>
+<body class="">
+  <div class="instance-swap-overlay" id="instance-swap-overlay" aria-hidden="true">
+    <div class="instance-swap-overlay__spinner"></div>
+    <div class="instance-swap-overlay__label" id="instance-swap-overlay-label">Starting session…</div>
+  </div>
+  <script>
+    // Flip the body class as early as the body element exists. Done inline
+    // (rather than waiting for app.js) so we don't get a chat-UI flash
+    // between body parse and app.js executing.
+    if (document.documentElement.classList.contains('swapping-instance-pending')) {
+      document.body.classList.add('swapping-instance');
+      document.documentElement.classList.remove('swapping-instance-pending');
+      const overlay = document.getElementById('instance-swap-overlay');
+      if (overlay) overlay.setAttribute('data-visible', 'true');
+    }
+  </script>
   <div class="app-layout">
     <!-- Left Sidebar -->
     <div class="sidebar" id="sidebar">
@@ -78,9 +106,6 @@
           </button>
         </div>
       </div>
-
-      <!-- Launcher (project picker) -->
-      <div class="launcher hidden" id="launcher"></div>
 
       <!-- Messages Container -->
       <div class="messages" id="messages">

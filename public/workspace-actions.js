@@ -1,38 +1,40 @@
 // Multi-task model
 // ──────────────────
-// "New session" in Pi Studio always spawns a *new* pi process in a *new* OS
-// window — even when the target cwd already has a running pi.
-//
-// Rationale: a `pi --mode rpc` process can only drive ONE active session at
-// a time. `new_session` / `switch_session` / fork inside an existing process
-// just *replace* the active session — the previous session's .jsonl stays on
+// A `pi --mode rpc` process can only drive ONE active session at a time.
+// `new_session` / `switch_session` / fork inside an existing process just
+// *replace* the active session — the previous session's .jsonl stays on
 // disk and can be reloaded later, but it stops being the live, running
 // session in that process. So any concurrently-running session structurally
-// needs its own pi process. We map that 1:1 onto OS windows: each "new
-// session" gets its own isolated pi process and its own window. Switching
-// back to a previous task is just clicking that other window (or reopening
-// it from the launcher / sidebar via the running-instance list).
+// needs its own pi process.
 //
-// "Open project" / "Open folder" entry points still attach to an existing pi
-// instance for the same cwd when one exists — those actions are about
+// "Start a new session" entry points (header "+ New Session" and sidebar
+// project tile "start new chat") both use the same pattern: spawn a fresh
+// HEADLESS pi for the target cwd and navigate THIS window's WebView to
+// the new port. The previously-attached pi process keeps running in the
+// background (PiManager retains it) and is reachable via the
+// running-instances list / launcher / sidebar. Net effect: no new OS
+// window, no interruption of any previously-running session.
+//
+// "Open project" / "Open folder" entry points still attach to an existing
+// pi instance for the same cwd when one exists — those actions are about
 // *finding* the project, not starting a new task.
+//
+// Swap overlay
+// ──────────────
+// All entry points that end in `navigate(url)` (a full-page WebView
+// reload) optionally take an `onBeforeSwap` callback. The host (app.js)
+// uses it to raise a full-screen overlay so the user sees a continuous
+// spinner instead of a 1–2 second freeze (while pi spawns) followed by a
+// white flash (while the WebView reloads). The overlay is persisted
+// across the navigation boundary via sessionStorage; the new page boots
+// straight into it (see index.html bootstrap script).
 
-async function spawnWorkspaceWindow({ targetCwd, tauriNative, renderError }) {
+function runOnBeforeSwap(onBeforeSwap, label) {
+  if (typeof onBeforeSwap !== 'function') return () => {};
   try {
-    // openWorkspace allocates a fresh port and opens a new OS window.
-    // forceNewSession=false because a freshly-spawned pi already boots into
-    // a brand-new session; sending an extra new_session RPC would just force
-    // a redundant extension reload (see the original timing-perf comment in
-    // git history).
-    await tauriNative.openWorkspace(targetCwd, {
-      forceNewSession: false,
-      openWindow: true,
-      waitForSessions: false,
-    });
-    return true;
-  } catch (e) {
-    if (renderError) renderError(`Failed to start new session: ${e}`);
-    return false;
+    return onBeforeSwap(label) || (() => {});
+  } catch {
+    return () => {};
   }
 }
 
@@ -45,6 +47,7 @@ async function attachToWorkspace({
   fetchInstances,
   getCurrentPort,
   navigate,
+  onBeforeSwap,
   renderError,
 }) {
   const instances = await fetchInstances();
@@ -58,6 +61,7 @@ async function attachToWorkspace({
   const existing = instances.find((i) => i.cwd === targetCwd);
   let targetPort = existing?.port;
 
+  const dismissOverlay = runOnBeforeSwap(onBeforeSwap, 'Opening workspace…');
   if (!targetPort) {
     try {
       targetPort = await tauriNative.openWorkspace(targetCwd, {
@@ -66,6 +70,7 @@ async function attachToWorkspace({
         waitForSessions: false,
       });
     } catch (e) {
+      dismissOverlay();
       if (renderError) renderError(`Failed to attach to workspace: ${e}`);
       return null;
     }
@@ -76,13 +81,17 @@ async function attachToWorkspace({
 }
 
 // "+ New Session" button in the current window's header.
-// Always spawns a fresh pi process in a new OS window so the current task
-// keeps running undisturbed in this window.
+// Spawns a fresh headless pi process for the current cwd, then navigates
+// THIS window's WebView to it. The previous pi process keeps running in
+// the background — it's not killed, just no longer attached to this
+// window. The user can return to it via the running-instances list.
 export async function startInWindowNewSession({
   tauriNative,
   getCurrentCwd,
   fetchInstances,
   getCurrentPort,
+  navigate,
+  onBeforeSwap,
   renderError,
 }) {
   if (!tauriNative) {
@@ -114,20 +123,43 @@ export async function startInWindowNewSession({
     return false;
   }
 
-  return spawnWorkspaceWindow({ targetCwd, tauriNative, renderError });
+  if (typeof navigate !== 'function') {
+    renderError('Failed to start new session: navigation is unavailable');
+    return false;
+  }
+
+  const dismissOverlay = runOnBeforeSwap(onBeforeSwap, 'Starting session…');
+  try {
+    const newPort = await tauriNative.openWorkspace(targetCwd, {
+      forceNewSession: false,
+      openWindow: false,
+      waitForSessions: false,
+    });
+    navigate(`http://localhost:${newPort}/`);
+    return true;
+  } catch (e) {
+    dismissOverlay();
+    renderError(`Failed to start new session: ${e}`);
+    return false;
+  }
 }
 
 function resolveProjectCwd(project) {
   return project?.sessions?.find((session) => session?.cwd)?.cwd || project?.path;
 }
 
-// Sidebar / project "start new chat" entry point.
-// Always spawns a fresh pi process + new window for the project's cwd, even
-// if there's already a pi running for that project. This is what enables
-// "multiple agents on the same project at the same time".
+// Sidebar "start new chat" entry point (project tile in the open
+// workspace window). Spawns a fresh headless pi for the project's cwd
+// and navigates THIS window to it. The previously-attached pi process
+// stays alive in the background (PiManager retains it; reachable via
+// the running-instances list). No new OS window is opened, and no
+// running session is interrupted — same model as in-window "+ New
+// Session", just sourced from a project tile instead of the header.
 export async function startNewProjectChat({
   project,
   tauriNative,
+  navigate,
+  onBeforeSwap,
   renderError,
 }) {
   if (!tauriNative) {
@@ -141,7 +173,25 @@ export async function startNewProjectChat({
     return false;
   }
 
-  return spawnWorkspaceWindow({ targetCwd, tauriNative, renderError });
+  if (typeof navigate !== 'function') {
+    renderError('Failed to start new chat: navigation is unavailable');
+    return false;
+  }
+
+  const dismissOverlay = runOnBeforeSwap(onBeforeSwap, 'Starting new chat…');
+  try {
+    const newPort = await tauriNative.openWorkspace(targetCwd, {
+      forceNewSession: false,
+      openWindow: false,
+      waitForSessions: false,
+    });
+    navigate(`http://localhost:${newPort}/`);
+    return true;
+  } catch (e) {
+    dismissOverlay();
+    renderError(`Failed to start new chat: ${e}`);
+    return false;
+  }
 }
 
 // Launcher bubble / "Open Folder" entry point. Does NOT spawn a parallel
@@ -154,6 +204,7 @@ export async function openProjectWorkspace({
   fetchInstances,
   getCurrentPort,
   navigate,
+  onBeforeSwap,
   renderError,
 }) {
   if (!tauriNative) {
@@ -174,6 +225,7 @@ export async function openProjectWorkspace({
       fetchInstances,
       getCurrentPort,
       navigate,
+      onBeforeSwap,
       renderError,
     });
     return result !== null;
@@ -188,6 +240,7 @@ export async function openFolderAsWorkspace({
   fetchInstances,
   getCurrentPort,
   navigate,
+  onBeforeSwap,
   renderError,
 }) {
   if (!tauriNative) {
@@ -205,6 +258,7 @@ export async function openFolderAsWorkspace({
       fetchInstances,
       getCurrentPort,
       navigate,
+      onBeforeSwap,
       renderError,
     });
     return result !== null;

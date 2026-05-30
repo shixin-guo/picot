@@ -11,9 +11,8 @@
  * - Bridge browser RPC over `/api/rpc` (HTTP) and `/ws` (WebSocket) to the
  *   pi extension API (sendUserMessage, abort, set_model, etc.)
  * - Expose REST endpoints the frontend queries directly:
- *   `/api/sessions`, `/api/projects`, `/api/cost-dashboard`, `/api/files`,
- *   `/api/search`, `/api/open`, `/api/agent-config`, `/api/models-config`,
- *   `/api/instances`
+ *   `/api/sessions`, `/api/cost-dashboard`, `/api/files`, `/api/search`,
+ *   `/api/open`, `/api/agent-config`, `/api/models-config`, `/api/instances`
  * - Forward all pi lifecycle events to connected browsers
  * - Generate session titles from user messages
  *
@@ -25,7 +24,7 @@
  * - Cross-process instance discovery via `~/.pi/pistudio-instances/` —
  *   Pi Studio's Rust side already knows which ports it spawned. We keep a
  *   trivial single-entry registry so the frontend's `active` state stays
- *   correct without needing a Tauri invoke for `/api/projects` queries.
+ *   correct without needing a Tauri invoke for `/api/instances` queries.
  * - `pi --version` exec probing — version is forwarded by Pi Studio via
  *   `PI_STUDIO_PI_VERSION` env var.
  */
@@ -52,51 +51,9 @@ declare const Bun: any;
 const HAS_BUN_SERVE = typeof (globalThis as any).Bun !== "undefined"
   && typeof (globalThis as any).Bun?.serve === "function";
 
-type OpenTarget = {
-  id: string;
-  label: string;
-  appName?: string;
-};
-
-const OPEN_TARGETS: OpenTarget[] = [
-  { id: "vscode", label: "VS Code", appName: "Visual Studio Code" },
-  { id: "cursor", label: "Cursor", appName: "Cursor" },
-  { id: "zed", label: "Zed", appName: "Zed" },
-  { id: "finder", label: "Finder" },
-  { id: "terminal", label: "Terminal", appName: "Terminal" },
-  { id: "ghostty", label: "Ghostty", appName: "Ghostty" },
-  { id: "xcode", label: "Xcode", appName: "Xcode" },
-];
-
-function execFileAsync(command: string, args: string[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    execFile(command, args, (err) => {
-      if (err) reject(err);
-      else resolve();
-    });
-  });
-}
-
-async function isOpenAppAvailable(appName: string): Promise<boolean> {
-  try {
-    await execFileAsync("open", ["-Ra", appName]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function getAvailableOpenTargets(): Promise<OpenTarget[]> {
-  const checks = await Promise.all(OPEN_TARGETS.map(async (target) => {
-    if (!target.appName) return true;
-    return isOpenAppAvailable(target.appName);
-  }));
-  return OPEN_TARGETS.filter((_, idx) => checks[idx]);
-}
-
 // Pi Studio settings live under `pistudio` key in ~/.pi/agent/settings.json.
 // We only honor the fields that still make sense in desktop-only mode.
-function loadSettings(): { port: number; projectsDir?: string } {
+function loadSettings(): { port: number } {
   let settings: any = {};
   try {
     const settingsPath = path.join(process.env.HOME || "~", ".pi/agent/settings.json");
@@ -104,7 +61,6 @@ function loadSettings(): { port: number; projectsDir?: string } {
   } catch {}
   return {
     port: parseInt(process.env.PI_STUDIO_PORT || settings.port || "3001"),
-    projectsDir: process.env.PI_STUDIO_PROJECTS_DIR || settings.projectsDir,
   };
 }
 
@@ -141,13 +97,11 @@ function findPublicDir(): string {
     return path.resolve(process.cwd(), "public");
 }
 const SESSIONS_DIR = path.join(process.env.HOME || "~", ".pi/agent/sessions");
-const SESSIONS_ARCHIVE_DIR = path.join(process.env.HOME || "~", ".pi/agent/sessions-archive");
 const INSTANCES_DIR = path.join(process.env.HOME || "~", ".pi/pistudio-instances");
-const PROJECTS_ARCHIVE_DIR_NAME = ".archive";
 
 // Minimal single-process instance registry. We keep this so the frontend's
-// `/api/projects` and `/api/instances` responses can mark workspaces as
-// "active" without needing a Tauri invoke. Unlike the old mirror-server
+// `/api/instances` response reflects the running workspace without needing
+// a Tauri invoke. Unlike the old mirror-server
 // which scanned the whole INSTANCES_DIR (for tmux / standalone pi
 // processes), we only ever write our own entry: Pi Studio's Rust side
 // manages all pi processes it spawns.
@@ -204,51 +158,6 @@ const MIME_TYPES: Record<string, string> = {
   ".woff": "font/woff",
   ".woff2": "font/woff2",
 };
-
-function normalizeWorkspacePath(inputPath: string): string {
-  const expanded = inputPath.startsWith("~")
-    ? path.join(process.env.HOME || "", inputPath.slice(1))
-    : inputPath;
-  return path.resolve(expanded);
-}
-
-function encodeSessionDirName(workspacePath: string): string {
-  return `--${workspacePath.replace(/\//g, "-")}--`;
-}
-
-function isWorkspaceRunning(workspacePath: string): boolean {
-  const target = path.resolve(workspacePath);
-  return getRunningInstances().some((instance) => {
-    if (!instance?.cwd) return false;
-    try {
-      return fs.realpathSync(instance.cwd) === target;
-    } catch {
-      return path.resolve(instance.cwd) === target;
-    }
-  });
-}
-
-function resolveWorkspaceWithinProjects(projectPath: string): { projectsRoot: string; targetPath: string } {
-  const projectsDir = SETTINGS.projectsDir;
-  if (!projectsDir) throw new Error("projectsDir is not configured");
-  const projectsRoot = normalizeWorkspacePath(projectsDir);
-  if (!fs.existsSync(projectsRoot) || !fs.statSync(projectsRoot).isDirectory()) {
-    throw new Error("projectsDir is not a valid directory");
-  }
-  const targetPath = normalizeWorkspacePath(projectPath);
-  if (!fs.existsSync(targetPath) || !fs.statSync(targetPath).isDirectory()) {
-    throw new Error("Workspace directory not found");
-  }
-  const realProjectsRoot = fs.realpathSync(projectsRoot);
-  const realTargetPath = fs.realpathSync(targetPath);
-  if (
-    realTargetPath === realProjectsRoot ||
-    !realTargetPath.startsWith(`${realProjectsRoot}${path.sep}`)
-  ) {
-    throw new Error("Workspace must be inside projectsDir");
-  }
-  return { projectsRoot: realProjectsRoot, targetPath: realTargetPath };
-}
 
 // ─── Process-global server state ──────────────────────────────────────────────
 //
@@ -1133,197 +1042,6 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    if (urlPath === "/api/projects" && req.method === "GET") {
-      serveProjectsList(res);
-      return;
-    }
-
-    if (urlPath === "/api/projects/launch" && req.method === "POST") {
-      let body = "";
-      req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
-      req.on("end", () => {
-        try {
-          const { path: projectPath } = JSON.parse(body);
-          if (!projectPath || typeof projectPath !== "string") {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "path required" }));
-            return;
-          }
-          // Resolve ~ in path
-          const resolved = projectPath.startsWith("~")
-            ? path.join(process.env.HOME || "", projectPath.slice(1))
-            : projectPath;
-          if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Directory not found" }));
-            return;
-          }
-          const { execSync } = require("node:child_process");
-          const escaped = resolved.replace(/'/g, "'\\''");
-          // Note: this still shells out to `pi` on the user's PATH. Pi Studio's
-          // own workspace opener uses Tauri's cmd_open_workspace and the
-          // embedded pi, so this path is only exercised when a workspace is
-          // launched via the projects list from outside Pi Studio's flow.
-          execSync(`osascript -e 'tell app "iTerm2" to create window with default profile command "cd '"'"'${escaped}'"'"' && pi"'`);
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ ok: true }));
-        } catch (e: any) {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: e.message }));
-        }
-      });
-      return;
-    }
-
-    if (urlPath === "/api/projects/archive-workspace" && req.method === "POST") {
-      let body = "";
-      req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
-      req.on("end", () => {
-        try {
-          const { path: projectPath } = JSON.parse(body);
-          if (!projectPath || typeof projectPath !== "string") {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "path required" }));
-            return;
-          }
-
-          const { projectsRoot, targetPath: realTargetPath } = resolveWorkspaceWithinProjects(projectPath);
-          if (isWorkspaceRunning(realTargetPath)) {
-            res.writeHead(409, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Workspace is running. Please stop it first." }));
-            return;
-          }
-
-          fs.mkdirSync(SESSIONS_ARCHIVE_DIR, { recursive: true });
-          const projectsArchiveRoot = path.join(projectsRoot, PROJECTS_ARCHIVE_DIR_NAME);
-          fs.mkdirSync(projectsArchiveRoot, { recursive: true });
-          const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-          const archivedWorkspacePath = path.join(
-            projectsArchiveRoot,
-            `${path.basename(realTargetPath)}-${timestamp}`
-          );
-          fs.renameSync(realTargetPath, archivedWorkspacePath);
-
-          const sessionsDirName = encodeSessionDirName(realTargetPath);
-          const sessionDirPath = path.join(SESSIONS_DIR, sessionsDirName);
-          let archivedSessionsDir: string | null = null;
-          if (fs.existsSync(sessionDirPath) && fs.statSync(sessionDirPath).isDirectory()) {
-            archivedSessionsDir = path.join(SESSIONS_ARCHIVE_DIR, `${path.basename(sessionDirPath)}-${timestamp}`);
-            fs.renameSync(sessionDirPath, archivedSessionsDir);
-          }
-
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(
-            JSON.stringify({
-              ok: true,
-              archivedWorkspacePath,
-              archivedSessionsDir,
-            })
-          );
-        } catch (e: any) {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: e.message }));
-        }
-      });
-      return;
-    }
-
-    if (urlPath === "/api/projects/rename" && req.method === "POST") {
-      let body = "";
-      req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
-      req.on("end", () => {
-        try {
-          const { path: projectPath, newName } = JSON.parse(body);
-          if (!projectPath || typeof projectPath !== "string") {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "path required" }));
-            return;
-          }
-          if (!newName || typeof newName !== "string" || !newName.trim()) {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "newName required" }));
-            return;
-          }
-          if (newName.includes(path.sep) || newName.includes("/") || newName.includes("\\")) {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "newName must not contain path separators" }));
-            return;
-          }
-
-          const { targetPath: realTargetPath } = resolveWorkspaceWithinProjects(projectPath);
-          if (isWorkspaceRunning(realTargetPath)) {
-            res.writeHead(409, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Workspace is running. Please stop it first." }));
-            return;
-          }
-
-          const parentDir = path.dirname(realTargetPath);
-          const newPath = path.join(parentDir, newName.trim());
-          if (fs.existsSync(newPath)) {
-            res.writeHead(409, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "A project with this name already exists" }));
-            return;
-          }
-
-          fs.renameSync(realTargetPath, newPath);
-
-          const oldSessionDir = path.join(SESSIONS_DIR, encodeSessionDirName(realTargetPath));
-          const newSessionDir = path.join(SESSIONS_DIR, encodeSessionDirName(newPath));
-          if (fs.existsSync(oldSessionDir) && fs.statSync(oldSessionDir).isDirectory()) {
-            fs.renameSync(oldSessionDir, newSessionDir);
-          }
-
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ ok: true, oldPath: realTargetPath, newPath }));
-        } catch (e: any) {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: e.message }));
-        }
-      });
-      return;
-    }
-
-    if (urlPath === "/api/projects/archive-chats" && req.method === "POST") {
-      let body = "";
-      req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
-      req.on("end", () => {
-        try {
-          const { path: projectPath } = JSON.parse(body);
-          if (!projectPath || typeof projectPath !== "string") {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "path required" }));
-            return;
-          }
-
-          const { targetPath: realTargetPath } = resolveWorkspaceWithinProjects(projectPath);
-          if (isWorkspaceRunning(realTargetPath)) {
-            res.writeHead(409, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Workspace is running. Please stop it first." }));
-            return;
-          }
-
-          const sessionDir = path.join(SESSIONS_DIR, encodeSessionDirName(realTargetPath));
-          if (!fs.existsSync(sessionDir) || !fs.statSync(sessionDir).isDirectory()) {
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ ok: true, archivedDir: null }));
-            return;
-          }
-
-          fs.mkdirSync(SESSIONS_ARCHIVE_DIR, { recursive: true });
-          const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-          const archiveDir = path.join(SESSIONS_ARCHIVE_DIR, `${path.basename(sessionDir)}-${timestamp}`);
-          fs.renameSync(sessionDir, archiveDir);
-
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ ok: true, archivedDir: archiveDir }));
-        } catch (e: any) {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: e.message }));
-        }
-      });
-      return;
-    }
-
     if (urlPath === "/api/sessions" && req.method === "GET") {
       serveSessionsList(res);
       return;
@@ -1364,34 +1082,19 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    if (urlPath === "/api/open-targets" && req.method === "GET") {
-      try {
-        const targets = await getAvailableOpenTargets();
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          targets: targets.map((target) => ({ id: target.id, label: target.label })),
-        }));
-      } catch (err: any) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: err.message }));
-      }
-      return;
-    }
-
-    // File browser: open file natively
+    // File browser: open file natively (or hand a URL off to the OS default browser).
     if (urlPath === "/api/open" && req.method === "POST") {
       let body = "";
       req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
       req.on("end", () => {
         try {
-          const { filePath: fp, target } = JSON.parse(body);
+          const { filePath: fp } = JSON.parse(body);
           if (!fp || typeof fp !== "string") {
             res.writeHead(400, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "filePath required" }));
             return;
           }
-
-          const openDone = (err?: Error | null) => {
+          execFile("open", [fp], (err) => {
             if (err) {
               res.writeHead(500, { "Content-Type": "application/json" });
               res.end(JSON.stringify({ error: err.message }));
@@ -1399,41 +1102,7 @@ export default function (pi: ExtensionAPI) {
             }
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ ok: true }));
-          };
-
-          const openWithApp = (appName: string) => {
-            execFile("open", ["-a", appName, fp], openDone);
-          };
-
-          switch (target) {
-            case undefined:
-            case null:
-            case "finder":
-              execFile("open", [fp], openDone);
-              break;
-            case "vscode":
-              openWithApp("Visual Studio Code");
-              break;
-            case "cursor":
-              openWithApp("Cursor");
-              break;
-            case "zed":
-              openWithApp("Zed");
-              break;
-            case "terminal":
-              openWithApp("Terminal");
-              break;
-            case "ghostty":
-              openWithApp("Ghostty");
-              break;
-            case "xcode":
-              openWithApp("Xcode");
-              break;
-            default:
-              res.writeHead(400, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ error: `Unsupported open target: ${String(target)}` }));
-              break;
-          }
+          });
         } catch (err: any) {
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: err.message }));
@@ -1651,75 +1320,6 @@ export default function (pi: ExtensionAPI) {
 
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));
-  }
-
-  // ═══════════════════════════════════════
-  // Sessions list endpoint
-  // ═══════════════════════════════════════
-
-  function serveProjectsList(res: http.ServerResponse) {
-    const projectsDir = SETTINGS.projectsDir;
-    if (!projectsDir) {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ projects: [] }));
-      return;
-    }
-
-    const resolved = normalizeWorkspacePath(projectsDir);
-
-    if (!fs.existsSync(resolved)) {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ projects: [], error: "Directory not found" }));
-      return;
-    }
-
-    try {
-      const entries = fs.readdirSync(resolved, { withFileTypes: true });
-      const instances = getRunningInstances();
-
-      // Build session count + recency map from session history
-      const sessionInfo = new Map<string, { count: number; lastActive: number }>();
-      if (fs.existsSync(SESSIONS_DIR)) {
-        for (const dir of fs.readdirSync(SESSIONS_DIR, { withFileTypes: true })) {
-          if (!dir.isDirectory()) continue;
-          const decodedPath = dir.name.replace(/^--/, "/").replace(/--$/, "").replace(/-/g, "/");
-          // Check if this session dir maps to a subdirectory of the projects folder
-          if (!decodedPath.startsWith(resolved + "/") && !decodedPath.startsWith(resolved)) continue;
-
-          const sessionDir = path.join(SESSIONS_DIR, dir.name);
-          const files = fs.readdirSync(sessionDir).filter(f => f.endsWith(".jsonl"));
-          let lastMtime = 0;
-          for (const f of files) {
-            try {
-              const stat = fs.statSync(path.join(sessionDir, f));
-              if (stat.mtimeMs > lastMtime) lastMtime = stat.mtimeMs;
-            } catch {}
-          }
-          sessionInfo.set(decodedPath, { count: files.length, lastActive: lastMtime });
-        }
-      }
-
-      const projects = entries
-        .filter(e => e.isDirectory() && !e.name.startsWith("."))
-        .map(e => {
-          const fullPath = path.join(resolved, e.name);
-          const info = sessionInfo.get(fullPath) || { count: 0, lastActive: 0 };
-          const isActive = instances.some(i => i.cwd === fullPath);
-          return {
-            name: e.name,
-            path: fullPath,
-            sessionCount: info.count,
-            lastActive: info.lastActive || null,
-            active: isActive,
-          };
-        });
-
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ projects }));
-    } catch (e: any) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: e.message }));
-    }
   }
 
   // Wraps `parseSessionFile` with an mtime+size keyed in-memory cache so we
@@ -2445,7 +2045,7 @@ export default function (pi: ExtensionAPI) {
     globalState.getApi = () => pi;
 
     // Re-register the instance entry with the *current* session file so
-    // `/api/projects` and `/api/instances` report the right session.
+    // `/api/instances` reports the right session.
     if (globalState.server) {
       const port = globalState.server.port;
       const sessionFile = ctx.sessionManager.getSessionFile() || "";
@@ -2752,7 +2352,7 @@ export default function (pi: ExtensionAPI) {
         method: req.method,
         headers,
         // Only `data`/`end` are consumed by our POST handlers — see
-        // /api/rpc, /api/projects/launch, /api/agent-config (PUT), etc.
+        // /api/rpc, /api/agent-config (PUT), etc.
         on(event: string, fn: any) {
           if (event === "data") dataListeners.push(fn);
           else if (event === "end") endListeners.push(fn);

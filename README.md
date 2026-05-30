@@ -133,7 +133,7 @@ Six built-in themes: Dusk, Dawn, Midnight, Clean, Terracotta, Sage.
                  └─ settings.json
 ```
 
-The embedded pi process loads `embedded-server.mjs` at startup. That extension owns the HTTP + WebSocket surface the Tauri WebView talks to: static assets, `/api/sessions`, `/api/projects`, `/api/cost-dashboard`, RPC bridge for prompts, etc. Pi Studio's Rust side controls process lifecycle, port allocation, and window management.
+The embedded pi process loads `embedded-server.mjs` at startup. That extension owns the HTTP + WebSocket surface the Tauri WebView talks to: static assets, `/api/sessions`, `/api/cost-dashboard`, RPC bridge for prompts, etc. Pi Studio's Rust side controls process lifecycle, port allocation, and window management.
 
 Your own `~/.pi/agent/extensions/` and project-local `.pi/extensions/` are still auto-loaded by the embedded pi — embedding doesn't disable user extensions.
 

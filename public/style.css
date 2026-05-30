@@ -3815,242 +3815,6 @@ body.hide-thinking .thinking-block { display: none !important; }
 }
 
 
-/* ═══════════════════════════════════════════════════════
-   LAUNCHER — Project Directory Picker
-   ═══════════════════════════════════════════════════════ */
-
-.launcher {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-solid);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 48px 24px;
-}
-
-.launcher.hidden {
-  display: none;
-}
-
-.launcher-content {
-  max-width: 720px;
-  width: 100%;
-}
-
-.launcher-title {
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-secondary);
-  margin-bottom: 24px;
-  text-align: center;
-}
-
-.launcher-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: center;
-}
-
-.launcher-bubble-shell {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
-.launcher-bubble {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: calc(10px * var(--size)) calc(34px * var(--size)) calc(10px * var(--size)) calc(18px * var(--size));
-  border-radius: var(--radius-pill);
-  border: 1px solid color-mix(in srgb, var(--accent) calc(var(--freshness) * 40%), transparent);
-  background: color-mix(in srgb, var(--accent) calc(var(--freshness) * 12%), var(--bg-glass));
-  color: var(--text-primary);
-  font-size: calc(13px * var(--size));
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--duration) var(--ease);
-  opacity: calc(0.45 + var(--freshness) * 0.55);
-  white-space: nowrap;
-}
-
-.launcher-bubble:hover {
-  background: color-mix(in srgb, var(--accent) calc(var(--freshness) * 20% + 8%), var(--bg-glass-hover));
-  border-color: color-mix(in srgb, var(--accent) calc(var(--freshness) * 60% + 10%), transparent);
-  transform: scale(1.05);
-  opacity: 1;
-}
-
-.launcher-bubble:active {
-  transform: scale(0.97);
-}
-
-.launcher-bubble.active {
-  border-color: var(--success);
-  opacity: 1;
-}
-
-.launcher-bubble.active:hover {
-  border-color: var(--success);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--success) 25%, transparent);
-}
-
-.launcher-bubble-name {
-  pointer-events: none;
-}
-
-.launcher-bubble-pin {
-  font-size: calc(11px * var(--size));
-  opacity: 0.85;
-}
-
-.launcher-menu-trigger {
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  transform: translateY(-50%);
-  width: 22px;
-  height: 22px;
-  border: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-solid) 70%, transparent);
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-  opacity: 0;
-  transition: opacity var(--duration) var(--ease), background var(--duration) var(--ease);
-}
-
-.launcher-open-trigger {
-  position: absolute;
-  top: 50%;
-  right: 32px;
-  transform: translateY(-50%);
-  width: 20px;
-  height: 20px;
-  border: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-solid) 70%, transparent);
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  opacity: 0;
-  transition: opacity var(--duration) var(--ease), background var(--duration) var(--ease);
-}
-
-.launcher-bubble-shell:hover .launcher-menu-trigger,
-.launcher-bubble-shell:focus-within .launcher-menu-trigger,
-.launcher-bubble-shell:hover .launcher-open-trigger,
-.launcher-bubble-shell:focus-within .launcher-open-trigger {
-  opacity: 1;
-}
-
-.launcher-open-trigger:hover {
-  background: var(--bg-glass-hover);
-  color: var(--text-primary);
-}
-
-.launcher-menu-trigger:hover {
-  background: var(--bg-glass-hover);
-  color: var(--text-primary);
-}
-
-.launcher-open-menu,
-.launcher-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
-  min-width: 180px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-glass);
-  background: var(--bg-frosted);
-  backdrop-filter: blur(var(--blur-heavy)) saturate(1.4);
-  -webkit-backdrop-filter: blur(var(--blur-heavy)) saturate(1.4);
-  box-shadow: var(--shadow-lg);
-  padding: 6px;
-  display: none;
-  z-index: 40;
-}
-
-.launcher-menu.open {
-  display: block;
-}
-
-.launcher-open-menu {
-  right: 24px;
-}
-
-.launcher-open-menu.open {
-  display: block;
-}
-
-.launcher-menu-item {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--text-primary);
-  text-align: left;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.launcher-menu-item:hover {
-  background: var(--bg-glass-hover);
-}
-
-.launcher-menu-item.danger {
-  color: var(--error);
-  border-top: 1px solid var(--border-glass);
-  margin-top: 4px;
-  padding-top: 10px;
-}
-
-.launcher-bubble-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--success);
-  flex-shrink: 0;
-}
-
-.launcher-loading,
-.launcher-empty {
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: 14px;
-  padding: 48px 24px;
-}
-
-.launcher-empty .hint {
-  margin-top: 12px;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.launcher-empty code {
-  background: var(--bg-glass);
-  padding: 2px 6px;
-  border-radius: var(--radius-xs);
-  font-size: 11px;
-}
-
 /* ═══════════════════════════════════════
    Folder Picker Modal
    ═══════════════════════════════════════ */
@@ -4241,4 +4005,83 @@ body.hide-thinking .thinking-block { display: none !important; }
 .folder-picker-open:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Instance-swap overlay
+   ───────────────────────────────────────────────────────
+   Shown over the whole window while we spawn a new pi
+   process and navigate this WebView to the new port.
+   Without it the user sees a hard white flash because
+   `window.location.href = ...` is a full-page navigation.
+   The new page boots into the same overlay (set by an
+   inline class on <body>) so the spinner appears
+   continuous across the navigation boundary.
+   ═══════════════════════════════════════════════════════ */
+
+.instance-swap-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: var(--bg-solid);
+  color: var(--text-primary);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease-out;
+}
+
+.instance-swap-overlay[data-visible="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* When the body opts into the boot-time overlay, render it instantly
+   (no fade-in) so the new page picks up exactly where the old one
+   left off — no perceptible navigation. */
+body.swapping-instance .instance-swap-overlay {
+  opacity: 1;
+  pointer-events: auto;
+  transition: none;
+}
+
+.instance-swap-overlay__spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--text-primary) 15%, transparent);
+  border-top-color: var(--accent);
+  animation: instance-swap-spin 0.8s linear infinite;
+}
+
+.instance-swap-overlay__label {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--text-primary) 70%, transparent);
+}
+
+@keyframes instance-swap-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* While the overlay is up, hide the underlying app shell so the user
+   doesn't see UI flashing behind a translucent layer. The overlay
+   itself is fully opaque so it's the only visible surface. */
+body.swapping-instance .app-layout {
+  visibility: hidden;
+}
+
+/* Same for the brief window between the <head> bootstrap script and
+   the <body> activation script — keep first paint covered. */
+html.swapping-instance-pending body .app-layout {
+  visibility: hidden;
+}
+html.swapping-instance-pending body .instance-swap-overlay {
+  opacity: 1;
+  pointer-events: auto;
+  transition: none;
 }
