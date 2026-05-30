@@ -44,7 +44,7 @@
     "@tauri-apps/cli": "^2.11.2",
     "esbuild": "^0.28.0",
     "jsdom": "^26.1.0",
-    "live-server": "^1.2.2",
+    "live-server": "^1.2.0",
     "vitest": "^3.2.4"
   }
 }
