@@ -18,16 +18,16 @@
   "scripts": {
     "tauri": "tauri",
     "dev:web": "live-server public --host=127.0.0.1 --port=1420 --no-browser",
-    "dev": "npm run fetch:pi && PATH=\"$HOME/.cargo/bin:$PATH\" tauri dev",
-    "fetch:pi": "node scripts/fetch-pi-binary.js",
-    "build:extensions": "node scripts/build-extensions.js",
+    "dev": "bun run fetch:pi && PATH=\"$HOME/.cargo/bin:$PATH\" tauri dev",
+    "fetch:pi": "bun run scripts/fetch-pi-binary.js",
+    "build:extensions": "bun run scripts/build-extensions.js",
     "build": "PATH=\"$HOME/.cargo/bin:$PATH\" tauri build",
-    "prebuild": "npm run fetch:pi && npm run build:extensions",
+    "prebuild": "bun run fetch:pi && bun run build:extensions",
     "release": "bash scripts/release.sh",
     "release:mac:dmg": "bash scripts/release-macos-dmg.sh",
-    "test": "vitest run && node scripts/check-tauri-permissions.js",
+    "test": "vitest run && bun run scripts/check-tauri-permissions.js",
     "test:watch": "vitest",
-    "check:permissions": "node scripts/check-tauri-permissions.js",
+    "check:permissions": "bun run scripts/check-tauri-permissions.js",
     "check:rust": "bash scripts/check-rust.sh"
   },
   "dependencies": {

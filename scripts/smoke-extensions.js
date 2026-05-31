@@ -82,7 +82,7 @@ async function waitForHealth(port, maxAttempts = 20) {
 async function main() {
   if (!fs.existsSync(BUNDLE)) {
     fail(
-      `bundle not found at ${BUNDLE}. Run \`npm run build:extensions\` first.`
+      `bundle not found at ${BUNDLE}. Run \`bun run build:extensions\` first.`
     );
   }
   info(`bundle: ${BUNDLE} (${(fs.statSync(BUNDLE).size / 1024).toFixed(1)} KB)`);

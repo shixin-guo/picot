@@ -72,10 +72,10 @@ impl PiManager {
     /// 2. `<static_dir>/../pi/<bin>` — the production location, sibling of
     ///    the bundled `public/` and `extensions/` resource dirs.
     /// 3. *Debug builds only:* `<repo>/src-tauri/resources/pi/<bin>` —
-    ///    populated by `npm run fetch:pi`, used during `tauri dev`.
+    ///    populated by `bun run fetch:pi`, used during `tauri dev`.
     ///
     /// Returns `Err` (not `Ok(None)`) if no binary is found, so callers can
-    /// surface a clear "run `npm run fetch:pi`" message rather than spawning
+    /// surface a clear "run `bun run fetch:pi`" message rather than spawning
     /// a missing/stale binary.
     fn resolve_bundled_pi(&self) -> Result<PathBuf, String> {
         let bin_name = if cfg!(target_os = "windows") {
@@ -122,7 +122,7 @@ impl PiManager {
             .join("\n");
         Err(format!(
             "Could not find embedded pi binary. Tried:\n{}\n\n\
-             For dev: run `npm run fetch:pi` from the repo root.\n\
+             For dev: run `bun run fetch:pi` from the repo root.\n\
              For release: the .app bundle is missing `resources/pi/{}`. \
              Reinstall Pi Studio.",
             tried_str, bin_name
@@ -207,7 +207,7 @@ impl PiManager {
         Err(format!(
             "Could not find embedded-server extension. Tried:\n{}\n\n\
              For release builds, this means the .app bundle is missing \
-             `extensions/embedded-server.mjs` (run `npm run build:extensions` \
+             `extensions/embedded-server.mjs` (run `bun run build:extensions` \
              before `tauri build`). For dev, make sure `extensions/embedded-server.ts` \
              exists in this repo.",
             tried
@@ -262,7 +262,7 @@ impl PiManager {
             // letting it fill an unread pipe would eventually block the child.
             .stdout(Stdio::null())
             // Inherit stderr so pi's startup/runtime errors are visible in the same
-            // terminal running `npm run dev` — critical for diagnosing failures of
+            // terminal running `bun run dev` — critical for diagnosing failures of
             // new_session / open_workspace that would otherwise be silent.
             .stderr(Stdio::inherit());
 
@@ -271,7 +271,7 @@ impl PiManager {
             format!(
                 "Failed to spawn embedded pi ({}): {}. \
                  The bundled binary may be corrupted or unsupported on this OS/arch. \
-                 Reinstall Pi Studio, or for dev rerun `npm run fetch:pi`.",
+                 Reinstall Pi Studio, or for dev rerun `bun run fetch:pi`.",
                 pi_bin.display(),
                 e,
             )

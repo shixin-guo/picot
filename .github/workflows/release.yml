@@ -25,11 +25,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: "24"
-          cache: npm
+          bun-version: latest
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -44,8 +43,8 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: Install npm dependencies
-        run: npm ci
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
 
       # Cache the downloaded pi tarballs across runs to avoid pulling ~30 MB
       # from GitHub releases on every build. The key includes the locked
@@ -57,7 +56,7 @@ jobs:
           key: pi-binaries-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/pi-version.json') }}
 
       - name: Fetch embedded pi binary
-        run: npm run fetch:pi
+        run: bun run fetch:pi
 
       # Sanity-check that the host-platform binary actually runs. We only
       # run this on the matching host (mac runner can exec the mac binary,
@@ -72,7 +71,7 @@ jobs:
         run: .\src-tauri\resources\pi\pi.exe --version
 
       - name: Build pi extensions bundle
-        run: npm run build:extensions
+        run: bun run build:extensions
 
       - name: Build Tauri app and publish assets
         uses: tauri-apps/tauri-action@v0

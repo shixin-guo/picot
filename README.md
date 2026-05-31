@@ -47,15 +47,15 @@ Use the standard GUI allow path:
 3. If blocked, open **System Settings → Privacy & Security**
 4. Click **Open Anyway** for Pi Studio
 
-For maintainers: publish the generated `.dmg` artifact directly and avoid modifying `.app` contents after bundling. The release helper script `npm run release:mac:dmg` validates this (rejects ad-hoc and broken signatures).
+For maintainers: publish the generated `.dmg` artifact directly and avoid modifying `.app` contents after bundling. The release helper script `bun run release:mac:dmg` validates this (rejects ad-hoc and broken signatures).
 
 ### Build from source
 
 ```bash
 git clone https://github.com/deflating/pi-studio.git
 cd pi-studio
-npm ci
-npm run build   # downloads the embedded pi binary, then runs `tauri build`
+bun install --frozen-lockfile
+bun run build   # downloads the embedded pi binary, then runs `tauri build`
 ```
 
 ## Usage
@@ -142,21 +142,21 @@ Your own `~/.pi/agent/extensions/` and project-local `.pi/extensions/` are still
 ```bash
 git clone https://github.com/deflating/pi-studio.git
 cd pi-studio
-npm ci
-npm run dev
+bun install --frozen-lockfile
+bun run dev
 ```
 
-`npm run dev` will:
+`bun run dev` will:
 
-1. Run `npm run fetch:pi` to populate `src-tauri/resources/pi/` with the locked pi binary (see `scripts/pi-version.json`).
+1. Run `bun run fetch:pi` to populate `src-tauri/resources/pi/` with the locked pi binary (see `scripts/pi-version.json`).
 2. Start `tauri dev` against the local `public/` for instant frontend reload.
 
-To bump the embedded pi version, edit `scripts/pi-version.json`, run `npm run fetch:pi`, smoke-test, and commit.
+To bump the embedded pi version, edit `scripts/pi-version.json`, run `bun run fetch:pi`, smoke-test, and commit.
 
 After changes under `src-tauri/`:
 
 ```bash
-npm run check:rust   # cargo check + clippy + fmt
+bun run check:rust   # cargo check + clippy + fmt
 ```
 
 (per project policy, `tauri build` is not used for routine verification — it's reserved for actual releases.)

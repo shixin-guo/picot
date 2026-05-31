@@ -308,8 +308,10 @@
             </div>
             <textarea class="config-editor-textarea settings-config-textarea" id="inline-config-textarea" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
             <div class="settings-config-actions">
-              <div class="config-editor-error hidden" id="inline-config-error"></div>
-              <button class="btn-primary" id="inline-config-save">Save</button>
+              <div class="config-editor-error settings-save-status hidden" id="inline-config-error"></div>
+              <div class="settings-config-button-group">
+                <button class="btn-primary" id="inline-config-save">Save</button>
+              </div>
             </div>
           </div>
 
@@ -329,9 +331,11 @@
             </div>
             <textarea class="config-editor-textarea settings-config-textarea" id="inline-models-textarea" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" placeholder='{ "providers": { ... } }'></textarea>
             <div class="settings-config-actions">
-              <div class="config-editor-error hidden" id="inline-models-error"></div>
-              <button class="settings-value-btn" id="inline-models-insert-example">Insert example</button>
-              <button class="btn-primary" id="inline-models-save">Save</button>
+              <div class="config-editor-error settings-save-status hidden" id="inline-models-error"></div>
+              <div class="settings-config-button-group">
+                <button class="settings-value-btn" id="inline-models-insert-example">Insert example</button>
+                <button class="btn-primary" id="inline-models-save">Save</button>
+              </div>
             </div>
           </div>
         </div>

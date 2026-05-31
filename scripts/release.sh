@@ -51,26 +51,27 @@ if [[ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]]; then
 fi
 
 echo "Updating versions to $VERSION..."
-node - "$VERSION" <<'EOF'
-const fs = require("fs");
-const path = require("path");
+PI_RELEASE_VERSION="$VERSION" bun run - <<'EOF'
+import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-const version = process.argv[2];
+const version = process.env.PI_RELEASE_VERSION;
+if (!version) throw new Error("PI_RELEASE_VERSION env var not set");
 const root = process.cwd();
 
 const jsonFiles = [
-  path.join(root, "src-tauri", "tauri.conf.json"),
-  path.join(root, "package.json"),
+  resolve(root, "src-tauri", "tauri.conf.json"),
+  resolve(root, "package.json"),
 ];
 
 for (const file of jsonFiles) {
-  const content = JSON.parse(fs.readFileSync(file, "utf8"));
+  const content = JSON.parse(readFileSync(file, "utf8"));
   content.version = version;
-  fs.writeFileSync(file, JSON.stringify(content, null, 2) + "\n");
+  writeFileSync(file, JSON.stringify(content, null, 2) + "\n");
 }
 
-const cargoPath = path.join(root, "src-tauri", "Cargo.toml");
-const cargo = fs.readFileSync(cargoPath, "utf8");
+const cargoPath = resolve(root, "src-tauri", "Cargo.toml");
+const cargo = readFileSync(cargoPath, "utf8");
 const updated = cargo.replace(
   /(\[package\][\s\S]*?\nversion\s*=\s*")([^"]+)(")/,
   `$1${version}$3`,
@@ -78,11 +79,11 @@ const updated = cargo.replace(
 if (updated === cargo) {
   throw new Error("Failed to update version in src-tauri/Cargo.toml");
 }
-fs.writeFileSync(cargoPath, updated);
+writeFileSync(cargoPath, updated);
 EOF
 
-echo "Regenerating package-lock.json..."
-npm install --package-lock-only
+echo "Regenerating bun.lock..."
+bun install --lockfile-only
 
 echo "Refreshing src-tauri/Cargo.lock..."
 # Cargo.lock contains a `pi-studio` entry whose version tracks Cargo.toml.
@@ -90,7 +91,7 @@ echo "Refreshing src-tauri/Cargo.lock..."
 # Cargo.toml *before* we commit, otherwise the next local cargo invocation
 # will leave a dirty Cargo.lock behind after the release commit is pushed.
 # Ensure ~/.cargo/bin is on PATH (rustup default install location), since
-# `npm run release` is often launched from a shell where it isn't sourced.
+# `bun run release` is often launched from a shell where it isn't sourced.
 CARGO_BIN=""
 if command -v cargo >/dev/null 2>&1; then
   CARGO_BIN="cargo"
@@ -106,7 +107,7 @@ else
 fi
 
 echo "Committing release version bump..."
-git add src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock package.json package-lock.json
+git add src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock package.json bun.lock
 git commit -m "chore(release): $TAG"
 
 echo "Creating tag $TAG..."

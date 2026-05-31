@@ -14,6 +14,8 @@ export class SessionSidebar {
     this.favourites = JSON.parse(localStorage.getItem('pi-studio-favourites') || '[]');
     this.archived = JSON.parse(localStorage.getItem('pi-studio-archived') || '[]');
     this.archivedCollapsed = localStorage.getItem('pi-studio-archived-collapsed') !== 'false';
+    this.unread = new Set(JSON.parse(localStorage.getItem('pi-studio-unread') || '[]'));
+    this.streamingFiles = new Set();
     this.contextMenu = null;
 
     // Close context menu on click anywhere
@@ -34,6 +36,63 @@ export class SessionSidebar {
 
   saveArchivedCollapsed() {
     localStorage.setItem('pi-studio-archived-collapsed', String(this.archivedCollapsed));
+  }
+
+  saveUnread() {
+    localStorage.setItem('pi-studio-unread', JSON.stringify(Array.from(this.unread)));
+  }
+
+  isUnread(filePath) {
+    return this.unread.has(filePath);
+  }
+
+  isStreaming(filePath) {
+    return this.streamingFiles.has(filePath);
+  }
+
+  markUnread(filePath) {
+    if (!filePath) return;
+    if (filePath === this.activeSessionFile) return;
+    if (this.unread.has(filePath)) return;
+    this.unread.add(filePath);
+    this.saveUnread();
+    this.applyStatusToItem(filePath);
+  }
+
+  markRead(filePath) {
+    if (!filePath) return;
+    if (!this.unread.has(filePath)) return;
+    this.unread.delete(filePath);
+    this.saveUnread();
+    this.applyStatusToItem(filePath);
+  }
+
+  setStreaming(filePath, streaming) {
+    if (!filePath) return;
+    const had = this.streamingFiles.has(filePath);
+    if (streaming && !had) {
+      this.streamingFiles.add(filePath);
+    } else if (!streaming && had) {
+      this.streamingFiles.delete(filePath);
+    } else {
+      return;
+    }
+    this.applyStatusToItem(filePath);
+  }
+
+  clearStreaming() {
+    if (this.streamingFiles.size === 0) return;
+    const files = Array.from(this.streamingFiles);
+    this.streamingFiles.clear();
+    files.forEach((f) => this.applyStatusToItem(f));
+  }
+
+  applyStatusToItem(filePath) {
+    const items = this.container.querySelectorAll(`.session-item[data-file-path="${CSS.escape(filePath)}"]`);
+    items.forEach((el) => {
+      el.classList.toggle('unread', this.unread.has(filePath));
+      el.classList.toggle('streaming', this.streamingFiles.has(filePath));
+    });
   }
 
   isFavourite(filePath) {
@@ -249,8 +308,16 @@ export class SessionSidebar {
 
   setActive(filePath) {
     this.activeSessionFile = filePath;
+    if (filePath && this.unread.has(filePath)) {
+      this.unread.delete(filePath);
+      this.saveUnread();
+    }
     this.container.querySelectorAll('.session-item').forEach(el => {
-      el.classList.toggle('active', el.dataset.filePath === filePath);
+      const isActive = el.dataset.filePath === filePath;
+      el.classList.toggle('active', isActive);
+      if (isActive) {
+        el.classList.remove('unread');
+      }
     });
   }
 
@@ -369,6 +436,12 @@ export class SessionSidebar {
 
     if (session.filePath === this.activeSessionFile) {
       item.classList.add('active');
+    }
+    if (this.unread.has(session.filePath)) {
+      item.classList.add('unread');
+    }
+    if (this.streamingFiles.has(session.filePath)) {
+      item.classList.add('streaming');
     }
 
     const title = session.name || session.firstMessage || 'Empty session';

@@ -1,4 +1,4 @@
 {
-  "version": "0.77.0",
-  "_comment": "Locked pi-mono release version that pi-studio bundles. Bump this, run `npm run fetch:pi`, smoke-test, then commit. Optionally pin sha256 per-asset under `sha256` to enable strict checksum verification."
+  "version": "0.78.0",
+  "_comment": "Locked pi-mono release version that pi-studio bundles. Bump this, run `bun run fetch:pi`, smoke-test, then commit. Optionally pin sha256 per-asset under `sha256` to enable strict checksum verification."
 }

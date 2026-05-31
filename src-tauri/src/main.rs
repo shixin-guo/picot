@@ -189,7 +189,7 @@ fn find_static_dir(app: &tauri::App) -> PathBuf {
     // still resolves to a real `public/` directory (the repo) and would
     // shadow the bundled resources — making `static_dir.parent()/pi/pi`
     // resolve to `<repo>/pi/pi`, which doesn't exist, with the misleading
-    // "run npm run fetch:pi" error.
+    // "run bun run fetch:pi" error.
     if let Ok(resource_dir) = app.path().resource_dir() {
         let bundled = resource_dir.join("public");
         if bundled.join("index.html").exists() {
@@ -356,7 +356,7 @@ fn main() {
             //   1. We can't drive that process: `cmd_new_session` /
             //      `cmd_switch_session` write to *our* `PiManager.processes`
             //      map. A pi we didn't spawn (e.g. left over from an installed
-            //      Pi Studio still running, or a previous `npm run dev` whose
+            //      Pi Studio still running, or a previous `bun run dev` whose
             //      Rust side crashed without taking its children with it) is
             //      not in that map, so every RPC fails with
             //      `No pi instance on port <p>` and the UI looks broken.

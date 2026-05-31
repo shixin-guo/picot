@@ -59,11 +59,19 @@ Tauri IPC commands (invoked via `window.tauriNative` in `public/tauri-bridge.js`
 
 Conventions for any coding agent working in this directory.
 
+## Package manager
+
+This project uses **Bun** as the package manager and JS runtime for build
+scripts. Use `bun install` to install dependencies, `bun run <script>` to
+run package.json scripts, and **never** run `npm install` / `npm ci` —
+doing so would create a stray `package-lock.json` that drifts from
+`bun.lock` and confuses CI (`bun install --frozen-lockfile`).
+
 ## Bumping the embedded pi version
 
 1. Edit `scripts/pi-version.json` → `version`.
-2. `npm run fetch:pi` (re-downloads the platform tarball, replaces `src-tauri/resources/pi/`).
-3. Smoke test: `./src-tauri/resources/pi/pi --version` and `npm run dev`.
+2. `bun run fetch:pi` (re-downloads the platform tarball, replaces `src-tauri/resources/pi/`).
+3. Smoke test: `./src-tauri/resources/pi/pi --version` and `bun run dev`.
 4. Commit `scripts/pi-version.json`. Do **not** commit `src-tauri/resources/pi/`; it is gitignored.
 
 ## Embedded pi: how it ends up inside the .app
@@ -71,25 +79,26 @@ Conventions for any coding agent working in this directory.
 End users never run `fetch:pi`. The flow that puts `pi` inside the shipped
 bundle is:
 
-1. **Pre-build hook (npm).** `package.json` `prebuild` runs `npm run fetch:pi`
+1. **Pre-build hook.** `package.json` `prebuild` runs `bun run fetch:pi`
    before `tauri build`. Downloads the platform tarball into
    `src-tauri/resources/pi/` (idempotent; skipped if `.version` matches).
+   Bun honors npm-style `pre*` / `post*` lifecycle hooks for `bun run`.
 2. **Tauri before-hooks.** `tauri.conf.json` `build.beforeBuildCommand` and
-   `build.beforeDevCommand` BOTH run `npm run fetch:pi` first, so even
-   invoking `tauri build` / `tauri dev` directly (no `npm run build`) still
+   `build.beforeDevCommand` BOTH run `bun run fetch:pi` first, so even
+   invoking `tauri build` / `tauri dev` directly (no `bun run build`) still
    guarantees the binary is present.
 3. **Tauri bundling.** `tauri.conf.json` `bundle.resources` maps
    `./resources/pi` → `pi`, so the entire pi runtime tree is copied into
    `<App>.app/Contents/Resources/pi/` at package time.
 4. **Last-line guard (build.rs).** `src-tauri/build.rs` PANICS at compile
    time if `resources/pi/<bin>` is missing in a release profile. This
-   prevents `cargo build --release` (or any IDE that bypasses npm) from
+   prevents `cargo build --release` (or any IDE that bypasses bun) from
    silently producing a .app with no pi inside. Override only for local
    experiments via `PI_STUDIO_SKIP_BIN_CHECK=1`.
 
 Net effect: there is no path that ships a Pi Studio release without the
 embedded pi binary. End users get a self-contained app — no PATH lookups,
-no `npm run fetch:pi`, no manual install of pi.
+no `bun run fetch:pi`, no manual install of pi.
 
 ## Post-fix verification (Rust / Tauri)
 
@@ -100,7 +109,7 @@ producing a binary, so it is much faster than `tauri build`.
 
 ```bash
 # from pi-web-ui/
-npm run check:rust
+bun run check:rust
 # or directly
 bash scripts/check-rust.sh
 ```
@@ -115,9 +124,9 @@ bash scripts/check-rust.sh
 ### Rules
 
 - **Never** run `tauri build` / `cargo build` just to verify a fix — use
-  `npm run check:rust` instead. Per project policy, full builds are not
+  `bun run check:rust` instead. Per project policy, full builds are not
   used for verification.
-- After editing any `*.rs` file under `src-tauri/`, run `npm run check:rust`
+- After editing any `*.rs` file under `src-tauri/`, run `bun run check:rust`
   and only mark the task complete if it exits 0.
 - When upgrading Tauri or its plugins, run the script first to surface any
   deprecation warnings before touching feature code.

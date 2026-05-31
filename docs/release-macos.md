@@ -16,7 +16,7 @@ must be signed consistently at bundle level using Tauri's ad-hoc identity.
 ## Release command
 
 ```bash
-npm run release:mac:dmg
+bun run release:mac:dmg
 ```
 
 The script:

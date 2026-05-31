@@ -16,6 +16,12 @@ import {
   openFolderAsWorkspace,
   startInWindowNewSession,
 } from './workspace-actions.js';
+import {
+  clearSettingsSaveMessage,
+  showSettingsSaveError,
+  showSettingsSaveSuccess,
+  setSettingsSaveButtonSaving,
+} from './settings-save-status.js';
 
 const fetchInstances = async () => {
   try {
@@ -347,6 +353,7 @@ wsClient.addEventListener('connected', () => {
 
 wsClient.addEventListener('disconnected', () => {
   updateConnectionStatus('disconnected');
+  sidebar.clearStreaming();
 });
 
 wsClient.addEventListener('reconnectFailed', () => {
@@ -446,10 +453,18 @@ function handleCompactionEnd(event) {
   hideCompactButton();
 }
 
+function getCurrentLiveSessionFile() {
+  const port = getCurrentPort();
+  const inst = liveInstances.find((i) => i?.port === port);
+  return inst?.sessionFile || mirrorActiveSessionFile || null;
+}
+
 function handleAgentStart() {
   state.setStreaming(true);
   showTypingIndicator(true);
   updateUI();
+  const live = getCurrentLiveSessionFile();
+  if (live) sidebar.setStreaming(live, true);
 }
 
 function handleAgentEnd() {
@@ -458,6 +473,16 @@ function handleAgentEnd() {
   currentStreamingElement = null;
   currentStreamingText = '';
   updateUI();
+
+  const live = getCurrentLiveSessionFile();
+  if (live) {
+    sidebar.setStreaming(live, false);
+    // If user is not currently viewing this session in the sidebar,
+    // mark it as unread so they see a blue dot when they look back.
+    if (live !== sidebar.activeSessionFile) {
+      sidebar.markUnread(live);
+    }
+  }
 
   // Notify via tab title if unfocused
   if (!hasFocus) {
@@ -2498,18 +2523,15 @@ btnOpenConfig?.addEventListener('click', () => {
 
 inlineConfigSave?.addEventListener('click', async () => {
   if (!inlineConfigTextarea) return;
-  inlineConfigError?.classList.add('hidden');
+  clearSettingsSaveMessage(inlineConfigError);
   const content = inlineConfigTextarea.value;
   try {
     JSON.parse(content);
   } catch (e) {
-    if (inlineConfigError) {
-      inlineConfigError.textContent = `Invalid JSON: ${e.message}`;
-      inlineConfigError.classList.remove('hidden');
-    }
+    showSettingsSaveError(inlineConfigError, `Invalid JSON: ${e.message}`);
     return;
   }
-  inlineConfigSave.disabled = true;
+  setSettingsSaveButtonSaving(inlineConfigSave, true);
   try {
     const resp = await fetch('/api/agent-config', {
       method: 'PUT',
@@ -2520,13 +2542,11 @@ inlineConfigSave?.addEventListener('click', async () => {
     if (!data.success) {
       throw new Error(data.error || 'Failed to save config');
     }
+    showSettingsSaveSuccess(inlineConfigError);
   } catch (e) {
-    if (inlineConfigError) {
-      inlineConfigError.textContent = e.message || String(e);
-      inlineConfigError.classList.remove('hidden');
-    }
+    showSettingsSaveError(inlineConfigError, e.message || String(e));
   } finally {
-    inlineConfigSave.disabled = false;
+    setSettingsSaveButtonSaving(inlineConfigSave, false);
   }
 });
 
@@ -2605,15 +2625,11 @@ const MODELS_JSON_EXAMPLE = `{
 `;
 
 function showInlineModelsError(message) {
-  if (!inlineModelsError) return;
-  inlineModelsError.textContent = message;
-  inlineModelsError.classList.remove('hidden');
+  showSettingsSaveError(inlineModelsError, message);
 }
 
 function clearInlineModelsError() {
-  if (!inlineModelsError) return;
-  inlineModelsError.textContent = '';
-  inlineModelsError.classList.add('hidden');
+  clearSettingsSaveMessage(inlineModelsError);
 }
 
 async function loadInlineModelsEditor() {
@@ -2658,7 +2674,7 @@ inlineModelsSave?.addEventListener('click', async () => {
     showInlineModelsError("'providers' must be an object.");
     return;
   }
-  inlineModelsSave.disabled = true;
+  setSettingsSaveButtonSaving(inlineModelsSave, true);
   try {
     const resp = await fetch('/api/models-config', {
       method: 'PUT',
@@ -2669,12 +2685,13 @@ inlineModelsSave?.addEventListener('click', async () => {
     if (!data.success) {
       throw new Error(data.error || 'Failed to save models.json');
     }
+    showSettingsSaveSuccess(inlineModelsError);
     // Refresh the model picker so newly-defined models appear immediately.
     try { fetchModelInfo?.(); } catch {}
   } catch (e) {
     showInlineModelsError(e.message || String(e));
   } finally {
-    inlineModelsSave.disabled = false;
+    setSettingsSaveButtonSaving(inlineModelsSave, false);
   }
 });
 
@@ -2695,7 +2712,7 @@ modelsConfigDocsLink?.addEventListener('click', (e) => {
   // Hand the docs URL off to the OS default browser via /api/open. The
   // endpoint shells out to `open <arg>` on macOS, which transparently
   // handles both file paths and https URLs. Falls back to window.open
-  // when the embedded server is not running (dev `npm run dev:web`).
+  // when the embedded server is not running (dev `bun run dev:web`).
   const url = 'https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/models.md';
   fetch('/api/open', {
     method: 'POST',

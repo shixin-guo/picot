@@ -30,7 +30,7 @@ plugin in the installed app will refuse to accept any update.
 Run once on a trusted machine — keep the private key safe.
 
 ```bash
-npm run tauri signer generate -- -w ~/.tauri/pi-studio.key
+bun run tauri signer generate -- -w ~/.tauri/pi-studio.key
 ```
 
 This prints the **public key** (a single base64 line) and writes the
@@ -76,7 +76,7 @@ The release workflow reads both as env vars when invoking
 ### 4. Cut a release
 
 ```bash
-npm run release 0.1.13
+bun run release 0.1.13
 ```
 
 This bumps the version in all manifests, commits, tags `v0.1.13`, and
