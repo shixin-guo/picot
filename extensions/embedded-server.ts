@@ -1176,6 +1176,52 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
+    if (urlPath === "/api/sessions/delete-batch" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+      req.on("end", async () => {
+        try {
+          const { filePaths } = JSON.parse(body);
+          if (!Array.isArray(filePaths)) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "filePaths must be an array" }));
+            return;
+          }
+
+          let deleted = 0;
+          const errors: string[] = [];
+          const resolvedSessionsDir = path.resolve(SESSIONS_DIR);
+
+          for (const fp of filePaths) {
+            // Safety: must be a string, end with .jsonl, and resolve inside SESSIONS_DIR
+            if (
+              typeof fp !== "string" ||
+              !fp.endsWith(".jsonl") ||
+              !path.resolve(fp).startsWith(resolvedSessionsDir + path.sep)
+            ) {
+              errors.push(fp);
+              continue;
+            }
+            try {
+              await fs.promises.unlink(fp);
+              globalState.sessionHeaderCache.delete(fp);
+              globalState.sessionMetricsCache.delete(fp);
+              deleted++;
+            } catch {
+              errors.push(fp);
+            }
+          }
+
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ deleted, errors }));
+        } catch (e: any) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      });
+      return;
+    }
+
     // Session switch — in embedded mode, this is a no-op (session is controlled by Pi Studio).
     if (urlPath === "/api/sessions/switch" && req.method === "POST") {
       res.writeHead(200, { "Content-Type": "application/json" });
