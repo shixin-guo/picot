@@ -12,6 +12,14 @@
   <div class="cost-page">
     <section class="cost-filters">
       <label>
+        <span>Scope</span>
+        <select id="scope-select">
+          <option value="current">Current Project</option>
+          <option value="all">All Projects</option>
+        </select>
+      </label>
+
+      <label>
         <span>Range</span>
         <select id="range-select">
           <option value="7d">Last 7 days</option>
@@ -50,13 +58,6 @@
         <h2>By Tool (Estimated)</h2>
         <div id="tool-breakdown" class="breakdown-list"></div>
       </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <h2>Top Expensive Sessions</h2>
-      </div>
-      <div id="top-sessions" class="table-wrap"></div>
     </section>
 
     <section class="panel">

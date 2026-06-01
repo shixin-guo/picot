@@ -131,9 +131,7 @@ export class SessionSidebar {
     if (paths.length === 0) return;
 
     const count = paths.length;
-    const ok = confirm(
-      `Delete ${count} archived session${count === 1 ? '' : 's'} permanently? This cannot be undone.`
-    );
+    const ok = await this.confirmArchivedDeletion(count);
     if (!ok) return;
 
     try {
@@ -152,6 +150,47 @@ export class SessionSidebar {
     }
 
     await this.loadSessions();
+  }
+
+  async confirmArchivedDeletion(count) {
+    const message = `Delete ${count} archived session${count === 1 ? '' : 's'} permanently? This cannot be undone.`;
+    return this.showFallbackConfirmDialog(message);
+  }
+
+  showFallbackConfirmDialog(message) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'sidebar-confirm-overlay';
+      overlay.innerHTML = `
+        <div class="sidebar-confirm-dialog" role="dialog" aria-modal="true" aria-label="Delete archived sessions">
+          <div class="sidebar-confirm-message">${this.escapeHtml(message)}</div>
+          <div class="sidebar-confirm-actions">
+            <button type="button" class="sidebar-confirm-no">Cancel</button>
+            <button type="button" class="sidebar-confirm-yes">Delete</button>
+          </div>
+        </div>
+      `;
+
+      const cleanup = (result) => {
+        document.removeEventListener('keydown', onKeyDown);
+        overlay.remove();
+        resolve(result);
+      };
+
+      const onKeyDown = (event) => {
+        if (event.key === 'Escape') cleanup(false);
+      };
+
+      overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) cleanup(false);
+      });
+
+      overlay.querySelector('.sidebar-confirm-no').addEventListener('click', () => cleanup(false));
+      overlay.querySelector('.sidebar-confirm-yes').addEventListener('click', () => cleanup(true));
+
+      document.addEventListener('keydown', onKeyDown);
+      document.body.appendChild(overlay);
+    });
   }
 
   async loadSessions({ retries = 4, retryDelayMs = 250, quiet = false } = {}) {

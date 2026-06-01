@@ -1,3 +1,4 @@
+const scopeSelect = document.getElementById('scope-select');
 const rangeSelect = document.getElementById('range-select');
 
 const applyFiltersBtn = document.getElementById('apply-filters-btn');
@@ -12,7 +13,7 @@ const trendBarsEl = document.getElementById('trend-bars');
 const trendEmptyEl = document.getElementById('trend-empty');
 const modelBreakdownEl = document.getElementById('model-breakdown');
 const toolBreakdownEl = document.getElementById('tool-breakdown');
-const topSessionsEl = document.getElementById('top-sessions');
+
 const allSessionsEl = document.getElementById('all-sessions');
 
 let currentPayload = null;
@@ -99,6 +100,7 @@ function loadSavedFilters() {
     if (!raw) return;
     const saved = JSON.parse(raw);
     if (saved.range) rangeSelect.value = saved.range;
+    if (saved.scope) scopeSelect.value = saved.scope;
 
   } catch {
     // ignore
@@ -108,6 +110,7 @@ function loadSavedFilters() {
 function saveFilters() {
   localStorage.setItem('pi-studio-cost-filters', JSON.stringify({
     range: rangeSelect.value,
+    scope: scopeSelect.value,
   }));
 }
 
@@ -115,7 +118,7 @@ function buildQuery() {
   const params = new URLSearchParams({
     range: rangeSelect.value,
     granularity: 'day',
-    scope: 'current',
+    scope: scopeSelect.value,
   });
   return params.toString();
 }
@@ -212,7 +215,6 @@ function renderAll(payload) {
   renderTrend(payload.series || []);
   renderBreakdown(modelBreakdownEl, payload.breakdown?.byModel || []);
   renderBreakdown(toolBreakdownEl, payload.breakdown?.byTool || []);
-  renderSessionsTable(topSessionsEl, payload.topSessions || []);
   renderSessionsTable(allSessionsEl, payload.sessions || []);
 }
 
@@ -234,6 +236,7 @@ applyFiltersBtn.addEventListener('click', () => {
 
 resetFiltersBtn.addEventListener('click', () => {
   rangeSelect.value = '30d';
+  scopeSelect.value = 'current';
   loadDashboard().catch((error) => {
     console.error('[Cost] Failed to reset dashboard:', error);
   });

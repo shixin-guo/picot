@@ -53,42 +53,43 @@ describe('SessionSidebar — delete all archived', () => {
     expect(container.querySelector('.archived-delete-all-btn')).not.toBeNull();
   });
 
-  it('calls fetch with archived paths when user confirms', async () => {
+  it('calls fetch with archived paths when user confirms in modal', async () => {
     const fp = '/home/user/.pi/agent/sessions/proj/a.jsonl';
     sidebar.archived = [fp];
     sidebar.projects = [{ dirName: 'proj', path: '/proj', sessions: makeSessions([fp]) }];
     sidebar.render();
 
-    // Mock confirm → true, fetch → success
-    vi.stubGlobal('confirm', () => true);
     mockFetch
       .mockResolvedValueOnce({ ok: true, json: async () => ({ deleted: 1, errors: [] }) }) // delete-batch
       .mockResolvedValueOnce({ ok: true, json: async () => ({ projects: [] }) });           // loadSessions
 
     const btn = container.querySelector('.archived-delete-all-btn');
     btn.click();
+    await new Promise(r => setTimeout(r, 0));
+    const dialog = document.querySelector('.sidebar-confirm-overlay');
+    dialog.querySelector('.sidebar-confirm-yes').click();
     await new Promise(r => setTimeout(r, 0)); // flush microtasks
 
     expect(mockFetch).toHaveBeenCalledWith('/api/sessions/delete-batch', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ filePaths: [fp] }),
     }));
-    vi.unstubAllGlobals();
   });
 
-  it('does NOT call fetch when user cancels the confirm dialog', async () => {
+  it('does NOT call fetch when user cancels the custom modal', async () => {
     const fp = '/home/user/.pi/agent/sessions/proj/a.jsonl';
     sidebar.archived = [fp];
     sidebar.projects = [{ dirName: 'proj', path: '/proj', sessions: makeSessions([fp]) }];
     sidebar.render();
 
-    vi.stubGlobal('confirm', () => false);
     const btn = container.querySelector('.archived-delete-all-btn');
     btn.click();
     await new Promise(r => setTimeout(r, 0));
+    const dialog = document.querySelector('.sidebar-confirm-overlay');
+    dialog.querySelector('.sidebar-confirm-no').click();
+    await new Promise(r => setTimeout(r, 0));
 
     expect(mockFetch).not.toHaveBeenCalled();
-    vi.unstubAllGlobals();
   });
 
   it('clears this.archived for successfully deleted paths', async () => {
@@ -97,16 +98,47 @@ describe('SessionSidebar — delete all archived', () => {
     sidebar.projects = [{ dirName: 'proj', path: '/proj', sessions: makeSessions([fp]) }];
     sidebar.render();
 
-    vi.stubGlobal('confirm', () => true);
     mockFetch
       .mockResolvedValueOnce({ ok: true, json: async () => ({ deleted: 1, errors: [] }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ projects: [] }) });
 
     const btn = container.querySelector('.archived-delete-all-btn');
     btn.click();
+    await new Promise(r => setTimeout(r, 0));
+    const dialog = document.querySelector('.sidebar-confirm-overlay');
+    dialog.querySelector('.sidebar-confirm-yes').click();
     await new Promise(r => setTimeout(r, 10));
 
     expect(sidebar.archived).toEqual([]);
+  });
+
+  it('uses custom modal even when native confirm exists', async () => {
+    const fp = '/home/user/.pi/agent/sessions/proj/a.jsonl';
+    sidebar.archived = [fp];
+    sidebar.projects = [{ dirName: 'proj', path: '/proj', sessions: makeSessions([fp]) }];
+    sidebar.render();
+
+    const nativeConfirmSpy = vi.fn(() => true);
+    vi.stubGlobal('confirm', nativeConfirmSpy);
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ deleted: 1, errors: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ projects: [] }) });
+
+    const btn = container.querySelector('.archived-delete-all-btn');
+    btn.click();
+    await new Promise(r => setTimeout(r, 0));
+
+    const fallbackDialog = document.querySelector('.sidebar-confirm-overlay');
+    expect(fallbackDialog).not.toBeNull();
+
+    fallbackDialog.querySelector('.sidebar-confirm-yes').click();
+    await new Promise(r => setTimeout(r, 0));
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/sessions/delete-batch', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ filePaths: [fp] }),
+    }));
+    expect(nativeConfirmSpy).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 });
