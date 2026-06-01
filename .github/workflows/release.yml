@@ -38,9 +38,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            desktop-file-utils \
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
+            libfuse2 \
+            squashfs-tools \
             patchelf
 
       - name: Install dependencies
@@ -77,6 +80,9 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Let AppImage-based linuxdeploy run on GitHub runners even when
+          # FUSE is unavailable, by extracting and running in-place.
+          APPIMAGE_EXTRACT_AND_RUN: 1
           # Signing key for the Tauri updater. Required so the bundler
           # produces `*.sig` files and `latest.json` (the manifest the
           # auto-updater reads from the GitHub release). Configure these
