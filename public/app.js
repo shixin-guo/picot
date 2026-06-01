@@ -2159,6 +2159,7 @@ const APP_VERSION = (() => {
 
 let pendingUpdate = null;
 let updaterBusy = false;
+const BETA_VERSION_RE = /-beta(?:[.-]|$)/i;
 
 function setUpdateStatus(message, tone = 'info') {
   if (!updateStatusRow || !updateStatusEl) return;
@@ -2184,6 +2185,10 @@ function showInstallButton(update) {
   updateInstallLabel.textContent = `Pi Studio ${update.version}${from}`;
   installUpdateBtn.disabled = false;
   installUpdateBtn.textContent = 'Download & install';
+}
+
+function isIgnoredPrereleaseVersion(version) {
+  return BETA_VERSION_RE.test(String(version || '').trim());
 }
 
 async function loadAppVersion() {
@@ -2259,6 +2264,14 @@ async function checkForUpdates({ silent = false } = {}) {
       pendingUpdate = null;
       showInstallButton(null);
       setUpdateStatus("You're on the latest version.", 'ok');
+      return null;
+    }
+
+    if (isIgnoredPrereleaseVersion(update.version)) {
+      console.info('[updater] ignoring beta release:', update.version);
+      pendingUpdate = null;
+      showInstallButton(null);
+      setUpdateStatus("You're on the latest stable version.", 'ok');
       return null;
     }
 
