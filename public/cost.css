@@ -4,12 +4,7 @@ body {
   overflow: auto !important;
 }
 
-.cost-page {
-  min-height: 100dvh;
-  padding: 24px;
-  background: var(--bg-solid);
-  color: var(--text-primary);
-}
+
 
 .cost-header {
   display: flex;

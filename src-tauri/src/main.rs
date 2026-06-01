@@ -62,8 +62,29 @@ async fn cmd_open_workspace(
         spawn_started_at.elapsed().as_millis()
     );
 
+    // Brief pause then check if the process crashed immediately (fast-fail
+    // instead of waiting the full 30-second health timeout).
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    if let Some(status) = manager.check_exited(port) {
+        return Err(format!(
+            "Pi process exited immediately (port {}, status: {}). \
+             Check stderr for crash details.",
+            port, status
+        ));
+    }
+
     let health_started_at = Instant::now();
-    wait_for_health(port, 12).await?;
+    match wait_for_health(port, 30).await {
+        Ok(_) => {}
+        Err(e) => {
+            let extra = if let Some(status) = manager.check_exited(port) {
+                format!(" Process has exited with status: {}.", status)
+            } else {
+                String::new()
+            };
+            return Err(format!("{}{}", e, extra));
+        }
+    }
     eprintln!(
         "[pi-desktop] open_workspace health ready: port={} elapsed_ms={}",
         port,
@@ -109,6 +130,21 @@ fn cmd_stop_instance(port: u16, manager: State<PiManagerState>) {
     manager.kill(port);
 }
 
+/// Spawn (or reuse) a dedicated pi process for a specific session file so it
+/// can run concurrently with the workspace's primary process.
+/// Returns the port the dedicated process is listening on.
+#[tauri::command]
+async fn cmd_spawn_session_process(
+    workspace_port: u16,
+    session_file: String,
+    cwd: String,
+    manager: State<'_, PiManagerState>,
+) -> Result<u16, String> {
+    let port = manager.spawn_session_dedicated(workspace_port, session_file, cwd.as_str())?;
+    wait_for_health(port, 15).await?;
+    Ok(port)
+}
+
 /// Native folder picker dialog
 #[tauri::command]
 async fn cmd_pick_folder(app: AppHandle) -> Option<String> {
@@ -136,6 +172,11 @@ fn cmd_get_pi_version() -> Result<String, String> {
 #[tauri::command]
 fn cmd_get_app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
+}
+
+#[tauri::command]
+fn cmd_is_dev() -> bool {
+    cfg!(debug_assertions)
 }
 
 // ─── Window helpers ───────────────────────────────────────────────────────────
@@ -349,7 +390,7 @@ fn main() {
                 }
             };
 
-            // Pick the first free port at/above 3001. We deliberately do NOT
+            // Pick the first free port at/above 47821. We deliberately do NOT
             // reuse a port that is already in use, even if "something pi-shaped"
             // is listening on it, because:
             //
@@ -368,15 +409,15 @@ fn main() {
             //
             // Allocating a fresh port for *this* Pi Studio instance is the
             // simple invariant that avoids both classes of confusion. The
-            // tradeoff is that `http://localhost:3001` is no longer a
+            // tradeoff is that `http://localhost:47821` is no longer a
             // guaranteed entry point — but Pi Studio doesn't promise that;
             // the WebView discovers its port via the window URL.
             let initial_port = manager.next_port();
 
             let mut startup_ok = true;
-            if initial_port != 3001 {
+            if initial_port != 47821 {
                 eprintln!(
-                    "[pi-desktop] port 3001 unavailable, using {} instead (likely another Pi Studio instance is running)",
+                    "[pi-desktop] port 47821 unavailable, using {} instead (likely another Pi Studio instance is running)",
                     initial_port
                 );
             }
@@ -402,12 +443,12 @@ fn main() {
             app.manage(manager.clone());
 
             if startup_ok {
-                if let Err(e) = open_workspace_window(&app.handle().clone(), initial_port) {
-                    eprintln!("Failed to open window: {}", e);
-                }
+                let app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     if let Err(e) = wait_for_health(initial_port, 30).await {
                         eprintln!("Pi failed to start: {}", e);
+                    } else if let Err(e) = open_workspace_window(&app_handle, initial_port) {
+                        eprintln!("Failed to open window: {}", e);
                     }
                 });
             }
@@ -420,6 +461,7 @@ fn main() {
                 if let Some(port_str) = label.strip_prefix("workspace-") {
                     if let Ok(port) = port_str.parse::<u16>() {
                         if let Some(manager) = window.try_state::<PiManagerState>() {
+                            manager.kill_workspace_dedicated(port);
                             manager.kill(port);
                         }
                     }
@@ -434,7 +476,9 @@ fn main() {
             cmd_pick_folder,
             cmd_get_pi_version,
             cmd_get_app_version,
+            cmd_is_dev,
             cmd_retry_startup,
+            cmd_spawn_session_process,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

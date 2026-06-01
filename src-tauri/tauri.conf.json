@@ -5,8 +5,7 @@
   "version": "0.1.19",
   "build": {
     "frontendDist": "../public",
-    "beforeDevCommand": "bun run fetch:pi && bun run dev:web",
-    "devUrl": "http://127.0.0.1:1420",
+    "beforeDevCommand": "bun run fetch:pi",
     "beforeBuildCommand": "bun run fetch:pi && bun run build:extensions"
   },
   "app": {

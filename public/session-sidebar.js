@@ -92,6 +92,7 @@ export class SessionSidebar {
     items.forEach((el) => {
       el.classList.toggle('unread', this.unread.has(filePath));
       el.classList.toggle('streaming', this.streamingFiles.has(filePath));
+      el.classList.toggle('mirror-live', this.streamingFiles.has(filePath));
     });
   }
 
@@ -125,10 +126,12 @@ export class SessionSidebar {
     this.render();
   }
 
-  async loadSessions({ retries = 4, retryDelayMs = 250 } = {}) {
-    this.container.innerHTML = Array.from({ length: 6 }, () =>
-      '<div class="session-skeleton"><div class="session-skeleton-title"></div><div class="session-skeleton-meta"></div></div>'
-    ).join('');
+  async loadSessions({ retries = 4, retryDelayMs = 250, quiet = false } = {}) {
+    if (!quiet) {
+      this.container.innerHTML = Array.from({ length: 6 }, () =>
+        '<div class="session-skeleton"><div class="session-skeleton-title"></div><div class="session-skeleton-meta"></div></div>'
+      ).join('');
+    }
 
     let lastError = null;
     for (let attempt = 0; attempt <= retries; attempt++) {

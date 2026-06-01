@@ -12,6 +12,10 @@ struct PiProcess {
 
 pub struct PiManager {
     processes: Arc<Mutex<HashMap<u16, PiProcess>>>,
+    /// Maps session_file -> port for dedicated per-session processes.
+    session_ports: Arc<Mutex<HashMap<String, u16>>>,
+    /// Maps workspace_port -> [dedicated session ports] for cleanup on window close.
+    workspace_dedicated: Arc<Mutex<HashMap<u16, Vec<u16>>>>,
     static_dir: PathBuf,
 }
 
@@ -61,6 +65,8 @@ impl PiManager {
     pub fn new(static_dir: PathBuf) -> Self {
         Self {
             processes: Arc::new(Mutex::new(HashMap::new())),
+            session_ports: Arc::new(Mutex::new(HashMap::new())),
+            workspace_dedicated: Arc::new(Mutex::new(HashMap::new())),
             static_dir,
         }
     }
@@ -306,6 +312,16 @@ impl PiManager {
             .map_err(|e| e.to_string())
     }
 
+    /// Returns `Some(exit_status_string)` if the process has already exited, `None` if still running.
+    pub fn check_exited(&self, port: u16) -> Option<String> {
+        let mut lock = self.processes.lock().unwrap();
+        let proc = lock.get_mut(&port)?;
+        match proc.child.try_wait() {
+            Ok(Some(status)) => Some(format!("{}", status)),
+            _ => None,
+        }
+    }
+
     pub fn kill(&self, port: u16) {
         let mut lock = self.processes.lock().unwrap();
         if let Some(mut proc) = lock.remove(&port) {
@@ -320,9 +336,55 @@ impl PiManager {
         }
     }
 
+    /// Spawn (or reuse) a dedicated pi process for a specific session file,
+    /// so it can run concurrently with the workspace's primary process.
+    /// Returns the port the dedicated process is listening on.
+    pub fn spawn_session_dedicated(
+        &self,
+        workspace_port: u16,
+        session_file: String,
+        cwd: &str,
+    ) -> Result<u16, String> {
+        {
+            let sp = self.session_ports.lock().unwrap();
+            if let Some(&port) = sp.get(&session_file) {
+                return Ok(port);
+            }
+        }
+        let port = self.next_port();
+        self.spawn(cwd, port, Some(&session_file))?;
+        {
+            let mut sp = self.session_ports.lock().unwrap();
+            sp.insert(session_file, port);
+        }
+        {
+            let mut wd = self.workspace_dedicated.lock().unwrap();
+            wd.entry(workspace_port).or_default().push(port);
+        }
+        Ok(port)
+    }
+
+    /// Kill all dedicated session processes spawned for a workspace port.
+    /// Called when the workspace window is destroyed.
+    pub fn kill_workspace_dedicated(&self, workspace_port: u16) {
+        let dedicated_ports = {
+            let mut wd = self.workspace_dedicated.lock().unwrap();
+            wd.remove(&workspace_port).unwrap_or_default()
+        };
+        for port in &dedicated_ports {
+            self.kill(*port);
+        }
+        if !dedicated_ports.is_empty() {
+            let port_set: std::collections::HashSet<u16> =
+                dedicated_ports.into_iter().collect();
+            let mut sp = self.session_ports.lock().unwrap();
+            sp.retain(|_, v| !port_set.contains(v));
+        }
+    }
+
     pub fn next_port(&self) -> u16 {
         let lock = self.processes.lock().unwrap();
-        let mut port = 3001u16;
+        let mut port = 47821u16;
         while lock.contains_key(&port) || is_port_in_use(port) {
             port += 1;
         }

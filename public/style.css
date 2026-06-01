@@ -1492,7 +1492,7 @@ body {
 .settings-nav {
   border-right: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg-glass) 70%, transparent);
-  padding: 18px 12px;
+  padding: 8px 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1533,6 +1533,15 @@ body {
 
 .settings-nav-back {
   margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-nav-back-icon {
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.7;
 }
 
 .settings-content {
@@ -1546,7 +1555,6 @@ body {
 .settings-usage-embed {
   height: calc(100dvh - 140px);
   min-height: 460px;
-  border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
   background: var(--bg-glass);
@@ -1816,6 +1824,7 @@ body {
 
 .settings-value-btn {
   padding: 4px 10px;
+  min-width: 48px;
   background: var(--bg-glass);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);

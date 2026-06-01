@@ -37,7 +37,7 @@ const getCurrentPort = () => {
   const fromTauri = window.tauriNative?.currentPort?.();
   if (typeof fromTauri === 'number') return fromTauri;
   const fromLocation = Number(location.port);
-  return Number.isFinite(fromLocation) && fromLocation > 0 ? fromLocation : 3001;
+  return Number.isFinite(fromLocation) && fromLocation > 0 ? fromLocation : 47821;
 };
 const navigateInWindow = (url) => {
   window.location.href = url;
@@ -176,9 +176,21 @@ let workspaceLaunchInProgress = false;
 // When true, the next message_end should trigger a sidebar reload so a freshly
 // created (in-memory only) session shows up in the list as soon as it's persisted.
 let pendingNewSessionRefresh = false;
+// When set while streaming, holds the session filePath to switch to once the
+// current agent run ends. The history is rendered immediately; pi gets the
+// switch_session RPC only after agent_end so the running call is not aborted.
+let pendingSessionSwitchPath = null;
 let sessionsLoaded = false;
 let deferredMirrorSync = null;
 let lastRenderedWelcomeWorkspacePath = null;
+// Concurrent session support: background WebSocket connections to sessions
+// that are streaming while the user views a different session.
+// Maps port -> { ws: WebSocket, sessionFile: string }
+const backgroundConnections = new Map();
+// Maps port -> sessionFile for each pi process we're tracking
+const portSessionMap = new Map();
+// The port that wsClient is currently connected to (the "foreground" session)
+let foregroundPort = getCurrentPort();
 
 const workspaceIndicatorEl = document.createElement('div');
 workspaceIndicatorEl.id = 'workspace-indicator';
@@ -379,6 +391,11 @@ wsClient.addEventListener('mirrorSync', (e) => {
 // ═══════════════════════════════════════
 
 function handleRPCEvent(event) {
+  // While the user is previewing a different session, suppress all live
+  // rendering so the history view isn't overwritten by streaming output.
+  // agent_end still needs to fire so we can complete the deferred switch.
+  if (pendingSessionSwitchPath && event.type !== 'agent_end') return;
+
   switch (event.type) {
     case 'agent_start':
       handleAgentStart();
@@ -397,6 +414,8 @@ function handleRPCEvent(event) {
       if (pendingNewSessionRefresh) {
         pendingNewSessionRefresh = false;
         sidebar.loadSessions().catch(() => {});
+        // Retry after a short delay in case pi hasn't flushed the session file yet
+        setTimeout(() => sidebar.loadSessions({ quiet: true }).catch(() => {}), 1000);
         pollInstances().catch(() => {});
       }
       break;
@@ -474,6 +493,19 @@ function handleAgentEnd() {
   currentStreamingText = '';
   updateUI();
 
+  // Deferred session switch: user clicked a history session while streaming.
+  // Now that the agent run is done, tell pi to switch — no abort needed.
+  if (pendingSessionSwitchPath) {
+    const targetPath = pendingSessionSwitchPath;
+    pendingSessionSwitchPath = null;
+    const live = getCurrentLiveSessionFile();
+    if (live) sidebar.setStreaming(live, false);
+    window.tauriNative.switchSession(targetPath).catch((e) => {
+      messageRenderer.renderError(`Failed to switch session: ${e}`);
+    });
+    return;
+  }
+
   const live = getCurrentLiveSessionFile();
   if (live) {
     sidebar.setStreaming(live, false);
@@ -493,6 +525,41 @@ function handleAgentEnd() {
 }
 
 let currentStreamingThinking = '';
+
+// ─── Concurrent session background connections ─────────────────────────────
+// When the user switches sessions while one is streaming, we keep a lightweight
+// WebSocket listener on the old process port so its streaming events continue
+// updating the sidebar (green dot, unread badge) without interrupting the user.
+
+function addBackgroundConnection(port, sessionFile) {
+  if (backgroundConnections.has(port)) return;
+  const bgWs = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  bgWs.onmessage = (e) => {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    if (msg.type !== 'event') return;
+    const ev = msg.event;
+    if (ev.type === 'agent_start') {
+      sidebar.setStreaming(sessionFile, true);
+    } else if (ev.type === 'agent_end') {
+      sidebar.setStreaming(sessionFile, false);
+      if (sessionFile !== sidebar.activeSessionFile) sidebar.markUnread(sessionFile);
+      removeBackgroundConnection(port);
+      sidebar.loadSessions({ quiet: true }).catch(() => {});
+    }
+  };
+  bgWs.onclose = () => backgroundConnections.delete(port);
+  backgroundConnections.set(port, { ws: bgWs, sessionFile });
+  portSessionMap.set(port, sessionFile);
+}
+
+function removeBackgroundConnection(port) {
+  const conn = backgroundConnections.get(port);
+  if (conn) {
+    conn.ws.close();
+    backgroundConnections.delete(port);
+  }
+}
 
 function handleMessageStart(message) {
   if (message.role === 'assistant') {
@@ -523,16 +590,53 @@ function getMessageText(message) {
   return '';
 }
 
+function getAssistantText(message) {
+  if (typeof message?.content === 'string') return message.content;
+  if (!Array.isArray(message?.content)) return '';
+  return message.content
+    .filter((block) => block.type === 'text')
+    .map((block) => block.text || '')
+    .join('\n');
+}
+
+function getAssistantThinking(message) {
+  if (!Array.isArray(message?.content)) return '';
+  return message.content
+    .filter((block) => block.type === 'thinking')
+    .map((block) => block.thinking || '')
+    .join('\n');
+}
+
+function ensureStreamingAssistantElement(message = null) {
+  if (currentStreamingElement) return currentStreamingElement;
+  currentStreamingText = getAssistantText(message);
+  currentStreamingThinking = getAssistantThinking(message);
+  currentStreamingElement = messageRenderer.renderAssistantMessage(
+    { content: '' },
+    true
+  );
+  if (currentStreamingThinking) {
+    messageRenderer.updateStreamingThinking(currentStreamingElement, currentStreamingThinking);
+  }
+  if (currentStreamingText) {
+    messageRenderer.updateStreamingMessage(currentStreamingElement, currentStreamingText);
+  }
+  return currentStreamingElement;
+}
+
 function handleMessageUpdate(event) {
-  const { assistantMessageEvent } = event;
+  const { assistantMessageEvent, message } = event;
+  if (message?.role === 'assistant') {
+    ensureStreamingAssistantElement(message);
+  }
 
   if (assistantMessageEvent.type === 'thinking_delta') {
-    currentStreamingThinking += assistantMessageEvent.delta;
+    currentStreamingThinking = getAssistantThinking(message) || (currentStreamingThinking + assistantMessageEvent.delta);
     if (currentStreamingElement) {
       messageRenderer.updateStreamingThinking(currentStreamingElement, currentStreamingThinking);
     }
   } else if (assistantMessageEvent.type === 'text_delta') {
-    currentStreamingText += assistantMessageEvent.delta;
+    currentStreamingText = getAssistantText(message) || (currentStreamingText + assistantMessageEvent.delta);
     if (currentStreamingElement) {
       messageRenderer.updateStreamingMessage(
         currentStreamingElement,
@@ -543,6 +647,9 @@ function handleMessageUpdate(event) {
 }
 
 function handleMessageEnd(message) {
+  if (!currentStreamingElement && message?.role === 'assistant') {
+    ensureStreamingAssistantElement(message);
+  }
   if (currentStreamingElement) {
     // Pass usage info for cost display
     const usage = message?.usage || null;
@@ -788,6 +895,11 @@ function renderImagePreviews() {
 
 let messageQueue = [];
 
+function clearMessageQueue() {
+  messageQueue = [];
+  renderQueuedMessages();
+}
+
 function sendMessage() {
   const message = messageInput.value.trim();
   if (!message) return;
@@ -867,9 +979,7 @@ function flushQueue() {
 }
 
 abortBtn.addEventListener('click', () => {
-  wsClient.send({ type: 'abort' });
-  messageRenderer.renderError('Aborted by user');
-  showTypingIndicator(false);
+  abortCurrentRun();
 });
 
 // ═══════════════════════════════════════
@@ -1152,9 +1262,7 @@ document.addEventListener('keydown', (e) => {
     }
 
     if (state.isStreaming) {
-      wsClient.send({ type: 'abort' });
-      messageRenderer.renderError('Aborted by user');
-      showTypingIndicator(false);
+      abortCurrentRun();
     } else if (!sidebarEl.classList.contains('collapsed') && window.innerWidth <= 768) {
       toggleSidebar();
     }
@@ -1366,6 +1474,126 @@ async function handleSessionSelect(session, project) {
 
   // In Tauri: switch session via RPC command to the current pi instance
   if (window.tauriNative && session.filePath) {
+    // ── Case 1: Target session is already running on a background process ──
+    // Promote it to foreground without spawning anything new.
+    const bgEntry = [...backgroundConnections.entries()]
+      .find(([, c]) => c.sessionFile === session.filePath);
+    if (bgEntry) {
+      const [bgPort] = bgEntry;
+      // Move current foreground to background if it is still streaming
+      if (state.isStreaming) {
+        const currentSF = portSessionMap.get(foregroundPort);
+        if (currentSF) addBackgroundConnection(foregroundPort, currentSF);
+      }
+      removeBackgroundConnection(bgPort);
+      foregroundPort = bgPort;
+      portSessionMap.set(bgPort, session.filePath);
+      wsClient.disconnect();
+      wsClient.url = `ws://127.0.0.1:${bgPort}/ws`;
+      wsClient.forceReconnect();
+      clearMessageQueue();
+      state.reset();
+      updateUI();
+      messageRenderer.clear();
+      toolCardRenderer.clear();
+      if (session && project) {
+        messageRenderer.renderSystemMessage('Loading session…');
+        const dirName = project?.dirName;
+        const file = session.file;
+        if (dirName && file) {
+          try {
+            const res = await fetch(`/api/sessions/${dirName}/${file}`);
+            const data = await res.json();
+            messageRenderer.clear();
+            renderSessionHistory(data.entries || []);
+          } catch (e) {
+            messageRenderer.renderError(`Failed to load session: ${e}`);
+          }
+        }
+      }
+      if (isMobile()) {
+        sidebarEl.classList.add('collapsed');
+        sidebarOverlay.classList.remove('visible');
+      }
+      return;
+    }
+
+    // ── Case 2: Currently streaming — try concurrent spawn ──
+    if (state.isStreaming) {
+      if (window.tauriNative.spawnSessionProcess) {
+        let targetPort = null;
+        try {
+          const cwd = getCurrentWorkspacePath();
+          targetPort = await window.tauriNative.spawnSessionProcess(session.filePath, cwd);
+        } catch (e) {
+          console.error('[App] Failed to spawn session process, falling back to deferred switch:', e);
+        }
+        if (targetPort != null) {
+          // Move current foreground session to a background connection
+          const currentSF = portSessionMap.get(foregroundPort);
+          if (currentSF) addBackgroundConnection(foregroundPort, currentSF);
+          // Switch foreground to new dedicated process
+          foregroundPort = targetPort;
+          portSessionMap.set(targetPort, session.filePath);
+          wsClient.disconnect();
+          wsClient.url = `ws://127.0.0.1:${targetPort}/ws`;
+          wsClient.forceReconnect();
+          clearMessageQueue();
+          state.reset();
+          updateUI();
+          messageRenderer.clear();
+          toolCardRenderer.clear();
+          if (session && project) {
+            messageRenderer.renderSystemMessage('Loading session…');
+            const dirName = project?.dirName;
+            const file = session.file;
+            if (dirName && file) {
+              try {
+                const res = await fetch(`/api/sessions/${dirName}/${file}`);
+                const data = await res.json();
+                messageRenderer.clear();
+                renderSessionHistory(data.entries || []);
+              } catch (e) {
+                messageRenderer.renderError(`Failed to load session: ${e}`);
+              }
+            }
+          }
+          if (isMobile()) {
+            sidebarEl.classList.add('collapsed');
+            sidebarOverlay.classList.remove('visible');
+          }
+          return;
+        }
+      }
+      // Fallback: defer the switch until the current agent run ends.
+      // This preserves the old safe behavior when spawn is unavailable or fails.
+      pendingSessionSwitchPath = session.filePath;
+      updateUI();
+      messageRenderer.clear();
+      toolCardRenderer.clear();
+      if (session && project) {
+        messageRenderer.renderSystemMessage('Loading session…');
+        const dirName = project?.dirName;
+        const file = session.file;
+        if (dirName && file) {
+          try {
+            const res = await fetch(`/api/sessions/${dirName}/${file}`);
+            const data = await res.json();
+            messageRenderer.clear();
+            renderSessionHistory(data.entries || []);
+          } catch (e) {
+            messageRenderer.renderError(`Failed to load session: ${e}`);
+          }
+        }
+      }
+      if (isMobile()) {
+        sidebarEl.classList.add('collapsed');
+        sidebarOverlay.classList.remove('visible');
+      }
+      return;
+    }
+
+    // ── Case 3: Not streaming — normal session switch ──
     try {
       await window.tauriNative.switchSession(session.filePath);
     } catch (e) {
@@ -1477,9 +1705,13 @@ function handleMirrorSync(data) {
 
   // Track the active session
   mirrorActiveSessionFile = data.sessionFile || null;
+  if (data.sessionFile) portSessionMap.set(foregroundPort, data.sessionFile);
   viewingActiveSession = true;
+  state.setStreaming(Boolean(data.isStreaming));
+  showTypingIndicator(Boolean(data.isStreaming));
   updateMirrorInputState();
   updateMirrorLiveIndicator();
+  updateUI();
 
   // Update model display
   if (data.model) {
@@ -1520,14 +1752,10 @@ function handleMirrorSync(data) {
   updateTokenUsage();
 }
 
-// Mark all live sessions in the sidebar with a green dot
+// Mark sessions in the sidebar with a green dot only when actively streaming
 function updateMirrorLiveIndicator() {
-  const liveFiles = new Set(liveInstances.map(i => i.sessionFile));
-  // Also include the current mirror session
-  if (mirrorActiveSessionFile) liveFiles.add(mirrorActiveSessionFile);
-
   document.querySelectorAll('.session-item').forEach(el => {
-    el.classList.toggle('mirror-live', liveFiles.has(el.dataset.filePath));
+    el.classList.toggle('mirror-live', sidebar.streamingFiles.has(el.dataset.filePath));
   });
 }
 
@@ -1683,6 +1911,22 @@ function showTypingIndicator(show) {
   typingIndicator.classList.toggle('hidden', !show);
 }
 
+function abortCurrentRun() {
+  wsClient.send({ type: 'abort' });
+  messageRenderer.renderError('Aborted by user');
+  showTypingIndicator(false);
+
+  // In some abort paths, backend agent_end can be delayed or missing.
+  // Optimistically unlock input so users can continue immediately.
+  if (state.isStreaming) {
+    state.setStreaming(false);
+    currentStreamingElement = null;
+    currentStreamingText = '';
+    currentStreamingThinking = '';
+    updateUI();
+  }
+}
+
 function updateCostDisplay() {
   if (sessionTotalCost > 0) {
     sessionCostEl.textContent = `$${sessionTotalCost.toFixed(4)} (sub)`;
@@ -1788,6 +2032,17 @@ function updateUI() {
     abortBtn.classList.add('hidden');
     sendBtn.classList.remove('hidden');
     flushQueue();
+  }
+
+  // Viewing a history session while original is still streaming —
+  // block input until agent_end triggers the deferred switch_session.
+  if (pendingSessionSwitchPath) {
+    messageInput.disabled = true;
+    sendBtn.disabled = true;
+    abortBtn.classList.add('hidden');
+    messageInput.placeholder = 'Waiting for current session to finish…';
+  } else {
+    messageInput.placeholder = 'Type a message... (Enter to send, Shift+Enter for newline)';
   }
 }
 
@@ -2075,15 +2330,18 @@ async function installPendingUpdate() {
   }
 }
 
-// `tauri dev` serves the WebView from the live-server at 127.0.0.1:1420.
-// A packaged release talks to the embedded pi server on localhost:<port>
-// (3001+). Use that as the cheap "am I in dev?" signal so we don't hit
-// the GitHub release endpoint on every dev reload.
-function isDevBuild() {
-  return location.hostname === '127.0.0.1' && location.port === '1420';
+let _isDevBuildCache = null;
+async function isDevBuild() {
+  if (_isDevBuildCache !== null) return _isDevBuildCache;
+  try {
+    _isDevBuildCache = !!(await window.tauriNative?.isDev?.());
+  } catch {
+    _isDevBuildCache = false;
+  }
+  return _isDevBuildCache;
 }
 
-function initUpdaterUI() {
+async function initUpdaterUI() {
   if (!updaterSection) return;
 
   if (!window.tauriNative?.hasUpdater) {
@@ -2093,7 +2351,7 @@ function initUpdaterUI() {
 
   loadAppVersion();
 
-  if (isDevBuild()) {
+  if (await isDevBuild()) {
     setUpdateStatus('Dev build — updates are checked only in packaged releases.', 'info');
     if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
     return;
@@ -2120,7 +2378,7 @@ function initUpdaterUI() {
   }, 6 * 60 * 60 * 1000);
 }
 
-initUpdaterUI();
+void initUpdaterUI();
 
 function buildThemeGrid() {
   themeGrid.innerHTML = '';
@@ -2712,7 +2970,7 @@ modelsConfigDocsLink?.addEventListener('click', (e) => {
   // Hand the docs URL off to the OS default browser via /api/open. The
   // endpoint shells out to `open <arg>` on macOS, which transparently
   // handles both file paths and https URLs. Falls back to window.open
-  // when the embedded server is not running (dev `bun run dev:web`).
+  // when the embedded server is not running.
   const url = 'https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/models.md';
   fetch('/api/open', {
     method: 'POST',

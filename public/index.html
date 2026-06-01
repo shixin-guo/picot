@@ -193,12 +193,10 @@
     <aside class="settings-nav">
       <div class="settings-nav-title">Settings</div>
       <button class="settings-nav-item active" data-settings-tab="general">General</button>
-      <button class="settings-nav-item" data-settings-tab="appearance">Appearance</button>
-      <button class="settings-nav-item" data-settings-tab="display">Display</button>
       <button class="settings-nav-item" data-settings-tab="usage">Usage</button>
       <button class="settings-nav-item" data-settings-tab="auth">Authentication</button>
       <button class="settings-nav-item" data-settings-tab="configuration">Configuration</button>
-      <button class="settings-nav-back" id="settings-close">Back to chat</button>
+      <button class="settings-nav-back" id="settings-close"><span class="settings-nav-back-icon">‹</span> Back to chat</button>
     </aside>
     <section class="settings-content">
       <div class="settings-tab active" data-settings-panel="general">
@@ -214,11 +212,22 @@
             </div>
             <div class="settings-row" id="setting-thinking">
               <span class="settings-label">Thinking level</span>
-              <button class="settings-value-btn" id="btn-thinking-level"></button>
+              <button class="settings-value-btn" id="btn-thinking-level">off</button>
             </div>
             <div class="settings-row" id="setting-pi-version">
               <span class="settings-label">Pi version</span>
               <span class="settings-static-value" id="setting-pi-version-value">Loading...</span>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Appearance</div>
+            <div class="theme-grid" id="theme-grid"></div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Display</div>
+            <div class="settings-row">
+              <span class="settings-label">Show thinking</span>
+              <button class="settings-toggle on" id="toggle-show-thinking"></button>
             </div>
           </div>
           <div class="settings-section" id="setting-updater-section">
@@ -238,29 +247,6 @@
             <div class="settings-row" id="setting-update-install-row" hidden>
               <span class="settings-label" id="setting-update-install-label">Update available</span>
               <button class="settings-value-btn" id="btn-install-update">Download &amp; install</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="settings-tab" data-settings-panel="appearance">
-        <div class="settings-header"><h3>Appearance</h3></div>
-        <div class="settings-body">
-          <div class="settings-section">
-            <div class="settings-section-title">Theme</div>
-            <div class="theme-grid" id="theme-grid"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="settings-tab" data-settings-panel="display">
-        <div class="settings-header"><h3>Display</h3></div>
-        <div class="settings-body">
-          <div class="settings-section">
-            <div class="settings-section-title">Messages</div>
-            <div class="settings-row">
-              <span class="settings-label">Show thinking</span>
-              <button class="settings-toggle on" id="toggle-show-thinking"></button>
             </div>
           </div>
         </div>

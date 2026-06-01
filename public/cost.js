@@ -1,8 +1,5 @@
 const rangeSelect = document.getElementById('range-select');
-const fromDateInput = document.getElementById('from-date');
-const toDateInput = document.getElementById('to-date');
-const granularitySelect = document.getElementById('granularity-select');
-const scopeSelect = document.getElementById('scope-select');
+
 const applyFiltersBtn = document.getElementById('apply-filters-btn');
 const resetFiltersBtn = document.getElementById('reset-filters-btn');
 
@@ -102,10 +99,7 @@ function loadSavedFilters() {
     if (!raw) return;
     const saved = JSON.parse(raw);
     if (saved.range) rangeSelect.value = saved.range;
-    if (saved.from) fromDateInput.value = saved.from;
-    if (saved.to) toDateInput.value = saved.to;
-    if (saved.granularity) granularitySelect.value = saved.granularity;
-    if (saved.scope) scopeSelect.value = saved.scope;
+
   } catch {
     // ignore
   }
@@ -114,23 +108,15 @@ function loadSavedFilters() {
 function saveFilters() {
   localStorage.setItem('pi-studio-cost-filters', JSON.stringify({
     range: rangeSelect.value,
-    from: fromDateInput.value,
-    to: toDateInput.value,
-    granularity: granularitySelect.value,
-    scope: scopeSelect.value,
   }));
 }
 
 function buildQuery() {
   const params = new URLSearchParams({
     range: rangeSelect.value,
-    granularity: granularitySelect.value,
-    scope: scopeSelect.value,
+    granularity: 'day',
+    scope: 'current',
   });
-  if (rangeSelect.value === 'custom') {
-    if (fromDateInput.value) params.set('from', fromDateInput.value);
-    if (toDateInput.value) params.set('to', toDateInput.value);
-  }
   return params.toString();
 }
 
@@ -239,11 +225,6 @@ async function loadDashboard() {
   renderAll(payload);
 }
 
-rangeSelect.addEventListener('change', () => {
-  const isCustom = rangeSelect.value === 'custom';
-  fromDateInput.disabled = !isCustom;
-  toDateInput.disabled = !isCustom;
-});
 
 applyFiltersBtn.addEventListener('click', () => {
   loadDashboard().catch((error) => {
@@ -253,19 +234,12 @@ applyFiltersBtn.addEventListener('click', () => {
 
 resetFiltersBtn.addEventListener('click', () => {
   rangeSelect.value = '30d';
-  granularitySelect.value = 'day';
-  scopeSelect.value = 'current';
-  fromDateInput.value = '';
-  toDateInput.value = '';
-  fromDateInput.disabled = true;
-  toDateInput.disabled = true;
   loadDashboard().catch((error) => {
     console.error('[Cost] Failed to reset dashboard:', error);
   });
 });
 
 loadSavedFilters();
-rangeSelect.dispatchEvent(new Event('change'));
 loadDashboard().catch((error) => {
   console.error('[Cost] Initial load failed:', error);
 });

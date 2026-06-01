@@ -24,6 +24,11 @@ description = "Allow stopping (killing) a pi instance"
 commands.allow = ["cmd_stop_instance"]
 
 [[permission]]
+identifier = "allow-cmd-spawn-session-process"
+description = "Allow spawning a dedicated pi process for a session"
+commands.allow = ["cmd_spawn_session_process"]
+
+[[permission]]
 identifier = "allow-cmd-get-pi-version"
 description = "Allow reading installed pi CLI version"
 commands.allow = ["cmd_get_pi_version"]
@@ -32,6 +37,11 @@ commands.allow = ["cmd_get_pi_version"]
 identifier = "allow-cmd-get-app-version"
 description = "Allow reading the running Pi Studio app version (used by the auto-updater UI)"
 commands.allow = ["cmd_get_app_version"]
+
+[[permission]]
+identifier = "allow-cmd-is-dev"
+description = "Allow checking whether this is a debug build"
+commands.allow = ["cmd_is_dev"]
 
 [[permission]]
 identifier = "allow-cmd-retry-startup"
@@ -48,7 +58,9 @@ permissions = [
   "allow-cmd-new-session",
   "allow-cmd-switch-session",
   "allow-cmd-stop-instance",
+  "allow-cmd-spawn-session-process",
   "allow-cmd-get-pi-version",
   "allow-cmd-get-app-version",
+  "allow-cmd-is-dev",
   "allow-cmd-retry-startup",
 ]

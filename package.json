@@ -17,7 +17,6 @@
   },
   "scripts": {
     "tauri": "tauri",
-    "dev:web": "live-server public --host=127.0.0.1 --port=1420 --no-browser",
     "dev": "bun run fetch:pi && PATH=\"$HOME/.cargo/bin:$PATH\" tauri dev",
     "fetch:pi": "bun run scripts/fetch-pi-binary.js",
     "build:extensions": "bun run scripts/build-extensions.js",
@@ -44,7 +43,6 @@
     "@tauri-apps/cli": "^2.11.2",
     "esbuild": "^0.28.0",
     "jsdom": "^26.1.0",
-    "live-server": "^1.2.0",
     "vitest": "^3.2.4"
   }
 }

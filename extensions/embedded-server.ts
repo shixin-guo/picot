@@ -60,7 +60,7 @@ function loadSettings(): { port: number } {
     settings = JSON.parse(fs.readFileSync(settingsPath, "utf8")).pistudio || {};
   } catch {}
   return {
-    port: parseInt(process.env.PI_STUDIO_PORT || settings.port || "3001"),
+    port: parseInt(process.env.PI_STUDIO_PORT || settings.port || "47821"),
   };
 }
 

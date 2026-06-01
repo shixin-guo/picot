@@ -362,6 +362,22 @@ async function main() {
     } catch {}
   }
 
+  // On macOS, ad-hoc re-sign the binary so macOS AMFI accepts spawning
+  // multiple instances. Downloaded binaries often have an invalid/foreign
+  // signature; AMFI caches approval for the first spawn but kills subsequent
+  // ones with SIGKILL when it re-validates and finds a bad signature.
+  if (process.platform === "darwin") {
+    try {
+      const { execFileSync } = await import("child_process");
+      execFileSync("codesign", ["--force", "--deep", "--sign", "-", binPath]);
+      info(`codesign: ad-hoc signed ${binPath}`);
+    } catch (e) {
+      // Non-fatal: warn but don't block the install. The app may still work
+      // if the existing signature happens to be valid.
+      info(`codesign: warning — could not re-sign ${binPath}: ${e.message}`);
+    }
+  }
+
   fs.writeFileSync(VERSION_MARKER, version, "utf8");
   info(`installed pi ${version} -> ${binPath}`);
 }

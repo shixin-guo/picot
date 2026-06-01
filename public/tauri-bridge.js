@@ -19,7 +19,7 @@
   const invoke = (cmd, args) => tauriCore.invoke(cmd, args);
 
   function currentPort() {
-    return parseInt(location.port) || 3001;
+    return parseInt(location.port) || 47821;
   }
 
   // ── Updater (tauri-plugin-updater + tauri-plugin-process) ────────────────
@@ -143,11 +143,21 @@
     stopInstance: (port) =>
       invoke('cmd_stop_instance', { port: port ?? currentPort() }),
 
+    spawnSessionProcess: (sessionFile, cwd) =>
+      invoke('cmd_spawn_session_process', {
+        workspacePort: currentPort(),
+        sessionFile,
+        cwd,
+      }),
+
     getPiVersion: () =>
       invoke('cmd_get_pi_version'),
 
     getAppVersion: () =>
       invoke('cmd_get_app_version'),
+
+    isDev: () =>
+      invoke('cmd_is_dev'),
 
     checkForUpdate,
     downloadAndInstallUpdate,
