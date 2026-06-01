@@ -126,6 +126,73 @@ export class SessionSidebar {
     this.render();
   }
 
+  async deleteAllArchived() {
+    const paths = [...this.archived];
+    if (paths.length === 0) return;
+
+    const count = paths.length;
+    const ok = await this.confirmArchivedDeletion(count);
+    if (!ok) return;
+
+    try {
+      const res = await fetch('/api/sessions/delete-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePaths: paths }),
+      });
+      const data = await res.json();
+      const errorSet = new Set(data.errors || []);
+      const deleted = new Set(paths.filter(p => !errorSet.has(p)));
+      this.archived = this.archived.filter(p => !deleted.has(p));
+      this.saveArchived();
+    } catch (err) {
+      console.error('[Sidebar] deleteAllArchived failed:', err);
+    }
+
+    await this.loadSessions();
+  }
+
+  async confirmArchivedDeletion(count) {
+    const message = `Delete ${count} archived session${count === 1 ? '' : 's'} permanently? This cannot be undone.`;
+    return this.showFallbackConfirmDialog(message);
+  }
+
+  showFallbackConfirmDialog(message) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'sidebar-confirm-overlay';
+      overlay.innerHTML = `
+        <div class="sidebar-confirm-dialog" role="dialog" aria-modal="true" aria-label="Delete archived sessions">
+          <div class="sidebar-confirm-message">${this.escapeHtml(message)}</div>
+          <div class="sidebar-confirm-actions">
+            <button type="button" class="sidebar-confirm-no">Cancel</button>
+            <button type="button" class="sidebar-confirm-yes">Delete</button>
+          </div>
+        </div>
+      `;
+
+      const cleanup = (result) => {
+        document.removeEventListener('keydown', onKeyDown);
+        overlay.remove();
+        resolve(result);
+      };
+
+      const onKeyDown = (event) => {
+        if (event.key === 'Escape') cleanup(false);
+      };
+
+      overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) cleanup(false);
+      });
+
+      overlay.querySelector('.sidebar-confirm-no').addEventListener('click', () => cleanup(false));
+      overlay.querySelector('.sidebar-confirm-yes').addEventListener('click', () => cleanup(true));
+
+      document.addEventListener('keydown', onKeyDown);
+      document.body.appendChild(overlay);
+    });
+  }
+
   async loadSessions({ retries = 4, retryDelayMs = 250, quiet = false } = {}) {
     if (!quiet) {
       this.container.innerHTML = Array.from({ length: 6 }, () =>
@@ -590,8 +657,27 @@ export class SessionSidebar {
 
       const header = document.createElement('div');
       header.className = `project-header archived-header${this.archivedCollapsed ? ' collapsed' : ''}`;
-      header.innerHTML = `<span class="chevron">▼</span> <span>Archived</span> <span class="project-count">${archivedSessions.length}</span>`;
+      header.innerHTML = `
+        <span class="chevron">▼</span>
+        <span>Archived</span>
+        <span class="project-count">${archivedSessions.length}</span>
+        <button class="archived-delete-all-btn" title="Delete all archived sessions" aria-label="Delete all archived sessions">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+            <path d="M10 11v6"></path>
+            <path d="M14 11v6"></path>
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+          </svg>
+        </button>
+      `;
       archivedGroup.appendChild(header);
+
+      const deleteAllBtn = header.querySelector('.archived-delete-all-btn');
+      deleteAllBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.deleteAllArchived();
+      });
 
       const sessionsDiv = document.createElement('div');
       sessionsDiv.className = `project-sessions${this.archivedCollapsed ? ' collapsed' : ''}`;

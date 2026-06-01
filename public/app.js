@@ -191,6 +191,9 @@ const backgroundConnections = new Map();
 const portSessionMap = new Map();
 // The port that wsClient is currently connected to (the "foreground" session)
 let foregroundPort = getCurrentPort();
+wsClient.setRoutingContext({
+  workspaceId: `workspace:${getCurrentWorkspacePath() || 'unknown'}`,
+});
 
 const workspaceIndicatorEl = document.createElement('div');
 workspaceIndicatorEl.id = 'workspace-indicator';
@@ -366,6 +369,25 @@ wsClient.addEventListener('connected', () => {
 wsClient.addEventListener('disconnected', () => {
   updateConnectionStatus('disconnected');
   sidebar.clearStreaming();
+
+  // Deferred session switch requires agent_end to complete, which won't fire
+  // after a crash/disconnect. Unblock input immediately so the user isn't stuck.
+  if (pendingSessionSwitchPath) {
+    pendingSessionSwitchPath = null;
+    updateUI();
+  }
+
+  // If the streaming state is still true 3 s after disconnect (pi likely
+  // crashed — agent_end won't re-fire after reconnect), unlock the UI.
+  // Brief intentional reconnects (Case 1 session switch) complete in < 100 ms
+  // so they are unaffected by the 3-second gate.
+  setTimeout(() => {
+    if (wsClient.connectionState !== 'open' && state.isStreaming) {
+      state.setStreaming(false);
+      showTypingIndicator(false);
+      updateUI();
+    }
+  }, 3000);
 });
 
 wsClient.addEventListener('reconnectFailed', () => {
@@ -1406,19 +1428,20 @@ async function resetUiForNewSession() {
 
 async function newSession() {
   if (window.tauriNative) {
-    // In Pi Studio, "+ New Session" spawns a fresh headless pi process for
-    // the current cwd and navigates THIS window's WebView to it. The
-    // previous pi process keeps running in the background (PiManager
-    // retains it; the user can return to it via the running-instances
-    // list). A single pi process can only drive one active session at a
-    // time, so a parallel task structurally needs its own process — but
-    // it does NOT need its own OS window. See workspace-actions.js.
+    // Default behavior is process-efficient: create the new chat in-place on
+    // the current pi process. Only spawn a dedicated process when a parallel
+    // task is actually running.
     await startInWindowNewSession({
       tauriNative: window.tauriNative,
-      fetchInstances,
+      getCurrentCwd: getCurrentWorkspacePath,
       getCurrentPort,
+      fetchInstances,
       navigate: navigateInWindow,
       onBeforeSwap: onBeforeInstanceSwap,
+      shouldSpawnParallel: () => state.isStreaming,
+      onInPlaceSessionCreated: () => {
+        resetUiForNewSession().catch(() => {});
+      },
       renderError: (message) => messageRenderer.renderError(message),
     });
     return;
@@ -1444,12 +1467,19 @@ async function handleNewProjectChat(project) {
   if (workspaceLaunchInProgress) return;
   setWorkspaceLaunchInProgress(true);
   try {
-    // startNewProjectChat spawns a fresh headless pi for the project's
-    // cwd and navigates THIS window to it. The previously-attached pi
-    // process keeps running in the background.
+    // Prefer reuse: same project + no active parallel run => in-place
+    // new_session on current process. Spawn dedicated process only when
+    // a parallel run is active.
     const launched = await startNewProjectChat({
       project,
       tauriNative: window.tauriNative,
+      getCurrentPort,
+      getCurrentCwd: getCurrentWorkspacePath,
+      shouldSpawnParallel: () => state.isStreaming,
+      onInPlaceSessionCreated: () => {
+        resetUiForNewSession().catch(() => {});
+      },
+      fetchInstances,
       navigate: navigateInWindow,
       onBeforeSwap: onBeforeInstanceSwap,
       renderError: (message) => messageRenderer.renderError(message),
@@ -1493,6 +1523,13 @@ async function handleSessionSelect(session, project) {
       wsClient.forceReconnect();
       clearMessageQueue();
       state.reset();
+      // Restore streaming state if A's task is still running in the background.
+      // state.reset() clears isStreaming, but pi won't re-emit agent_start for
+      // an in-progress run, so we have to recover the flag from sidebar state.
+      if (sidebar.isStreaming(session.filePath)) {
+        state.setStreaming(true);
+        showTypingIndicator(true);
+      }
       updateUI();
       messageRenderer.clear();
       toolCardRenderer.clear();
@@ -1594,6 +1631,27 @@ async function handleSessionSelect(session, project) {
     }
 
     // ── Case 3: Not streaming — normal session switch ──
+    // Pre-load the target session's UI so the frontend doesn't wait on pi to
+    // send a session_switch event (which carries no payload and was a no-op).
+    state.reset();
+    updateUI();
+    messageRenderer.clear();
+    toolCardRenderer.clear();
+    if (session && project) {
+      messageRenderer.renderSystemMessage('Loading session…');
+      const dirName = project?.dirName;
+      const file = session.file;
+      if (dirName && file) {
+        try {
+          const res = await fetch(`/api/sessions/${dirName}/${file}`);
+          const data = await res.json();
+          messageRenderer.clear();
+          renderSessionHistory(data.entries || []);
+        } catch (e) {
+          messageRenderer.renderError(`Failed to load session: ${e}`);
+        }
+      }
+    }
     try {
       await window.tauriNative.switchSession(session.filePath);
     } catch (e) {
@@ -1706,6 +1764,10 @@ function handleMirrorSync(data) {
   // Track the active session
   mirrorActiveSessionFile = data.sessionFile || null;
   if (data.sessionFile) portSessionMap.set(foregroundPort, data.sessionFile);
+  wsClient.setRoutingContext({
+    workspaceId: data.workspaceId || `workspace:${getCurrentWorkspacePath() || 'unknown'}`,
+    sessionId: data.sessionId || data.sessionFile || null,
+  });
   viewingActiveSession = true;
   state.setStreaming(Boolean(data.isStreaming));
   showTypingIndicator(Boolean(data.isStreaming));
@@ -2159,6 +2221,9 @@ const APP_VERSION = (() => {
 
 let pendingUpdate = null;
 let updaterBusy = false;
+const BETA_VERSION_RE = /-beta(?:[.-]|$)/i;
+const NUMERIC_PRERELEASE_VERSION_RE = /-\d+(?:\.\d+)*$/;
+let currentAppVersion = APP_VERSION;
 
 function setUpdateStatus(message, tone = 'info') {
   if (!updateStatusRow || !updateStatusEl) return;
@@ -2186,12 +2251,21 @@ function showInstallButton(update) {
   installUpdateBtn.textContent = 'Download & install';
 }
 
+function isIgnoredPrereleaseVersion(version) {
+  return BETA_VERSION_RE.test(String(version || '').trim());
+}
+
+function isLocalPrereleaseBuild(version) {
+  return NUMERIC_PRERELEASE_VERSION_RE.test(String(version || '').trim());
+}
+
 async function loadAppVersion() {
   if (!appVersionValue) return;
 
   if (APP_VERSION) {
     appVersionValue.textContent = APP_VERSION;
-    return;
+    currentAppVersion = APP_VERSION;
+    return APP_VERSION;
   }
 
   try {
@@ -2199,19 +2273,23 @@ async function loadAppVersion() {
       const v = await window.tauriNative.getAppVersion();
       if (v) {
         appVersionValue.textContent = v;
-        return;
+        currentAppVersion = v;
+        return v;
       }
     }
     const tauriApp = window.__TAURI__?.app;
     if (tauriApp?.getVersion) {
       const v = await tauriApp.getVersion();
       appVersionValue.textContent = v || 'unknown';
-      return;
+      currentAppVersion = v || 'unknown';
+      return currentAppVersion;
     }
   } catch (err) {
     console.warn('[updater] unable to read app version:', err);
   }
   appVersionValue.textContent = 'unknown';
+  currentAppVersion = 'unknown';
+  return currentAppVersion;
 }
 
 // Pattern-match the most common Tauri updater errors so we can show a
@@ -2240,6 +2318,18 @@ function explainUpdateError(rawMessage) {
 async function checkForUpdates({ silent = false } = {}) {
   if (updaterBusy) return null;
 
+  if (isLocalPrereleaseBuild(currentAppVersion)) {
+    if (!silent) {
+      setUpdateStatus(
+        `Pre-release build (${currentAppVersion}) — auto-update is disabled for this build.`,
+        'info',
+      );
+    }
+    pendingUpdate = null;
+    showInstallButton(null);
+    return null;
+  }
+
   if (!window.tauriNative?.hasUpdater) {
     if (!silent) setUpdateStatus('Auto-updates are only available in the desktop app.', 'warn');
     if (updaterSection && !window.tauriNative) updaterSection.hidden = true;
@@ -2259,6 +2349,14 @@ async function checkForUpdates({ silent = false } = {}) {
       pendingUpdate = null;
       showInstallButton(null);
       setUpdateStatus("You're on the latest version.", 'ok');
+      return null;
+    }
+
+    if (isIgnoredPrereleaseVersion(update.version)) {
+      console.info('[updater] ignoring beta release:', update.version);
+      pendingUpdate = null;
+      showInstallButton(null);
+      setUpdateStatus("You're on the latest stable version.", 'ok');
       return null;
     }
 
@@ -2349,11 +2447,19 @@ async function initUpdaterUI() {
     return;
   }
 
-  loadAppVersion();
+  const appVersion = await loadAppVersion();
 
   if (await isDevBuild()) {
     setUpdateStatus('Dev build — updates are checked only in packaged releases.', 'info');
     if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
+    return;
+  }
+
+  if (isLocalPrereleaseBuild(appVersion)) {
+    setUpdateStatus(`Pre-release build (${appVersion}) — auto-update is disabled for this build.`, 'info');
+    if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
+    if (installUpdateBtn) installUpdateBtn.disabled = true;
+    showInstallButton(null);
     return;
   }
 

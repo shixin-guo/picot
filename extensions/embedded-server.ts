@@ -327,9 +327,38 @@ export default function (pi: ExtensionAPI) {
   // types) and pulling its constants would defeat the whole point.
   // ═══════════════════════════════════════
   const WS_OPEN = 1;
+  const PROTOCOL_VERSION = 1;
+  const workspaceId = `workspace:${process.cwd()}`;
+
+  function currentSessionIdFromCtx(ctx: ExtensionContext | null): string | null {
+    if (!ctx) return null;
+    try {
+      const sessionFile = ctx.sessionManager.getSessionFile();
+      if (typeof sessionFile === "string" && sessionFile.trim()) return sessionFile;
+    } catch {}
+    try {
+      const entries = ctx.sessionManager.getEntries();
+      const sessionEntry = entries.find((e: any) => e?.type === "session" && typeof e?.id === "string");
+      if (sessionEntry?.id) return sessionEntry.id;
+    } catch {}
+    return null;
+  }
+
+  function withRouteMeta(data: any) {
+    const currentCtx = globalState.getLatestCtx?.() ?? latestCtx;
+    const sessionId = currentSessionIdFromCtx(currentCtx);
+    return {
+      protocolVersion: PROTOCOL_VERSION,
+      workspaceId,
+      sessionId: sessionId || undefined,
+      port: globalState.server?.port || PORT,
+      ...data,
+    };
+  }
+
   function sendTo(ws: UnifiedWS, data: any) {
     if (ws.readyState === WS_OPEN) {
-      try { ws.send(JSON.stringify(data)); } catch {}
+      try { ws.send(JSON.stringify(withRouteMeta(data))); } catch {}
     }
   }
 
@@ -337,7 +366,7 @@ export default function (pi: ExtensionAPI) {
   // Helper: broadcast to all clients
   // ═══════════════════════════════════════
   function broadcast(data: any) {
-    const json = JSON.stringify(data);
+    const json = JSON.stringify(withRouteMeta(data));
     for (const client of globalState.clients) {
       if (client.readyState === WS_OPEN) {
         try { client.send(json); } catch {}
@@ -1139,6 +1168,52 @@ export default function (pi: ExtensionAPI) {
           const response = await responsePromise;
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(response));
+        } catch (e: any) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      });
+      return;
+    }
+
+    if (urlPath === "/api/sessions/delete-batch" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+      req.on("end", async () => {
+        try {
+          const { filePaths } = JSON.parse(body);
+          if (!Array.isArray(filePaths)) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "filePaths must be an array" }));
+            return;
+          }
+
+          let deleted = 0;
+          const errors: string[] = [];
+          const resolvedSessionsDir = path.resolve(SESSIONS_DIR);
+
+          for (const fp of filePaths) {
+            // Safety: must be a string, end with .jsonl, and resolve inside SESSIONS_DIR
+            if (
+              typeof fp !== "string" ||
+              !fp.endsWith(".jsonl") ||
+              !path.resolve(fp).startsWith(resolvedSessionsDir + path.sep)
+            ) {
+              errors.push(fp);
+              continue;
+            }
+            try {
+              await fs.promises.unlink(fp);
+              globalState.sessionHeaderCache.delete(fp);
+              globalState.sessionMetricsCache.delete(fp);
+              deleted++;
+            } catch {
+              errors.push(fp);
+            }
+          }
+
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ deleted, errors }));
         } catch (e: any) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: e.message }));
@@ -2083,7 +2158,10 @@ export default function (pi: ExtensionAPI) {
           : raw instanceof ArrayBuffer
             ? Buffer.from(raw).toString("utf8")
             : raw.toString();
-        const command = JSON.parse(text);
+        const incoming = JSON.parse(text);
+        const command = incoming?.type === "broker_command"
+          ? { ...(incoming.payload || {}), id: (incoming.payload?.id ?? incoming.requestId) }
+          : incoming;
         const dispatch = globalState.handleCommand;
         if (dispatch) {
           dispatch(ws, command);

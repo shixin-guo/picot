@@ -1,0 +1,157 @@
+name: Check pi-mono updates
+
+on:
+  schedule:
+    - cron: "0 9 * * 1" # 每周一 UTC 09:00 检查（北京时间周一 17:00）
+  workflow_dispatch: # 支持手动触发
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get latest pi-mono release
+        id: latest
+        run: |
+          RESPONSE=$(curl -s \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/earendil-works/pi-mono/releases/latest)
+
+          LATEST=$(echo "$RESPONSE" | jq -r '.tag_name // empty' | sed 's/^v//')
+
+          if [ -z "$LATEST" ]; then
+            echo "::error::Failed to fetch latest pi-mono release. Response: $RESPONSE"
+            exit 1
+          fi
+
+          echo "version=$LATEST" >> $GITHUB_OUTPUT
+          echo "Fetched latest pi-mono version: $LATEST"
+
+      - name: Get current pinned version
+        id: current
+        run: |
+          CURRENT=$(jq -r '.version' scripts/pi-version.json)
+          echo "version=$CURRENT" >> $GITHUB_OUTPUT
+          echo "Current pinned pi version: $CURRENT"
+
+      - name: Check if already up to date
+        id: compare
+        run: |
+          LATEST="${{ steps.latest.outputs.version }}"
+          CURRENT="${{ steps.current.outputs.version }}"
+
+          if [ "$LATEST" = "$CURRENT" ]; then
+            echo "Already up to date at v$CURRENT, nothing to do."
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+          else
+            echo "Update available: v$CURRENT -> v$LATEST"
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check if PR already exists
+        id: existing_pr
+        if: steps.compare.outputs.needs_update == 'true'
+        run: |
+          NEW="${{ steps.latest.outputs.version }}"
+          BRANCH="chore/bump-pi-${NEW}"
+
+          EXISTING=$(gh pr list \
+            --head "$BRANCH" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+
+          if [ -n "$EXISTING" ]; then
+            echo "PR #$EXISTING already exists for v$NEW, skipping."
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump pi-version.json
+        if: |
+          steps.compare.outputs.needs_update == 'true' &&
+          steps.existing_pr.outputs.exists == 'false'
+        run: |
+          NEW="${{ steps.latest.outputs.version }}"
+
+          # 更新 version 字段，保留文件中其他字段（如 sha256、_comment）
+          jq --arg v "$NEW" '.version = $v' scripts/pi-version.json > tmp.json
+          mv tmp.json scripts/pi-version.json
+
+          echo "Updated scripts/pi-version.json to v$NEW"
+          cat scripts/pi-version.json
+
+      - name: Get pi-mono release notes
+        id: release_notes
+        if: |
+          steps.compare.outputs.needs_update == 'true' &&
+          steps.existing_pr.outputs.exists == 'false'
+        run: |
+          NEW="${{ steps.latest.outputs.version }}"
+
+          NOTES=$(curl -s \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/earendil-works/pi-mono/releases/tags/v${NEW}" \
+            | jq -r '.body // "No release notes available."')
+
+          # GitHub Actions 多行输出需要用 delimiter
+          {
+            echo "notes<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Create PR
+        if: |
+          steps.compare.outputs.needs_update == 'true' &&
+          steps.existing_pr.outputs.exists == 'false'
+        run: |
+          NEW="${{ steps.latest.outputs.version }}"
+          CURRENT="${{ steps.current.outputs.version }}"
+          BRANCH="chore/bump-pi-${NEW}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b "$BRANCH"
+          git add scripts/pi-version.json
+          git commit -m "chore: bump embedded pi to v${NEW}"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "chore: bump embedded pi v${CURRENT} → v${NEW}" \
+            --body "## Embedded pi update
+
+          pi-mono released [v${NEW}](https://github.com/earendil-works/pi-mono/releases/tag/v${NEW}).
+
+          | | Version |
+          |---|---|
+          | Current | \`${CURRENT}\` |
+          | New | \`${NEW}\` |
+
+          ## Release notes
+          ${{ steps.release_notes.outputs.notes }}
+
+          ## Checklist before merging
+          - [ ] Run \`bun run fetch:pi\` locally and confirm it downloads successfully
+          - [ ] Run \`./src-tauri/resources/pi/pi --version\` shows \`${NEW}\`
+          - [ ] Smoke test: \`bun run dev\` opens Pi Studio, sessions work
+          - [ ] If breaking changes in release notes, update embedded-server or frontend accordingly
+
+          ---
+          *This PR was opened automatically by the [check pi-mono updates](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) workflow.*" \
+            --label "dependencies"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

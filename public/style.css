@@ -660,6 +660,105 @@ body {
   color: var(--bg);
 }
 
+.archived-delete-all-btn {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  margin-left: auto;
+  color: var(--text-dim);
+  border-radius: 4px;
+  line-height: 0;
+  flex-shrink: 0;
+  transition: color var(--duration) var(--ease), background var(--duration) var(--ease);
+}
+
+.archived-header:hover .archived-delete-all-btn {
+  display: flex;
+  align-items: center;
+}
+
+.archived-delete-all-btn:hover {
+  color: #e53e3e;
+  background: rgba(229, 62, 62, 0.1);
+}
+
+.sidebar-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1102;
+  padding: 20px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.sidebar-confirm-dialog {
+  width: min(420px, 100%);
+  background: var(--bg-frosted);
+  backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
+  -webkit-backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg), var(--shadow-inset);
+  padding: 24px;
+  animation: sidebarConfirmIn 0.18s var(--ease);
+}
+
+@keyframes sidebarConfirmIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.sidebar-confirm-message {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.sidebar-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.sidebar-confirm-actions button {
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius-md);
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--duration) var(--ease);
+}
+
+.sidebar-confirm-actions button:hover {
+  filter: brightness(1.08);
+}
+
+.sidebar-confirm-actions .sidebar-confirm-no {
+  background: var(--bg-glass);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.sidebar-confirm-actions .sidebar-confirm-yes {
+  background: #ef4444;
+}
+
 .project-sessions {
   display: flex;
   flex-direction: column;

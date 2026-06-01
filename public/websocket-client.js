@@ -14,6 +14,15 @@ export class WebSocketClient extends EventTarget {
     this.isIntentionallyClosed = false;
     this.reconnectTimer = null;
     this.connectionState = 'idle';
+    this.protocolVersion = 1;
+    this.workspaceId = null;
+    this.sessionId = null;
+    this.requestCounter = 0;
+  }
+
+  setRoutingContext({ workspaceId, sessionId }) {
+    if (typeof workspaceId === 'string' && workspaceId.trim()) this.workspaceId = workspaceId.trim();
+    if (typeof sessionId === 'string' && sessionId.trim()) this.sessionId = sessionId.trim();
   }
 
   connect() {
@@ -112,13 +121,36 @@ export class WebSocketClient extends EventTarget {
 
   send(data) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data));
+      // Prefer broker envelope, while remaining backward-compatible with
+      // servers that still expect raw command payloads.
+      const payload = (data && data.type === 'broker_command') ? data : {
+        type: 'broker_command',
+        protocolVersion: this.protocolVersion,
+        requestId: `req-${++this.requestCounter}`,
+        workspaceId: this.workspaceId || undefined,
+        sessionId: this.sessionId || undefined,
+        payload: data,
+      };
+      this.ws.send(JSON.stringify(payload));
     } else {
       console.error('[WS] Cannot send, not connected');
     }
   }
 
   handleMessage(message) {
+    if (message.type === 'broker_event') {
+      const payload = message.payload || {};
+      this.dispatchEvent(new CustomEvent('brokerEvent', { detail: message }));
+      if (message.workspaceId || message.sessionId) {
+        this.setRoutingContext({
+          workspaceId: message.workspaceId || undefined,
+          sessionId: message.sessionId || undefined,
+        });
+      }
+      this.handleMessage(payload);
+      return;
+    }
+
     // Emit events based on message type
     switch (message.type) {
       case 'event':
@@ -130,10 +162,21 @@ export class WebSocketClient extends EventTarget {
       case 'error':
         this.dispatchEvent(new CustomEvent('serverError', { detail: message }));
         break;
+      case 'response':
+        // Broker acknowledgment for a broker_command we sent (requestId-keyed).
+        // No frontend handler needed currently; dispatch for future use.
+        this.dispatchEvent(new CustomEvent('commandResponse', { detail: message }));
+        break;
       case 'session_switch':
         this.dispatchEvent(new CustomEvent('sessionSwitch'));
         break;
       case 'mirror_sync':
+        if (message.workspaceId || message.sessionId) {
+          this.setRoutingContext({
+            workspaceId: message.workspaceId || undefined,
+            sessionId: message.sessionId || undefined,
+          });
+        }
         this.dispatchEvent(new CustomEvent('mirrorSync', { detail: message }));
         break;
       default:

@@ -16,8 +16,8 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-          - os: ubuntu-20.04
-          - os: windows-latest
+          - os: ubuntu-22.04
+          - os: windows-2022
 
     runs-on: ${{ matrix.os }}
 
@@ -81,13 +81,41 @@ jobs:
       - name: Build pi extensions bundle
         run: bun run build:extensions
 
-      - name: Build Tauri app and publish assets
+      - name: Build Tauri app (Linux deb only) and publish assets
+        if: runner.os == 'Linux'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Let AppImage-based linuxdeploy run on GitHub runners even when
-          # FUSE is unavailable, by extracting and running in-place.
-          APPIMAGE_EXTRACT_AND_RUN: 1
+          # Signing key for the Tauri updater. Required so the bundler
+          # produces `*.sig` files and `latest.json` (the manifest the
+          # auto-updater reads from the GitHub release). Configure these
+          # one-time in repo Settings → Secrets → Actions. See
+          # docs/AUTO_UPDATER.md for how to generate the key pair.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Pi Studio ${{ github.ref_name }}"
+          releaseBody: |
+            Automated release for `${{ github.ref_name }}`.
+            Download the installer for your platform from the assets below.
+          releaseDraft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          args: --bundles deb
+          # tauri-action will only attach `latest.json` (the updater
+          # manifest) when this is `true`. Combined with
+          # `bundle.createUpdaterArtifacts` in tauri.conf.json, the
+          # release ends up with: installers + `*.sig` files +
+          # `latest.json` pinning the URL/signature of each platform
+          # bundle. The Tauri updater endpoint then resolves to
+          # `https://github.com/.../releases/latest/download/latest.json`.
+          updaterJsonPreferNsis: true
+
+      - name: Build Tauri app and publish assets
+        if: runner.os != 'Linux'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Signing key for the Tauri updater. Required so the bundler
           # produces `*.sig` files and `latest.json` (the manifest the
           # auto-updater reads from the GitHub release). Configure these
@@ -111,3 +139,60 @@ jobs:
           # bundle. The Tauri updater endpoint then resolves to
           # `https://github.com/.../releases/latest/download/latest.json`.
           updaterJsonPreferNsis: true
+
+  appimage-debug:
+    # Keep release job unblocked; this job is for readable diagnostics only.
+    continue-on-error: true
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          WEBKIT_DEV_PKG="libwebkit2gtk-4.1-dev"
+          if ! apt-cache show "$WEBKIT_DEV_PKG" >/dev/null 2>&1; then
+            WEBKIT_DEV_PKG="libwebkit2gtk-4.0-dev"
+          fi
+          sudo apt-get install -y \
+            desktop-file-utils \
+            "$WEBKIT_DEV_PKG" \
+            libappindicator3-dev \
+            librsvg2-dev \
+            libfuse2 \
+            squashfs-tools \
+            zsync \
+            patchelf
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Cache pi binary downloads
+        uses: actions/cache@v5
+        with:
+          path: .cache/pi-binaries
+          key: pi-binaries-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/pi-version.json') }}
+
+      - name: Fetch embedded pi binary
+        run: bun run fetch:pi
+
+      - name: Build pi extensions bundle
+        run: bun run build:extensions
+
+      - name: Debug AppImage bundle output
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          # Workaround for linuxdeploy/strip failures on modern ELF
+          # binaries (e.g. `.relr.dyn`), see tauri#14796.
+          NO_STRIP: "true"
+        run: bun tauri build --bundles appimage -v

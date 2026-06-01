@@ -88,10 +88,12 @@ async function attachToWorkspace({
 export async function startInWindowNewSession({
   tauriNative,
   getCurrentCwd,
-  fetchInstances,
   getCurrentPort,
+  fetchInstances,
   navigate,
   onBeforeSwap,
+  shouldSpawnParallel,
+  onInPlaceSessionCreated,
   renderError,
 }) {
   if (!tauriNative) {
@@ -128,6 +130,21 @@ export async function startInWindowNewSession({
     return false;
   }
 
+  const currentPort = typeof getCurrentPort === 'function' ? getCurrentPort() : null;
+  const wantsParallel = typeof shouldSpawnParallel === 'function' ? Boolean(shouldSpawnParallel()) : false;
+  if (!wantsParallel && typeof currentPort === 'number' && Number.isFinite(currentPort)) {
+    try {
+      await tauriNative.newSession(currentPort);
+      if (typeof onInPlaceSessionCreated === 'function') {
+        onInPlaceSessionCreated();
+      }
+      return true;
+    } catch (e) {
+      renderError(`Failed to start new session: ${e}`);
+      return false;
+    }
+  }
+
   const dismissOverlay = runOnBeforeSwap(onBeforeSwap, 'Starting session…');
   try {
     const newPort = await tauriNative.openWorkspace(targetCwd, {
@@ -158,6 +175,11 @@ function resolveProjectCwd(project) {
 export async function startNewProjectChat({
   project,
   tauriNative,
+  getCurrentPort,
+  getCurrentCwd,
+  shouldSpawnParallel,
+  onInPlaceSessionCreated,
+  fetchInstances,
   navigate,
   onBeforeSwap,
   renderError,
@@ -176,6 +198,37 @@ export async function startNewProjectChat({
   if (typeof navigate !== 'function') {
     renderError('Failed to start new chat: navigation is unavailable');
     return false;
+  }
+
+  const currentCwd = typeof getCurrentCwd === 'function' ? getCurrentCwd() : null;
+  const currentPort = typeof getCurrentPort === 'function' ? getCurrentPort() : null;
+  const sameWorkspace = Boolean(currentCwd && targetCwd && currentCwd === targetCwd);
+  const wantsParallel = typeof shouldSpawnParallel === 'function' ? Boolean(shouldSpawnParallel()) : false;
+
+  if (sameWorkspace && !wantsParallel && typeof currentPort === 'number' && Number.isFinite(currentPort)) {
+    try {
+      await tauriNative.newSession(currentPort);
+      if (typeof onInPlaceSessionCreated === 'function') {
+        onInPlaceSessionCreated();
+      }
+      return true;
+    } catch (e) {
+      renderError(`Failed to start new chat: ${e}`);
+      return false;
+    }
+  }
+
+  if (!wantsParallel) {
+    const result = await attachToWorkspace({
+      targetCwd,
+      tauriNative,
+      fetchInstances,
+      getCurrentPort,
+      navigate,
+      onBeforeSwap,
+      renderError,
+    });
+    return result !== null;
   }
 
   const dismissOverlay = runOnBeforeSwap(onBeforeSwap, 'Starting new chat…');
