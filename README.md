@@ -28,6 +28,30 @@ Pi Studio gives you a full visual interface for Pi. Open any project, chat with 
 - **File browser** — lazy-loaded file tree, drag files into the chat
 - **No terminal required** — launch, switch, and manage agents entirely from the GUI
 
+## Pi capabilities integrated in Pi Studio
+
+Pi Studio does not re-implement agent logic. It embeds Pi and exposes Pi's runtime capabilities through a desktop UI.
+
+- **Embedded `pi --mode rpc` runtime** — one managed Pi process per workspace, isolated by project
+- **Streaming RPC bridge** — token-by-token assistant output, tool-call events, and thinking blocks rendered live
+- **Session lifecycle APIs** — create new sessions, switch/resume historical sessions, keep per-project history
+- **Model and reasoning controls** — choose model, tune thinking level, and inspect token/context usage
+- **Cost and usage telemetry** — session-level cost metrics from Pi's embedded server endpoints
+- **Compaction controls** — trigger context compaction and view compaction status in UI
+- **Extension compatibility** — keeps loading user extensions from `~/.pi/agent/extensions/` and `.pi/extensions/`
+- **Credential reuse** — uses Pi's existing auth/session files under `~/.pi/agent/` without separate login plumbing
+
+## What you can do in the UI
+
+- **Open and run multiple projects** in parallel with separate windows and active agents
+- **Chat with Pi visually** using markdown rendering, streaming responses, tool cards, and inline edit diffs
+- **Manage sessions efficiently** with history browsing, full-text search, rename, favorites, tags, and quick resume
+- **Control model behavior** via model picker, thinking-level toggle, token window visualizer, and cost dashboard
+- **Work with project files** through the sidebar tree, native file opening, and drag-to-chat path insertion
+- **Send multimodal input** with image attachments and on-device voice dictation
+- **Customize workflow and appearance** with message queueing, manual/auto compaction, and built-in themes
+- **Operate fully from desktop GUI** (open folder, new session, switch session, stop instance) without terminal commands
+
 ## Install
 
 Download the latest release for macOS from the [releases page](https://github.com/deflating/pi-studio/releases).
