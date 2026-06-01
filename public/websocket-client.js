@@ -162,6 +162,11 @@ export class WebSocketClient extends EventTarget {
       case 'error':
         this.dispatchEvent(new CustomEvent('serverError', { detail: message }));
         break;
+      case 'response':
+        // Broker acknowledgment for a broker_command we sent (requestId-keyed).
+        // No frontend handler needed currently; dispatch for future use.
+        this.dispatchEvent(new CustomEvent('commandResponse', { detail: message }));
+        break;
       case 'session_switch':
         this.dispatchEvent(new CustomEvent('sessionSwitch'));
         break;

@@ -369,6 +369,25 @@ wsClient.addEventListener('connected', () => {
 wsClient.addEventListener('disconnected', () => {
   updateConnectionStatus('disconnected');
   sidebar.clearStreaming();
+
+  // Deferred session switch requires agent_end to complete, which won't fire
+  // after a crash/disconnect. Unblock input immediately so the user isn't stuck.
+  if (pendingSessionSwitchPath) {
+    pendingSessionSwitchPath = null;
+    updateUI();
+  }
+
+  // If the streaming state is still true 3 s after disconnect (pi likely
+  // crashed — agent_end won't re-fire after reconnect), unlock the UI.
+  // Brief intentional reconnects (Case 1 session switch) complete in < 100 ms
+  // so they are unaffected by the 3-second gate.
+  setTimeout(() => {
+    if (wsClient.connectionState !== 'open' && state.isStreaming) {
+      state.setStreaming(false);
+      showTypingIndicator(false);
+      updateUI();
+    }
+  }, 3000);
 });
 
 wsClient.addEventListener('reconnectFailed', () => {
