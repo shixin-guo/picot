@@ -61,6 +61,101 @@ pub fn locked_pi_version() -> &'static str {
     })
 }
 
+/// Return a path to the embedded-server extension that is safe to pass as a
+/// `--extension` argument to the embedded pi binary.
+///
+/// On Windows the Bun-compiled pi binary truncates `--extension` values at the
+/// first space (e.g. `C:\...\Pi Studio\...\embedded-server.mjs` is loaded as
+/// `C:\...\Pi`), which then fails to load and segfaults the process. Since Pi
+/// Studio always installs under a space-containing path, we mirror the
+/// extension file into a space-free directory under the system temp dir and
+/// return that path instead. The copy is idempotent (skipped when an existing
+/// mirror already matches by length + mtime), so repeated spawns are cheap.
+///
+/// On non-Windows platforms, or when the path has no space, the original path
+/// is returned unchanged.
+#[cfg(not(target_os = "windows"))]
+fn sanitize_extension_path_for_pi(original: &str) -> String {
+    original.to_string()
+}
+
+#[cfg(target_os = "windows")]
+fn sanitize_extension_path_for_pi(original: &str) -> String {
+    if !original.contains(' ') {
+        return original.to_string();
+    }
+
+    match mirror_to_space_free_dir(Path::new(original)) {
+        Ok(mirrored) => {
+            log::info!(
+                "[pi-desktop] extension path contains spaces; mirrored to space-free path: {} -> {}",
+                original,
+                mirrored.display()
+            );
+            mirrored.to_string_lossy().to_string()
+        }
+        Err(e) => {
+            // Non-fatal: fall back to the original path. Worst case is the
+            // pre-existing crash, but we don't want the mirroring step itself
+            // to be a new hard failure mode.
+            log::warn!(
+                "[pi-desktop] failed to mirror extension to space-free path ({}); using original: {}",
+                e,
+                original
+            );
+            original.to_string()
+        }
+    }
+}
+
+/// Copy `src` into `<temp>/pi-studio-ext/<filename>` (a space-free directory),
+/// skipping the copy when an up-to-date mirror already exists. Returns the
+/// mirrored path.
+#[cfg(target_os = "windows")]
+fn mirror_to_space_free_dir(src: &Path) -> std::io::Result<PathBuf> {
+    let file_name = src.file_name().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "extension path has no file name",
+        )
+    })?;
+
+    let mut dest_dir = std::env::temp_dir();
+    // Guard: if the temp dir itself contains a space, fall back to a
+    // well-known space-free root so the workaround actually helps.
+    if dest_dir.to_string_lossy().contains(' ') {
+        dest_dir = PathBuf::from("C:\\ProgramData\\pi-studio");
+    }
+    dest_dir.push("pi-studio-ext");
+    std::fs::create_dir_all(&dest_dir)?;
+
+    let dest = dest_dir.join(file_name);
+
+    if mirror_is_up_to_date(src, &dest) {
+        return Ok(dest);
+    }
+
+    std::fs::copy(src, &dest)?;
+    Ok(dest)
+}
+
+/// Cheap freshness check: the mirror is considered current when it exists and
+/// matches the source by byte length and modified time. This avoids re-copying
+/// the extension on every spawn while still picking up updated builds.
+#[cfg(target_os = "windows")]
+fn mirror_is_up_to_date(src: &Path, dest: &Path) -> bool {
+    let (Ok(src_meta), Ok(dest_meta)) = (std::fs::metadata(src), std::fs::metadata(dest)) else {
+        return false;
+    };
+    if src_meta.len() != dest_meta.len() {
+        return false;
+    }
+    match (src_meta.modified(), dest_meta.modified()) {
+        (Ok(src_mtime), Ok(dest_mtime)) => dest_mtime >= src_mtime,
+        _ => false,
+    }
+}
+
 impl PiManager {
     pub fn new(static_dir: PathBuf) -> Self {
         Self {
@@ -233,12 +328,25 @@ impl PiManager {
         let extension = self.resolve_embedded_extension_path()?;
         log::info!(
             "[pi-desktop] embedded-server resolved: source={} path={}",
-            extension.source, extension.path
+            extension.source,
+            extension.path
         );
+
+        // The embedded pi (Bun-compiled standalone) mis-parses `--extension`
+        // paths that contain spaces on Windows: it truncates at the first
+        // space, so `...\Pi Studio\extensions\embedded-server.mjs` is loaded
+        // as `...\Pi`, which then fails to load and crashes the process
+        // (segfault) during extension-load error handling. The primary fix is
+        // the space-free `productName` ("PiStudio") so the install dir has no
+        // space; this mirroring remains as a defensive fallback for paths that
+        // can still contain spaces out of our control (e.g. a Windows username
+        // like `C:\Users\Shi Xin\...`). Work around it by mirroring the
+        // extension into a space-free directory and passing that path instead.
+        let extension_path = sanitize_extension_path_for_pi(&extension.path);
 
         let mut args: Vec<String> = vec![
             "--extension".to_string(),
-            extension.path,
+            extension_path,
             "--mode".to_string(),
             "rpc".to_string(),
         ];
@@ -375,8 +483,7 @@ impl PiManager {
             self.kill(*port);
         }
         if !dedicated_ports.is_empty() {
-            let port_set: std::collections::HashSet<u16> =
-                dedicated_ports.into_iter().collect();
+            let port_set: std::collections::HashSet<u16> = dedicated_ports.into_iter().collect();
             let mut sp = self.session_ports.lock().unwrap();
             sp.retain(|_, v| !port_set.contains(v));
         }

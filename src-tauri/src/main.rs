@@ -109,7 +109,8 @@ async fn cmd_open_workspace(
             ),
             Err(err) => log::warn!(
                 "[pi-desktop] open_workspace sessions warmup skipped: port={} error={}",
-                port, err
+                port,
+                err
             ),
         }
     }

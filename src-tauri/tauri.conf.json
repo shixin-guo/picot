@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Pi Studio",
+  "productName": "PiStudio",
   "identifier": "works.earendil.pi-studio",
   "version": "0.1.25-1",
   "build": {
