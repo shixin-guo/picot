@@ -31,6 +31,7 @@
 
 import type { ExtensionAPI, ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { WebSocketServer, WebSocket } from "ws";
+import * as os from "node:os";
 import * as http from "node:http";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -53,10 +54,53 @@ const HAS_BUN_SERVE = typeof (globalThis as any).Bun !== "undefined"
 
 // Pi Studio settings live under `pistudio` key in ~/.pi/agent/settings.json.
 // We only honor the fields that still make sense in desktop-only mode.
+function buildHomeDirCandidates(): string[] {
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const add = (value?: string) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    const normalized = path.resolve(trimmed);
+    if (seen.has(normalized)) return;
+    seen.add(normalized);
+    candidates.push(normalized);
+  };
+
+  add(process.env.HOME);
+  add(process.env.USERPROFILE);
+  if (process.env.HOMEDRIVE && process.env.HOMEPATH) {
+    add(`${process.env.HOMEDRIVE}${process.env.HOMEPATH}`);
+  }
+  add(os.homedir());
+
+  return candidates;
+}
+
+function resolvePiAgentRoot(): string {
+  // Prefer whichever home candidate already has .pi/agent on disk.
+  for (const home of buildHomeDirCandidates()) {
+    const candidate = path.join(home, ".pi", "agent");
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  // Fallback for some Windows setups where app data is relocated.
+  const appData = process.env.APPDATA;
+  if (typeof appData === "string" && appData.trim()) {
+    const roamingCandidate = path.join(path.resolve(appData), "pi", "agent");
+    if (fs.existsSync(roamingCandidate)) return roamingCandidate;
+  }
+
+  const home = buildHomeDirCandidates()[0] || "~";
+  return path.join(home, ".pi", "agent");
+}
+
+const PI_AGENT_ROOT = resolvePiAgentRoot();
+
 function loadSettings(): { port: number } {
   let settings: any = {};
   try {
-    const settingsPath = path.join(process.env.HOME || "~", ".pi/agent/settings.json");
+    const settingsPath = path.join(PI_AGENT_ROOT, "settings.json");
     settings = JSON.parse(fs.readFileSync(settingsPath, "utf8")).pistudio || {};
   } catch {}
   return {
@@ -96,8 +140,8 @@ function findPublicDir(): string {
 
     return path.resolve(process.cwd(), "public");
 }
-const SESSIONS_DIR = path.join(process.env.HOME || "~", ".pi/agent/sessions");
-const INSTANCES_DIR = path.join(process.env.HOME || "~", ".pi/pistudio-instances");
+const SESSIONS_DIR = path.join(PI_AGENT_ROOT, "sessions");
+const INSTANCES_DIR = path.join(path.dirname(PI_AGENT_ROOT), "pistudio-instances");
 
 // Minimal single-process instance registry. We keep this so the frontend's
 // `/api/instances` response reflects the running workspace without needing
@@ -1277,7 +1321,7 @@ export default function (pi: ExtensionAPI) {
     // Agent config read/write
     if (urlPath === "/api/agent-config" && req.method === "GET") {
       try {
-        const configPath = path.join(process.env.HOME || "~", ".pi", "agent", "settings.json");
+        const configPath = path.join(PI_AGENT_ROOT, "settings.json");
         const content = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "{}";
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true, content, path: configPath }));
@@ -1301,7 +1345,7 @@ export default function (pi: ExtensionAPI) {
           }
           // Validate JSON before saving
           JSON.parse(content);
-          const configPath = path.join(process.env.HOME || "~", ".pi", "agent", "settings.json");
+          const configPath = path.join(PI_AGENT_ROOT, "settings.json");
           fs.mkdirSync(path.dirname(configPath), { recursive: true });
           fs.writeFileSync(configPath, content, "utf8");
           res.writeHead(200, { "Content-Type": "application/json" });
@@ -1328,7 +1372,7 @@ export default function (pi: ExtensionAPI) {
     // pi behaviour where /model rereads models.json on each invocation.
     if (urlPath === "/api/models-config" && req.method === "GET") {
       try {
-        const configPath = path.join(process.env.HOME || "~", ".pi", "agent", "models.json");
+        const configPath = path.join(PI_AGENT_ROOT, "models.json");
         const content = fs.existsSync(configPath)
           ? fs.readFileSync(configPath, "utf8")
           : '{\n  "providers": {}\n}\n';
@@ -1368,7 +1412,7 @@ export default function (pi: ExtensionAPI) {
             res.end(JSON.stringify({ success: false, error: "models.json must be a JSON object" }));
             return;
           }
-          const configPath = path.join(process.env.HOME || "~", ".pi", "agent", "models.json");
+          const configPath = path.join(PI_AGENT_ROOT, "models.json");
           fs.mkdirSync(path.dirname(configPath), { recursive: true });
           fs.writeFileSync(configPath, content, "utf8");
           // Reload pi's in-memory model registry so the picker sees the new
@@ -1437,6 +1481,28 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
+  // Bounded async map to avoid EMFILE when users have many session files.
+  async function mapWithConcurrencyLimit<T, R>(
+    items: T[],
+    limit: number,
+    mapper: (item: T) => Promise<R>,
+  ): Promise<R[]> {
+    if (items.length === 0) return [];
+    const results: R[] = new Array(items.length);
+    let nextIndex = 0;
+    const workerCount = Math.max(1, Math.min(limit, items.length));
+
+    await Promise.all(Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const current = nextIndex++;
+        if (current >= items.length) return;
+        results[current] = await mapper(items[current]);
+      }
+    }));
+
+    return results;
+  }
+
   async function serveSessionsList(res: http.ServerResponse) {
     try {
       if (!fs.existsSync(SESSIONS_DIR)) {
@@ -1457,7 +1523,13 @@ export default function (pi: ExtensionAPI) {
       for (const dir of dirEntries) {
         if (!dir.isDirectory()) continue;
         const projectDir = path.join(SESSIONS_DIR, dir.name);
-        const files = fs.readdirSync(projectDir).filter(f => f.endsWith(".jsonl"));
+        let files: string[] = [];
+        try {
+          files = fs.readdirSync(projectDir).filter(f => f.endsWith(".jsonl"));
+        } catch {
+          // Ignore inaccessible/removed project directories while listing.
+          continue;
+        }
         const decodedPath = dir.name.replace(/^--/, "/").replace(/--$/, "").replace(/-/g, "/");
         for (const f of files) liveFiles.add(path.join(projectDir, f));
         projectWork.push({ dirName: dir.name, projectDir, files, decodedPath });
@@ -1465,9 +1537,15 @@ export default function (pi: ExtensionAPI) {
 
       pruneSessionCaches(liveFiles);
 
-      const projects = (await Promise.all(projectWork.map(async ({ dirName, projectDir, files, decodedPath }) => {
+      const projects = (await mapWithConcurrencyLimit(
+        projectWork,
+        8,
+        async ({ dirName, projectDir, files, decodedPath }) => {
         const sessions: any[] = [];
-        const results = await Promise.all(files.map(async (file) => {
+        const results = await mapWithConcurrencyLimit(
+          files,
+          24,
+          async (file) => {
           const filePath = path.join(projectDir, file);
           try {
             const result = await parseSessionFileCached(filePath, readline);
@@ -1476,7 +1554,8 @@ export default function (pi: ExtensionAPI) {
           } catch {
             return null;
           }
-        }));
+          },
+        );
         for (const r of results) {
           if (r) sessions.push(r);
         }
@@ -1495,8 +1574,9 @@ export default function (pi: ExtensionAPI) {
         const inferredPath = Array.from(cwdCounts.entries())
           .sort((a, b) => b[1] - a[1])[0]?.[0] || decodedPath;
 
-        return { path: inferredPath, dirName, sessions };
-      }))).filter((p): p is { path: string; dirName: string; sessions: any[] } => p !== null);
+          return { path: inferredPath, dirName, sessions };
+        },
+      )).filter((p): p is { path: string; dirName: string; sessions: any[] } => p !== null);
 
       projects.sort((a, b) => {
         const aTime = a.sessions[0]?.mtime || 0;

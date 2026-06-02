@@ -1,9 +1,14 @@
 use std::collections::HashMap;
 use std::io::Write;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 struct PiProcess {
     child: Child,
@@ -60,6 +65,16 @@ pub fn locked_pi_version() -> &'static str {
         rest[..end_quote].to_string()
     })
 }
+
+#[cfg(target_os = "windows")]
+fn configure_child_process_for_windows(command: &mut Command) {
+    // Prevent child `pi.exe` processes from creating a visible console window
+    // when Pi Studio runs as a GUI app on Windows.
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_child_process_for_windows(_command: &mut Command) {}
 
 /// Strip a Windows verbatim / extended-length path prefix (`\\?\` or
 /// `\\?\UNC\`) from a path string.
@@ -396,6 +411,7 @@ impl PiManager {
         );
 
         let mut child = Command::new(&pi_bin_str);
+        configure_child_process_for_windows(&mut child);
         child
             .args(&args)
             .current_dir(&cwd)
