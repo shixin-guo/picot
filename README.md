@@ -53,10 +53,11 @@ Pi Studio does not re-implement agent logic. It embeds Pi and exposes Pi's runti
 - **Operate fully from desktop GUI** (open folder, new session, switch session, stop instance) without terminal commands
 
 ## Install
-
-Download the latest release for macOS from the [releases page](https://github.com/deflating/pi-studio/releases).
+[download from github](https://github.com/shixin-guo/pi-studio/releases)
 
 You **do not** need to install the `pi` CLI separately — Pi Studio bundles its own pi runtime. If you happen to have a different `pi` installed in your shell, the two never interact: Pi Studio's embedded pi reads sessions and credentials from `~/.pi/agent/` but is otherwise isolated.
+
+
 
 ### macOS unsigned release notice
 
