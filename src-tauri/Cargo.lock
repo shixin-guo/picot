@@ -2665,7 +2665,7 @@ dependencies = [
 
 [[package]]
 name = "pi-studio"
-version = "0.1.26-1"
+version = "0.1.26-2"
 dependencies = [
  "dirs 5.0.1",
  "futures-util",
