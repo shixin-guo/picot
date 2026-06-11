@@ -133,6 +133,14 @@
 
     pickFolder: () => invoke("cmd_pick_folder"),
 
+    // External "open in app" support (VS Code / Cursor / Terminal / Ghostty /
+    // Finder). `listInstalledApps` is resolved natively (scans /Applications on
+    // macOS); `openInApp` launches the given target for a project path.
+    listInstalledApps: () => invoke("cmd_list_installed_apps"),
+
+    openInApp: (path, { appName = null, command = null } = {}) =>
+      invoke("cmd_open_in_app", { path, appName, command }),
+
     // `forceNewSession` defaults to `false`: a freshly-spawned pi already boots
     // into a brand-new session, so the extra `new_session` RPC was redundant
     // and caused a second extension reload (see workspace-actions.js for the

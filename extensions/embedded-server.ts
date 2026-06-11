@@ -1198,6 +1198,33 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
+    // Current git branch for the active workspace
+    if (urlPath === "/api/git-branch" && req.method === "GET") {
+      let cwd = process.cwd();
+      if (latestCtx) {
+        try {
+          const entries = latestCtx.sessionManager.getEntries();
+          const sessionEntry = entries.find((e: any) => e.type === "session");
+          if (sessionEntry?.cwd) cwd = sessionEntry.cwd;
+        } catch {}
+      }
+      execFile(
+        "git",
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        { cwd },
+        (err, stdout) => {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          if (err) {
+            res.end(JSON.stringify({ branch: null }));
+            return;
+          }
+          const branch = stdout.toString().trim();
+          res.end(JSON.stringify({ branch: branch || null }));
+        },
+      );
+      return;
+    }
+
     // Full-text search across sessions
     if (urlPath.startsWith("/api/search") && req.method === "GET") {
       const searchUrl = new URL(`http://localhost${req.url}`);

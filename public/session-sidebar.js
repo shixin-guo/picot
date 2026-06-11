@@ -19,7 +19,9 @@ export class SessionSidebar {
     this.contextMenu = null;
 
     // Close context menu on click anywhere
-    document.addEventListener("click", () => this.closeContextMenu());
+    document.addEventListener("click", () => {
+      this.closeContextMenu();
+    });
     document.addEventListener("contextmenu", (e) => {
       // Close if right-clicking outside a session item
       if (!e.target.closest(".session-item")) this.closeContextMenu();

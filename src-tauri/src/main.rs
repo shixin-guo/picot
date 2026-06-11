@@ -197,6 +197,200 @@ async fn cmd_pick_folder(app: AppHandle) -> Option<String> {
     rx.await.ok().flatten()
 }
 
+/// A launchable external app target (editor / terminal / file manager).
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct AppTarget {
+    id: String,
+    label: String,
+    /// "app" → launched via `open -a <app_name>` (macOS)
+    /// "command" → launched via the `command` binary (cross-platform CLI)
+    /// "finder" → reveal in the OS file manager
+    kind: String,
+    app_name: Option<String>,
+    command: Option<String>,
+}
+
+#[cfg(target_os = "macos")]
+fn macos_installed_app_names() -> std::collections::HashSet<String> {
+    use std::collections::HashSet;
+    let mut roots = vec![
+        PathBuf::from("/Applications"),
+        PathBuf::from("/System/Applications"),
+        PathBuf::from("/Applications/Utilities"),
+        PathBuf::from("/System/Applications/Utilities"),
+    ];
+    if let Some(home) = dirs::home_dir() {
+        roots.push(home.join("Applications"));
+    }
+    let mut names = HashSet::new();
+    for root in roots {
+        let Ok(entries) = fs::read_dir(&root) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            if path.extension().and_then(|ext| ext.to_str()) != Some("app") {
+                continue;
+            }
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                names.insert(stem.to_ascii_lowercase());
+            }
+        }
+    }
+    names
+}
+
+/// List the external apps Pi Studio can open a project in. On macOS this is
+/// filtered down to the apps actually installed; on other platforms it falls
+/// back to a fixed list of CLI launchers (resolved against PATH at open time).
+#[tauri::command]
+fn cmd_list_installed_apps() -> Vec<AppTarget> {
+    // (id, label, [candidate .app bundle names], cli command)
+    let candidates: [(&str, &str, &[&str], &str); 5] = [
+        ("vscode", "VS Code", &["Visual Studio Code", "Code"], "code"),
+        ("cursor", "Cursor", &["Cursor"], "cursor"),
+        ("zed", "Zed", &["Zed"], "zed"),
+        ("terminal", "Terminal", &["Terminal", "iTerm", "Warp"], ""),
+        ("ghostty", "Ghostty", &["Ghostty"], ""),
+    ];
+
+    #[cfg(target_os = "macos")]
+    {
+        let installed = macos_installed_app_names();
+        let mut targets = Vec::new();
+        for (id, label, bundle_names, _cmd) in candidates {
+            if let Some(app_name) = bundle_names
+                .iter()
+                .find(|name| installed.contains(&name.to_ascii_lowercase()))
+            {
+                targets.push(AppTarget {
+                    id: id.to_string(),
+                    label: label.to_string(),
+                    kind: "app".to_string(),
+                    app_name: Some((*app_name).to_string()),
+                    command: None,
+                });
+            }
+        }
+        targets.push(AppTarget {
+            id: "finder".to_string(),
+            label: "Finder".to_string(),
+            kind: "finder".to_string(),
+            app_name: None,
+            command: None,
+        });
+        targets
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let mut targets: Vec<AppTarget> = candidates
+            .iter()
+            .filter(|(_, _, _, cmd)| !cmd.is_empty())
+            .map(|(id, label, _, cmd)| AppTarget {
+                id: id.to_string(),
+                label: label.to_string(),
+                kind: "command".to_string(),
+                app_name: None,
+                command: Some(cmd.to_string()),
+            })
+            .collect();
+        targets.push(AppTarget {
+            id: "finder".to_string(),
+            label: "File Manager".to_string(),
+            kind: "finder".to_string(),
+            app_name: None,
+            command: None,
+        });
+        targets
+    }
+}
+
+/// Open a project directory in an external app (editor / terminal / file
+/// manager). Mirrors the launch strategy used elsewhere in the workspace:
+///   - `app_name` → `open -a <app_name> <path>` on macOS
+///   - `command`  → run the CLI binary with the path as the argument
+///   - neither    → reveal the path in the OS file manager
+#[tauri::command]
+fn cmd_open_in_app(
+    path: String,
+    app_name: Option<String>,
+    command: Option<String>,
+) -> Result<(), String> {
+    use std::process::Command;
+
+    let trimmed_path = path.trim();
+    if trimmed_path.is_empty() {
+        return Err("Missing path".to_string());
+    }
+
+    // CLI command launch (cross-platform): `code <path>`, `cursor <path>`, …
+    if let Some(command) = command.as_ref().map(|c| c.trim()).filter(|c| !c.is_empty()) {
+        let status = Command::new(command)
+            .arg(trimmed_path)
+            .status()
+            .map_err(|e| format!("Failed to launch `{command}`: {e}"))?;
+        if !status.success() {
+            return Err(format!("`{command}` exited with status {status}"));
+        }
+        return Ok(());
+    }
+
+    // App launch by bundle name (macOS only).
+    if let Some(app_name) = app_name
+        .as_ref()
+        .map(|a| a.trim())
+        .filter(|a| !a.is_empty())
+    {
+        #[cfg(target_os = "macos")]
+        {
+            let status = Command::new("open")
+                .arg("-a")
+                .arg(app_name)
+                .arg(trimmed_path)
+                .status()
+                .map_err(|e| format!("Failed to open `{app_name}`: {e}"))?;
+            if !status.success() {
+                return Err(format!("`{app_name}` failed to open (status {status})"));
+            }
+            return Ok(());
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let status = Command::new(app_name)
+                .arg(trimmed_path)
+                .status()
+                .map_err(|e| format!("Failed to open `{app_name}`: {e}"))?;
+            if !status.success() {
+                return Err(format!("`{app_name}` failed to open (status {status})"));
+            }
+            return Ok(());
+        }
+    }
+
+    // Fallback: reveal in the OS file manager.
+    #[cfg(target_os = "macos")]
+    let status = Command::new("open").arg(trimmed_path).status();
+    #[cfg(target_os = "windows")]
+    let status = Command::new("explorer").arg(trimmed_path).status();
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    let status = Command::new("xdg-open").arg(trimmed_path).status();
+
+    status
+        .map_err(|e| format!("Failed to reveal path: {e}"))
+        .and_then(|s| {
+            if s.success() {
+                Ok(())
+            } else {
+                Err(format!("File manager exited with status {s}"))
+            }
+        })
+}
+
 /// Returns the locked pi version embedded in this Pi Studio build
 /// (read from `scripts/pi-version.json` at compile time).
 #[tauri::command]
@@ -650,6 +844,8 @@ fn main() {
             cmd_open_workspace,
             cmd_stop_instance,
             cmd_pick_folder,
+            cmd_list_installed_apps,
+            cmd_open_in_app,
             cmd_get_pi_version,
             cmd_get_app_version,
             cmd_is_dev,

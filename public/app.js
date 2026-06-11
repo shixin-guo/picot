@@ -233,21 +233,58 @@ document
   .querySelector(".header-right")
   ?.insertBefore(workspaceIndicatorEl, document.querySelector(".status"));
 
+const gitBranchEl = document.createElement("div");
+gitBranchEl.id = "git-branch-indicator";
+gitBranchEl.className = "pill git-branch-indicator hidden";
+gitBranchEl.title = "Current git branch";
+document
+  .querySelector(".header-right")
+  ?.insertBefore(gitBranchEl, document.querySelector(".status"));
+
+function updateGitBranchIndicator(branch = "") {
+  const name = typeof branch === "string" ? branch.trim() : "";
+  if (!name) {
+    gitBranchEl.classList.add("hidden");
+    gitBranchEl.textContent = "";
+    return;
+  }
+  gitBranchEl.classList.remove("hidden");
+  gitBranchEl.textContent = name;
+  gitBranchEl.title = `Branch: ${name}`;
+}
+
+async function refreshGitBranch() {
+  try {
+    const res = await fetch("/api/git-branch");
+    if (!res.ok) {
+      updateGitBranchIndicator("");
+      return;
+    }
+    const data = await res.json();
+    updateGitBranchIndicator(data?.branch || "");
+  } catch {
+    updateGitBranchIndicator("");
+  }
+}
+
 function updateWorkspaceIndicator(path = "") {
   const normalizedPath = typeof path === "string" ? path.trim() : "";
   if (!normalizedPath) {
     workspaceIndicatorEl.classList.add("hidden");
     workspaceIndicatorEl.textContent = "";
     workspaceIndicatorEl.title = "";
+    if (typeof refreshHeaderOpenAppButton === "function") refreshHeaderOpenAppButton();
     return;
   }
   workspaceIndicatorEl.classList.remove("hidden");
   workspaceIndicatorEl.textContent = normalizedPath;
   workspaceIndicatorEl.title = normalizedPath;
+  if (typeof refreshHeaderOpenAppButton === "function") refreshHeaderOpenAppButton();
 }
 
 function syncWorkspaceIndicatorFromInstances() {
   updateWorkspaceIndicator(getWorkspacePathForPort(liveInstances, foregroundPort));
+  refreshGitBranch();
 }
 
 function getCurrentWorkspacePath() {
@@ -325,6 +362,119 @@ document.getElementById("file-sidebar-finder").addEventListener("click", () => {
     });
   }
 });
+
+// ═══════════════════════════════════════
+// "Open workspace in app" header control (VS Code / Cursor / Terminal / …)
+// Mirrors the Codex-style split button in the chat header.
+// ═══════════════════════════════════════
+const HEADER_OPEN_APP_STORAGE_KEY = "pi-studio-open-app";
+const headerOpenApp = {
+  el: document.getElementById("header-open-app"),
+  btn: document.getElementById("header-open-app-btn"),
+  label: document.getElementById("header-open-app-label"),
+  toggle: document.getElementById("header-open-app-toggle"),
+  menu: document.getElementById("header-open-app-menu"),
+  apps: [],
+  selectedId: localStorage.getItem(HEADER_OPEN_APP_STORAGE_KEY) || null,
+};
+
+function getSelectedOpenApp() {
+  return (
+    headerOpenApp.apps.find((a) => a.id === headerOpenApp.selectedId) ||
+    headerOpenApp.apps[0] ||
+    null
+  );
+}
+
+function refreshHeaderOpenAppButton() {
+  if (!headerOpenApp.el) return;
+  const hasNative = !!(window.tauriNative && typeof window.tauriNative.openInApp === "function");
+  const path = getCurrentWorkspacePath();
+  const selected = getSelectedOpenApp();
+  if (!hasNative || !selected || !path || headerOpenApp.apps.length === 0) {
+    headerOpenApp.el.classList.add("hidden");
+    return;
+  }
+  headerOpenApp.el.classList.remove("hidden");
+  if (headerOpenApp.label) headerOpenApp.label.textContent = selected.label;
+  headerOpenApp.btn.title = `Open ${path} in ${selected.label}`;
+  headerOpenApp.btn.setAttribute("aria-label", `Open workspace in ${selected.label}`);
+}
+
+async function openWorkspaceInApp(app) {
+  const tauri = window.tauriNative;
+  const target = app || getSelectedOpenApp();
+  const path = getCurrentWorkspacePath();
+  if (!tauri || !target || !path) return;
+  headerOpenApp.selectedId = target.id;
+  localStorage.setItem(HEADER_OPEN_APP_STORAGE_KEY, target.id);
+  refreshHeaderOpenAppButton();
+  try {
+    await tauri.openInApp(path, {
+      appName: target.appName ?? null,
+      command: target.command ?? null,
+    });
+  } catch (err) {
+    console.error("[Header] Failed to open workspace in app:", err);
+  }
+}
+
+function closeHeaderOpenAppMenu() {
+  if (headerOpenApp.menu) headerOpenApp.menu.classList.add("hidden");
+}
+
+function toggleHeaderOpenAppMenu() {
+  if (!headerOpenApp.menu) return;
+  if (!headerOpenApp.menu.classList.contains("hidden")) {
+    closeHeaderOpenAppMenu();
+    return;
+  }
+  headerOpenApp.menu.innerHTML = "";
+  for (const app of headerOpenApp.apps) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "header-open-app-menu-item";
+    if (app.id === headerOpenApp.selectedId) row.classList.add("active");
+    row.textContent = `Open in ${app.label}`;
+    row.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      closeHeaderOpenAppMenu();
+      void openWorkspaceInApp(app);
+    });
+    headerOpenApp.menu.appendChild(row);
+  }
+  headerOpenApp.menu.classList.remove("hidden");
+}
+
+async function loadHeaderOpenApps() {
+  const tauri = window.tauriNative;
+  if (!tauri || typeof tauri.listInstalledApps !== "function") return;
+  try {
+    const apps = await tauri.listInstalledApps();
+    headerOpenApp.apps = Array.isArray(apps) ? apps : [];
+    if (!headerOpenApp.apps.some((a) => a.id === headerOpenApp.selectedId)) {
+      headerOpenApp.selectedId = headerOpenApp.apps[0]?.id || null;
+    }
+    refreshHeaderOpenAppButton();
+  } catch (err) {
+    console.error("[Header] Failed to load installed apps:", err);
+  }
+}
+
+if (headerOpenApp.btn) {
+  headerOpenApp.btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void openWorkspaceInApp();
+  });
+}
+if (headerOpenApp.toggle) {
+  headerOpenApp.toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleHeaderOpenAppMenu();
+  });
+}
+document.addEventListener("click", () => closeHeaderOpenAppMenu());
+void loadHeaderOpenApps();
 
 // Restore file sidebar state
 if (localStorage.getItem("pi-studio-file-sidebar") === "open") {

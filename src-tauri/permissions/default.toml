@@ -29,6 +29,16 @@ description = "Allow spawning a dedicated pi process for a session"
 commands.allow = ["cmd_spawn_session_process"]
 
 [[permission]]
+identifier = "allow-cmd-list-installed-apps"
+description = "Allow listing external apps (editors/terminals) a project can be opened in"
+commands.allow = ["cmd_list_installed_apps"]
+
+[[permission]]
+identifier = "allow-cmd-open-in-app"
+description = "Allow opening a project directory in an external app (editor/terminal/file manager)"
+commands.allow = ["cmd_open_in_app"]
+
+[[permission]]
 identifier = "allow-cmd-get-pi-version"
 description = "Allow reading installed pi CLI version"
 commands.allow = ["cmd_get_pi_version"]
@@ -79,6 +89,8 @@ permissions = [
   "allow-cmd-switch-session",
   "allow-cmd-stop-instance",
   "allow-cmd-spawn-session-process",
+  "allow-cmd-list-installed-apps",
+  "allow-cmd-open-in-app",
   "allow-cmd-get-pi-version",
   "allow-cmd-get-app-version",
   "allow-cmd-is-dev",

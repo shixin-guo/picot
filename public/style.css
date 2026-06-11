@@ -433,6 +433,7 @@ body {
   color: var(--bg);
 }
 
+/* Open project in external app (VS Code / Cursor / Terminal / …) */
 .archived-delete-all-btn {
   display: none;
   background: none;
@@ -937,6 +938,102 @@ body {
   -webkit-app-region: no-drag;
 }
 
+.header-open-app {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-md);
+  -webkit-app-region: no-drag;
+}
+
+.header-open-app-btn {
+  border-top-left-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+}
+
+.header-open-app-toggle {
+  border-top-right-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+}
+
+.header-open-app.hidden {
+  display: none;
+}
+
+.header-open-app-btn,
+.header-open-app-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  transition: all var(--duration) var(--ease);
+}
+
+.header-open-app-toggle {
+  padding: 4px 5px;
+  border-left: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+}
+
+.header-open-app-btn:hover,
+.header-open-app-toggle:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.header-open-app-label {
+  white-space: nowrap;
+}
+
+.header-open-app-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 1000;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--bg-elevated, var(--bg));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.header-open-app-menu.hidden {
+  display: none;
+}
+
+.header-open-app-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration) var(--ease);
+}
+
+.header-open-app-menu-item:hover,
+.header-open-app-menu-item.active {
+  background: var(--accent);
+  color: var(--bg);
+}
+
 .sidebar-toggle,
 .settings-btn {
   background: none;
@@ -1005,6 +1102,34 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--header-pill-text, var(--text-dim));
+}
+
+.git-branch-indicator {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--header-pill-text, var(--text-dim));
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.git-branch-indicator::before {
+  content: "";
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  background-color: currentColor;
+  -webkit-mask:
+    no-repeat center / contain
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='6' y1='3' x2='6' y2='15'/%3E%3Ccircle cx='18' cy='6' r='3'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Cpath d='M18 9a9 9 0 0 1-9 9'/%3E%3C/svg%3E");
+  mask:
+    no-repeat center / contain
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='6' y1='3' x2='6' y2='15'/%3E%3Ccircle cx='18' cy='6' r='3'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Cpath d='M18 9a9 9 0 0 1-9 9'/%3E%3C/svg%3E");
+}
+
+.git-branch-indicator.hidden {
+  display: none;
 }
 
 .token-usage:hover {
