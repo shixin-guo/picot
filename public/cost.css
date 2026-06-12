@@ -1,7 +1,11 @@
 html,
 body {
-  height: auto;
-  overflow: auto !important;
+  height: 100%;
+  min-height: 100%;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 body {
@@ -192,6 +196,7 @@ body {
 
 .cost-page-infobar {
   min-height: 100vh;
+  overflow-x: hidden;
   padding: 0 0 48px;
 }
 
