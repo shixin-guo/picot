@@ -1,4 +1,4 @@
-name: Check pi-mono updates
+name: Check pi updates
 
 on:
   schedule:
@@ -17,23 +17,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Get latest pi-mono release
+      - name: Get latest pi release
         id: latest
         run: |
-          RESPONSE=$(curl -s \
+          RESPONSE=$(curl -sSL \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/earendil-works/pi-mono/releases/latest)
+            https://api.github.com/repos/earendil-works/pi/releases/latest)
 
           LATEST=$(echo "$RESPONSE" | jq -r '.tag_name // empty' | sed 's/^v//')
 
           if [ -z "$LATEST" ]; then
-            echo "::error::Failed to fetch latest pi-mono release. Response: $RESPONSE"
+            echo "::error::Failed to fetch latest pi release. Response: $RESPONSE"
             exit 1
           fi
 
           echo "version=$LATEST" >> $GITHUB_OUTPUT
-          echo "Fetched latest pi-mono version: $LATEST"
+          echo "Fetched latest pi version: $LATEST"
 
       - name: Get current pinned version
         id: current
@@ -92,7 +92,7 @@ jobs:
           echo "Updated scripts/pi-version.json to v$NEW"
           cat scripts/pi-version.json
 
-      - name: Get pi-mono release notes
+      - name: Get pi release notes
         id: release_notes
         if: |
           steps.compare.outputs.needs_update == 'true' &&
@@ -100,10 +100,10 @@ jobs:
         run: |
           NEW="${{ steps.latest.outputs.version }}"
 
-          NOTES=$(curl -s \
+          NOTES=$(curl -sSL \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/earendil-works/pi-mono/releases/tags/v${NEW}" \
+            "https://api.github.com/repos/earendil-works/pi/releases/tags/v${NEW}" \
             | jq -r '.body // "No release notes available."')
 
           # GitHub Actions 多行输出需要用 delimiter
@@ -134,7 +134,7 @@ jobs:
             --title "chore: bump embedded pi v${CURRENT} → v${NEW}" \
             --body "## Embedded pi update
 
-          pi-mono released [v${NEW}](https://github.com/earendil-works/pi-mono/releases/tag/v${NEW}).
+          pi released [v${NEW}](https://github.com/earendil-works/pi/releases/tag/v${NEW}).
 
           | | Version |
           |---|---|
@@ -151,7 +151,7 @@ jobs:
           - [ ] If breaking changes in release notes, update embedded-server or frontend accordingly
 
           ---
-          *This PR was opened automatically by the [check pi-mono updates](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) workflow.*" \
+          *This PR was opened automatically by the [check pi updates](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) workflow.*" \
             --label "dependencies"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
