@@ -1072,7 +1072,7 @@ messageInput.addEventListener("keydown", (e) => {
 // Auto-resize textarea
 messageInput.addEventListener("input", () => {
   messageInput.style.height = "auto";
-  messageInput.style.height = `${Math.min(messageInput.scrollHeight, 200)}px`;
+  messageInput.style.height = `${Math.min(messageInput.scrollHeight, 160)}px`;
 });
 
 // ═══════════════════════════════════════
@@ -1152,11 +1152,12 @@ imageInput.addEventListener("change", () => {
   imageInput.value = "";
 });
 
-// Drag & drop on input
-messageInput.addEventListener("dragover", (e) => {
+// Drag & drop anywhere on the composer card
+const composerCard = document.getElementById("composer-card");
+composerCard.addEventListener("dragover", (e) => {
   e.preventDefault();
 });
-messageInput.addEventListener("drop", (e) => {
+composerCard.addEventListener("drop", (e) => {
   e.preventDefault();
   addImageFiles(e.dataTransfer.files);
 });
@@ -2632,6 +2633,8 @@ function updateConnectionStatus(status) {
 
 function updateUI() {
   const isStreaming = state.isStreaming;
+
+  composerCard.classList.toggle("streaming", isStreaming);
 
   if (isStreaming) {
     statusIndicator.classList.add("streaming");

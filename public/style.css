@@ -572,7 +572,7 @@ body {
 
 .session-action-slot {
   position: relative;
-  width: 74px;
+  width: 64px;
   height: 22px;
   flex-shrink: 0;
   margin-left: auto;
@@ -959,7 +959,6 @@ body {
   line-height: 1;
   transition: all var(--duration) var(--ease);
 }
-
 
 .header-open-app-toggle {
   padding: 4px 5px;
@@ -3738,8 +3737,6 @@ body.hide-thinking .thinking-block {
 .image-previews {
   display: flex;
   gap: 8px;
-  padding: 0 0 8px;
-  max-width: 800px;
   overflow-x: auto;
 }
 
@@ -3795,17 +3792,156 @@ body.hide-thinking .thinking-block {
 }
 
 #chat-form {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+  display: block;
   width: 100%;
 }
 
-.input-left-actions {
+/* Unified composer card — previews + textarea + toolbar in one bordered card */
+.composer-card {
+  position: relative;
   display: flex;
   flex-direction: column;
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm), var(--shadow-inset);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  transition:
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease),
+    background var(--duration) var(--ease);
+}
+
+.composer-card:focus-within {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px var(--accent-glow),
+    var(--shadow-sm),
+    var(--shadow-inset);
+  background: var(--bg-glass-hover);
+}
+
+/* Streaming — flowing iridescent border (rotating conic gradient ring + soft glow) */
+@property --composer-glow-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.composer-card.streaming,
+.composer-card.streaming:focus-within {
+  border-color: transparent;
+  box-shadow: var(--shadow-sm), var(--shadow-inset);
+}
+
+.composer-card.streaming::before,
+.composer-card.streaming::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--composer-glow-angle),
+    #4f8ff7,
+    #8c7cf7,
+    #ef6b9e,
+    #f3a64f,
+    #4fc3d9,
+    #4f8ff7
+  );
+  animation: composerGlowSpin 3s linear infinite;
+}
+
+/* Ring: mask everything but a thin border-width band */
+.composer-card.streaming::before,
+.composer-card.streaming::after {
+  padding: 1.5px;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* Glow: blurred copy of the ring radiating outward */
+.composer-card.streaming::after {
+  filter: blur(6px);
+  opacity: 0.7;
+}
+
+@keyframes composerGlowSpin {
+  to {
+    --composer-glow-angle: 360deg;
+  }
+}
+
+.composer-card .image-previews {
+  padding: 10px 12px 0;
+}
+
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px 8px;
+}
+
+.composer-toolbar-left,
+.composer-toolbar-right {
+  display: flex;
+  align-items: center;
   gap: 4px;
-  align-self: center;
+}
+
+/* Toolbar variants of model/thinking pills — flatter to sit inside the card */
+.composer-toolbar .model-dropdown-btn {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+
+.composer-toolbar .model-dropdown-btn:hover {
+  background: var(--bg-glass-hover);
+  border-color: transparent;
+  color: var(--text-primary);
+}
+
+.composer-toolbar .thinking-tag {
+  background: transparent;
+}
+
+.composer-toolbar .thinking-tag.off {
+  border-color: transparent;
+}
+
+.composer-toolbar .thinking-tag:hover {
+  background: var(--bg-glass-hover);
+}
+
+/* Menus anchored in the composer open upward, right-aligned */
+.composer-toolbar .model-dropdown-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+  left: auto;
+  right: 0;
+  animation: dropdownInUp 0.15s var(--ease);
+}
+
+@keyframes dropdownInUp {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .input-icon-btn {
@@ -3832,21 +3968,11 @@ body.hide-thinking .thinking-block {
   opacity: 0.7;
 }
 
-.input-bubble {
-  flex: 1;
-  position: relative;
-  display: flex;
-  align-items: stretch;
-}
-
 #message-input {
-  flex: 1;
-  padding: 12px 44px 12px 18px;
-  background: var(--bg-glass);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  padding: 12px 14px 4px;
+  background: transparent;
+  border: none;
   color: var(--text-primary);
-  box-shadow: var(--shadow-sm), var(--shadow-inset);
   font-size: 16px;
   font-family: inherit;
   outline: none;
@@ -3855,25 +3981,9 @@ body.hide-thinking .thinking-block {
   line-height: 1.45;
   overflow-y: auto;
   overscroll-behavior: contain;
-  backdrop-filter: blur(var(--blur));
-  -webkit-backdrop-filter: blur(var(--blur));
-  transition: all var(--duration) var(--ease);
-}
-
-#message-input:focus {
-  border-color: var(--accent);
-  box-shadow:
-    0 0 0 3px var(--accent-glow),
-    var(--shadow-sm),
-    var(--shadow-inset);
-  background: var(--bg-glass-hover);
 }
 
 .input-mic-btn {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
   width: 28px;
   height: 28px;
   padding: 0;
@@ -3905,21 +4015,15 @@ body.hide-thinking .thinking-block {
   color: var(--text-dim);
 }
 
-:root[data-theme="clean"] #message-input,
-:root[data-theme="terracotta"] #message-input,
-:root[data-theme="sage"] #message-input {
+:root[data-theme="clean"] .composer-card:not(:focus-within):not(.streaming),
+:root[data-theme="terracotta"] .composer-card:not(:focus-within):not(.streaming),
+:root[data-theme="sage"] .composer-card:not(:focus-within):not(.streaming) {
   border-color: var(--border-hover);
 }
 
-.input-actions {
-  display: flex;
-  gap: 4px;
-  align-self: center;
-}
-
 #send-btn {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border-radius: 50%;
   display: flex;
@@ -3954,8 +4058,8 @@ body.hide-thinking .thinking-block {
 }
 
 #abort-btn {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   background: var(--error);
   border-radius: 50%;
@@ -4763,25 +4867,20 @@ body.hide-thinking .thinking-block {
     padding: 8px 12px max(10px, env(safe-area-inset-bottom, 10px));
   }
 
-  /* Switch left-action buttons from column → row to save vertical space */
-  .input-left-actions {
-    padding-bottom: 0;
-    gap: 4px;
+  /* Tighter toolbar on small screens */
+  .composer-toolbar {
+    padding: 2px 6px 6px;
   }
 
   /* Slightly reduce max textarea height on small screens */
   #message-input {
     max-height: 120px;
-    padding: 11px 44px 11px 16px;
+    padding: 10px 12px 2px;
   }
 
   .input-icon-btn {
     width: 36px;
     height: 36px;
-  }
-
-  .input-bubble {
-    min-height: 44px;
   }
 }
 
