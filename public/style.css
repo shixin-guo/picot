@@ -881,7 +881,7 @@ body {
 
 .main {
   --messages-top-inset: 52px;
-  --messages-bottom-inset: 86px;
+  --messages-bottom-inset: 128px;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -2894,7 +2894,10 @@ body {
   flex: 1;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: var(--messages-top-inset) 24px var(--messages-bottom-inset);
+  padding-top: var(--messages-top-inset);
+  padding-bottom: var(--messages-bottom-inset);
+  padding-left: max(24px, calc((100% - 960px) / 2));
+  padding-right: max(24px, calc((100% - 960px) / 2));
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -3721,7 +3724,10 @@ body.hide-thinking .thinking-block {
 }
 
 .input-area {
-  padding: 7px 16px 10px;
+  padding-top: 7px;
+  padding-bottom: 10px;
+  padding-left: max(16px, calc((100% - 960px) / 2));
+  padding-right: max(16px, calc((100% - 960px) / 2));
   background: var(--header-bg);
   backdrop-filter: blur(40px) saturate(1.5);
   -webkit-backdrop-filter: blur(40px) saturate(1.5);
@@ -4374,8 +4380,8 @@ body.hide-thinking .thinking-block {
 
 .scroll-bottom-btn {
   position: absolute;
-  bottom: 90px;
-  right: 24px;
+  bottom: calc(var(--messages-bottom-inset) + 12px);
+  right: max(24px, calc((100% - 960px) / 2 + 8px));
   width: 36px;
   height: 36px;
   border-radius: 50%;
