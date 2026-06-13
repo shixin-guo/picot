@@ -187,6 +187,12 @@ const mainContainer = document.querySelector(".main");
 const headerEl = document.querySelector(".header");
 const inputAreaEl = document.querySelector(".input-area");
 
+headerEl?.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  if (e.target.closest("button, a, input, select, textarea, [role=button]")) return;
+  window.__TAURI__?.window?.getCurrentWindow().startDragging();
+});
+
 setupMessagesInsets({
   main: mainContainer,
   messages: messagesContainer,
