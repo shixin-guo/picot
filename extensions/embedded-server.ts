@@ -1824,7 +1824,13 @@ export default function (pi: ExtensionAPI) {
               try {
                 const result = await parseSessionFileCached(filePath, readline);
                 if (!result?.parsed) return null;
-                return { ...result.parsed, file, filePath, mtime: result.stat.mtimeMs };
+                return {
+                  ...result.parsed,
+                  file,
+                  filePath,
+                  mtime: result.stat.mtimeMs,
+                  ctime: result.stat.birthtimeMs,
+                };
               } catch {
                 return null;
               }
@@ -1833,7 +1839,11 @@ export default function (pi: ExtensionAPI) {
               if (r) sessions.push(r);
             }
 
-            sessions.sort((a, b) => b.mtime - a.mtime);
+            sessions.sort((a, b) => {
+              const aCreated = a.timestamp ? new Date(a.timestamp).getTime() : a.ctime || 0;
+              const bCreated = b.timestamp ? new Date(b.timestamp).getTime() : b.ctime || 0;
+              return bCreated - aCreated;
+            });
 
             if (sessions.length === 0) return null;
 
@@ -1853,8 +1863,14 @@ export default function (pi: ExtensionAPI) {
       ).filter((p): p is { path: string; dirName: string; sessions: any[] } => p !== null);
 
       projects.sort((a, b) => {
-        const aTime = a.sessions[0]?.mtime || 0;
-        const bTime = b.sessions[0]?.mtime || 0;
+        const aSession = a.sessions[0];
+        const bSession = b.sessions[0];
+        const aTime = aSession?.timestamp
+          ? new Date(aSession.timestamp).getTime()
+          : aSession?.ctime || 0;
+        const bTime = bSession?.timestamp
+          ? new Date(bSession.timestamp).getTime()
+          : bSession?.ctime || 0;
         return bTime - aTime;
       });
 

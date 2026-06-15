@@ -687,7 +687,15 @@ export class SessionSidebar {
     }
 
     if (archivedSessions.length > 0) {
-      archivedSessions.sort((a, b) => (b.session.mtime || 0) - (a.session.mtime || 0));
+      archivedSessions.sort((a, b) => {
+        const aCreated = a.session.timestamp
+          ? new Date(a.session.timestamp).getTime()
+          : a.session.ctime || 0;
+        const bCreated = b.session.timestamp
+          ? new Date(b.session.timestamp).getTime()
+          : b.session.ctime || 0;
+        return bCreated - aCreated;
+      });
       const archivedGroup = document.createElement("div");
       archivedGroup.className = "archived-group";
 
