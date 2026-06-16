@@ -6,9 +6,9 @@
 
 Pi Studio 将 `pi` 运行时**直接打包进 .app**，无需单独安装 `pi`，无需配置 PATH，也不存在版本不一致的问题。
 
-![Pi Studio 深色模式](docs/images/dark.png)
-
-![Pi Studio 赤陶主题](docs/images/terracotta.png)
+<p align="center">
+  <img width="1200" alt="Pi Studio 主界面" src="https://github.com/user-attachments/assets/27d1b71e-77e8-420c-84ab-5e56eb48335a" />
+</p>
 
 ---
 
@@ -30,11 +30,15 @@ Pi Studio 目前发布的 macOS 版本未经 Apple 开发者 ID 签名/公证，
 2. 右键点击 → **打开**
 3. 若仍被阻止：**系统设置 → 隐私与安全性 → 仍要打开**
 
-<img width="299" height="282" alt="image" src="https://github.com/user-attachments/assets/cb09f1f8-9eb8-4c0d-aee0-2fc9b704b201" />
+<p align="center">
+  <img width="420" alt="macOS Gatekeeper 未验证提示" src="https://github.com/user-attachments/assets/cb09f1f8-9eb8-4c0d-aee0-2fc9b704b201" />
+</p>
 
 点击**完成**：
 
-<img width="724" height="346" alt="image" src="https://github.com/user-attachments/assets/42ada9ae-b43d-47f1-bf38-ea38c34beb4f" />
+<p align="center">
+  <img width="960" alt="在 macOS 设置中允许打开 Pi Studio" src="https://github.com/user-attachments/assets/42ada9ae-b43d-47f1-bf38-ea38c34beb4f" />
+</p>
 
 ---
 
@@ -45,6 +49,12 @@ Pi Studio 为 Pi 提供完整的可视化界面。打开任意项目文件夹，
 ---
 
 ## 功能特性
+
+### 📸 界面预览
+
+<p align="center">
+  <img width="1200" alt="Pi Studio 工作区与项目界面" src="https://github.com/user-attachments/assets/ffde7b7a-1eb9-4da7-8916-e06b612aaea1" />
+</p>
 
 ### 💬 对话
 
@@ -74,15 +84,33 @@ Pi Studio 为 Pi 提供完整的可视化界面。打开任意项目文件夹，
 
 ### 📱 移动端 & 局域网访问
 
+<p align="center">
+  <img width="900" alt="局域网与移动端访问面板" src="https://github.com/user-attachments/assets/f50ce09d-1ba7-4a67-93dd-f8ff1bc2631f" />
+</p>
+<p align="center">
+  <img width="360" alt="移动端上的 Pi Studio" src="https://github.com/user-attachments/assets/d1975347-a3d9-49fd-9d66-94942016ed19" />
+</p>
+
 - **局域网二维码** — 扫码即可在同网络的任意设备上访问 Pi Studio
 - 移动端 URL 优化处理，支持 PWA 安装（iOS/Android 可添加到主屏幕）
 
 ### 📦 包管理器
 
+<p align="center">
+  <img width="1200" alt="内置包管理器界面" src="https://github.com/user-attachments/assets/e7e3a100-16db-4b63-b257-801b7f6b5e00" />
+</p>
+
 - 在 UI 内浏览、安装和删除社区包
 - 基于 `pi install`，无需额外命令
 
 ### 💰 费用 & 用量面板
+
+<p align="center">
+  <img width="1200" alt="费用面板总览" src="https://github.com/user-attachments/assets/1c381a9f-c587-406f-8f62-f3f029aa5c3e" />
+</p>
+<p align="center">
+  <img width="1200" alt="按模型与趋势拆解" src="https://github.com/user-attachments/assets/d9f07d41-d38a-454d-a46a-1ab8ed34c19b" />
+</p>
 
 - 每个会话实时 Token 用量和费用追踪
 - 完整费用面板，含信息栏、趋势图和按模型分类
@@ -107,6 +135,10 @@ Pi Studio 为 Pi 提供完整的可视化界面。打开任意项目文件夹，
 - 拖拽文件到输入框以插入路径
 
 ### ⚙️ 设置 & 控制
+
+<p align="center">
+  <img width="1200" alt="设置与控制面板" src="https://github.com/user-attachments/assets/44f884de-f2d1-45af-8a13-9b8d01d227a5" />
+</p>
 
 - 模型选择器，支持搜索/筛选和键盘操作
 - 思考级别切换（关闭 / 低 / 中 / 高）
