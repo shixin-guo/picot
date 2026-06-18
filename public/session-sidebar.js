@@ -19,7 +19,14 @@ export class SessionSidebar {
     this.unread = new Set(JSON.parse(localStorage.getItem("pi-studio-unread") || "[]"));
     this.streamingFiles = new Set();
     this.contextMenu = null;
+    // `loadSeq` counts issued loads; `loadCommitted` is the highest seq that has
+    // actually rendered. We discard a response only when a *newer* one has
+    // already committed (out-of-order arrival), never just because a newer load
+    // was issued — an in-flight later load must not starve an earlier fetch that
+    // already returned fresh data (e.g. the first response that observes a
+    // brand-new session's just-written .jsonl).
     this.loadSeq = 0;
+    this.loadCommitted = 0;
 
     // Close context menu on click anywhere
     document.addEventListener("click", () => {
@@ -218,10 +225,12 @@ export class SessionSidebar {
         const res = await fetch("/api/sessions");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        if (seq !== this.loadSeq) return;
-        this.projects = data.projects || [];
+        const projects = data.projects || [];
+        if (seq < this.loadCommitted) return this.projects;
+        this.loadCommitted = seq;
+        this.projects = projects;
         this.render();
-        return;
+        return this.projects;
       } catch (error) {
         lastError = error;
         if (attempt < retries) {
@@ -231,7 +240,7 @@ export class SessionSidebar {
     }
 
     console.error("[Sidebar] Failed to load sessions:", lastError);
-    if (seq !== this.loadSeq) return;
+    if (seq < this.loadCommitted) return this.projects;
     const reason = String(lastError?.message || lastError || "").toLowerCase();
     const likelyRuntimeDown =
       reason.includes("failed to fetch") ||

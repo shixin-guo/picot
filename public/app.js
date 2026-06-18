@@ -833,11 +833,16 @@ function handleCompactionEnd(event) {
  * isn't in the list, retry a few times with a short backoff before giving up.
  */
 async function refreshSidebarForNewSession(event = null, attempt = 0) {
-  await sidebar.loadSessions({ quiet: true }).catch(() => {});
+  const projects = await sidebar.loadSessions({ quiet: true }).catch(() => null);
 
   const liveFile = getCurrentLiveSessionFile(event);
   if (liveFile) {
-    const found = sidebar.projects.some((p) => p.sessions.some((s) => s.filePath === liveFile));
+    // Read the result this call actually fetched (not sidebar.projects, which a
+    // concurrent load could leave stale) so we detect the new session as soon as
+    // any fetch observes it on disk.
+    const found = (projects || sidebar.projects).some((p) =>
+      p.sessions.some((s) => s.filePath === liveFile),
+    );
     if (found) {
       sidebar.setActive(liveFile);
       pendingNewSessionRefresh = false;
@@ -1279,7 +1284,7 @@ function trackPromptDelivery(requestId, message) {
 
 function refreshSidebarAfterUserPrompt() {
   const refresh = () => {
-    sidebar.loadSessions().catch(() => {});
+    sidebar.loadSessions({ quiet: true }).catch(() => {});
     pollInstances().catch(() => {});
   };
   refresh();
