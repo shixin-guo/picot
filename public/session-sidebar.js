@@ -3,10 +3,11 @@
  */
 
 export class SessionSidebar {
-  constructor(container, onSessionSelect, onNewChat) {
+  constructor(container, onSessionSelect, onNewChat, options = {}) {
     this.container = container;
     this.onSessionSelect = onSessionSelect;
     this.onNewChat = onNewChat;
+    this.onOpenProject = options.onOpenProject || null;
     this.activeSessionFile = null;
     this.projects = [];
     this.collapsedProjects = new Set();
@@ -18,6 +19,14 @@ export class SessionSidebar {
     this.unread = new Set(JSON.parse(localStorage.getItem("pi-studio-unread") || "[]"));
     this.streamingFiles = new Set();
     this.contextMenu = null;
+    // `loadSeq` counts issued loads; `loadCommitted` is the highest seq that has
+    // actually rendered. We discard a response only when a *newer* one has
+    // already committed (out-of-order arrival), never just because a newer load
+    // was issued — an in-flight later load must not starve an earlier fetch that
+    // already returned fresh data (e.g. the first response that observes a
+    // brand-new session's just-written .jsonl).
+    this.loadSeq = 0;
+    this.loadCommitted = 0;
 
     // Close context menu on click anywhere
     document.addEventListener("click", () => {
@@ -201,6 +210,7 @@ export class SessionSidebar {
   }
 
   async loadSessions({ retries = 4, retryDelayMs = 250, quiet = false } = {}) {
+    const seq = ++this.loadSeq;
     if (!quiet) {
       this.container.innerHTML = Array.from(
         { length: 6 },
@@ -215,9 +225,12 @@ export class SessionSidebar {
         const res = await fetch("/api/sessions");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        this.projects = data.projects || [];
+        const projects = data.projects || [];
+        if (seq < this.loadCommitted) return this.projects;
+        this.loadCommitted = seq;
+        this.projects = projects;
         this.render();
-        return;
+        return this.projects;
       } catch (error) {
         lastError = error;
         if (attempt < retries) {
@@ -227,6 +240,7 @@ export class SessionSidebar {
     }
 
     console.error("[Sidebar] Failed to load sessions:", lastError);
+    if (seq < this.loadCommitted) return this.projects;
     const reason = String(lastError?.message || lastError || "").toLowerCase();
     const likelyRuntimeDown =
       reason.includes("failed to fetch") ||
@@ -593,7 +607,7 @@ export class SessionSidebar {
 
   render() {
     if (this.projects.length === 0) {
-      this.container.innerHTML = '<div class="session-loading">No sessions found</div>';
+      this.renderEmptyState();
       return;
     }
 
@@ -744,6 +758,24 @@ export class SessionSidebar {
     }
 
     if (this.searchQuery) this.applySearch();
+  }
+
+  renderEmptyState() {
+    this.container.innerHTML = `
+      <div class="session-empty-state">
+        <button type="button" class="session-empty-open-project" title="Open project" aria-label="Open project">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path>
+            <line x1="12" y1="12" x2="12" y2="18"></line>
+            <line x1="9" y1="15" x2="15" y2="15"></line>
+          </svg>
+          <span>Open Project</span>
+        </button>
+      </div>
+    `;
+    this.container
+      .querySelector(".session-empty-open-project")
+      ?.addEventListener("click", () => this.onOpenProject?.());
   }
 
   formatTime(isoTimestamp) {

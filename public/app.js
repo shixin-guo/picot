@@ -12,6 +12,9 @@ import { FileBrowser } from "./file-browser.js";
 import { anchorHistoryToBottom } from "./history-scroll-anchor.js";
 import { setupMessagesInsets } from "./layout-insets.js";
 import { MessageRenderer } from "./message-renderer.js";
+import { resolveNewSessionLiveFile } from "./new-session-refresh.js";
+import { getOnboardingState } from "./onboarding-state.js";
+import { renderPackageInstallFailure } from "./package-install-status.js";
 import { findPortForSession, getWorkspacePathForPort } from "./session-routing.js";
 import { SessionSidebar } from "./session-sidebar.js";
 import {
@@ -160,6 +163,7 @@ const sidebar = new SessionSidebar(
   document.getElementById("session-list"),
   handleSessionSelect,
   handleNewProjectChat,
+  { onOpenProject: () => handleOpenFolder() },
 );
 
 // UI elements
@@ -217,9 +221,10 @@ let viewingActiveSession = true; // Whether we're viewing the live session or a 
 let isMirrorMode = false; // Set when mirror_sync received
 let liveInstances = []; // All running Pi Studio instances [{port, sessionFile, cwd}]
 let workspaceLaunchInProgress = false;
-// When true, the next message_end should trigger a sidebar reload so a freshly
-// created (in-memory only) session shows up in the list as soon as it's persisted.
+// When true, the next foreground message lifecycle events should reload the
+// sidebar until the newly persisted session file appears in the list.
 let pendingNewSessionRefresh = false;
+let pendingNewSessionPreviousFile = null;
 // When set while streaming, holds the session filePath to switch to once the
 // current agent run ends. The history is rendered immediately; pi gets the
 // switch_session RPC only after agent_end so the running call is not aborted.
@@ -724,6 +729,9 @@ function handleRPCEvent(event) {
       break;
     case "agent_end":
       handleAgentEnd(event);
+      if (pendingNewSessionRefresh) {
+        refreshSidebarForNewSession(event).catch(() => {});
+      }
       break;
     case "message_start":
       handleMessageStart(event.message);
@@ -732,8 +740,7 @@ function handleRPCEvent(event) {
       // refreshing on the user message (not just the assistant turn) makes the
       // session — with its first message as the title — show up immediately.
       if (pendingNewSessionRefresh) {
-        pendingNewSessionRefresh = false;
-        refreshSidebarForNewSession(event);
+        refreshSidebarForNewSession(event).catch(() => {});
         pollInstances().catch(() => {});
       }
       break;
@@ -742,6 +749,9 @@ function handleRPCEvent(event) {
       break;
     case "message_end":
       handleMessageEnd(event.message);
+      if (pendingNewSessionRefresh) {
+        refreshSidebarForNewSession(event).catch(() => {});
+      }
       break;
     case "tool_execution_start":
       handleToolExecutionStart(event);
@@ -823,28 +833,39 @@ function handleCompactionEnd(event) {
  * isn't in the list, retry a few times with a short backoff before giving up.
  */
 async function refreshSidebarForNewSession(event = null, attempt = 0) {
-  await sidebar.loadSessions({ quiet: true }).catch(() => {});
+  const projects = await sidebar.loadSessions({ quiet: true }).catch(() => null);
 
   const liveFile = getCurrentLiveSessionFile(event);
   if (liveFile) {
-    const found = sidebar.projects.some((p) => p.sessions.some((s) => s.filePath === liveFile));
+    // Read the result this call actually fetched (not sidebar.projects, which a
+    // concurrent load could leave stale) so we detect the new session as soon as
+    // any fetch observes it on disk.
+    const found = (projects || sidebar.projects).some((p) =>
+      p.sessions.some((s) => s.filePath === liveFile),
+    );
     if (found) {
       sidebar.setActive(liveFile);
+      pendingNewSessionRefresh = false;
+      pendingNewSessionPreviousFile = null;
       return;
     }
   }
 
   if (attempt < 4) {
+    await pollInstances().catch(() => {});
     await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
     return refreshSidebarForNewSession(event, attempt + 1);
   }
 }
 
 function getCurrentLiveSessionFile(event = null) {
-  const routedSession = event?.__broker?.sessionId;
-  if (routedSession) return routedSession;
-  const inst = liveInstances.find((i) => i?.port === foregroundPort);
-  return inst?.sessionFile || mirrorActiveSessionFile || null;
+  return resolveNewSessionLiveFile({
+    event,
+    liveInstances,
+    foregroundPort,
+    mirrorActiveSessionFile,
+    excludedSessionFile: pendingNewSessionPreviousFile,
+  });
 }
 
 function handleAgentStart(event = null) {
@@ -1261,6 +1282,16 @@ function trackPromptDelivery(requestId, message) {
   inFlightPrompts.set(requestId, { message, timer });
 }
 
+function refreshSidebarAfterUserPrompt() {
+  const refresh = () => {
+    sidebar.loadSessions({ quiet: true }).catch(() => {});
+    pollInstances().catch(() => {});
+  };
+  refresh();
+  setTimeout(refresh, 500);
+  setTimeout(refresh, 1500);
+}
+
 function sendMessage() {
   const message = messageInput.value.trim();
   if (!message) return;
@@ -1299,6 +1330,7 @@ function sendMessage() {
   lastSentMessage = message;
   messageRenderer.renderUserMessage({ content: message, images: cmd.images });
   trackPromptDelivery(wsClient.send(cmd), message);
+  refreshSidebarAfterUserPrompt();
 }
 
 const queuedMessagesEl = document.getElementById("queued-messages");
@@ -1338,6 +1370,7 @@ function flushQueue() {
     messageRenderer.renderUserMessage({ content: cmd.message, images: cmd.images });
     renderQueuedMessages();
     trackPromptDelivery(wsClient.send(cmd), cmd.message);
+    refreshSidebarAfterUserPrompt();
   }
 }
 
@@ -1487,7 +1520,31 @@ function updateThinkingBtn() {
 }
 let currentModelId = "";
 let availableModels = [];
+let hasLoadedAvailableModels = false;
+let didAutoOpenEmptyModelsDropdown = false;
 let currentThinkingLevel = "off";
+
+function currentOnboardingState() {
+  return getOnboardingState({
+    hasSessions: hasAnySessionsLoaded(),
+    workspacePath: getCurrentWorkspacePath(),
+    availableModels,
+  });
+}
+
+function openConfigurationSettings() {
+  return openSettings().then(() => selectSettingsTab("configuration"));
+}
+
+function updateOnboardingUI() {
+  const onboarding = currentOnboardingState();
+  const needsSetup = !onboarding.canQuery;
+  composerCard.classList.toggle("onboarding-disabled", needsSetup);
+  if (needsSetup) {
+    messageInput.placeholder = onboarding.message;
+  }
+  return onboarding;
+}
 
 async function fetchModelInfo() {
   try {
@@ -1506,8 +1563,12 @@ async function fetchModelInfo() {
     const modelsData = await modelsResp.json();
     const stateData = await stateResp.json();
 
-    if (modelsData.success && modelsData.data?.models) {
+    if (modelsData.success && Array.isArray(modelsData.data?.models)) {
       availableModels = modelsData.data.models;
+      hasLoadedAvailableModels = true;
+      if (availableModels.length > 0) {
+        didAutoOpenEmptyModelsDropdown = false;
+      }
     }
     if (stateData.success && stateData.data?.model) {
       currentModelId = stateData.data.model.id || "";
@@ -1525,6 +1586,23 @@ async function fetchModelInfo() {
     }
   } catch (_e) {
     // ignore
+  } finally {
+    updateModelLabel();
+    updateUI();
+    maybeAutoOpenEmptyModelsDropdown();
+  }
+}
+
+function maybeAutoOpenEmptyModelsDropdown() {
+  if (
+    hasLoadedAvailableModels &&
+    availableModels.length === 0 &&
+    !didAutoOpenEmptyModelsDropdown &&
+    modelDropdownMenu.classList.contains("hidden") &&
+    settingsPanel.classList.contains("hidden")
+  ) {
+    didAutoOpenEmptyModelsDropdown = true;
+    openModelDropdown();
   }
 }
 
@@ -1569,14 +1647,12 @@ function openModelDropdown() {
       empty.innerHTML = `
         <div style="padding:14px;color:var(--text-dim);font-size:12px;line-height:1.5">
           <div style="color:var(--text-primary);margin-bottom:6px">No models available</div>
-          <div>No API keys configured. Set a key in Settings &rarr; Authentication.</div>
+          <div>No API keys configured. Set a key in Settings &rarr; Configuration.</div>
           <button type="button" class="btn-primary" style="margin-top:10px">Open Settings</button>
         </div>`;
       empty.querySelector("button").addEventListener("click", () => {
         closeModelDropdown();
-        openSettings()
-          .then(() => selectSettingsTab("auth"))
-          .catch(() => {});
+        openConfigurationSettings().catch(() => {});
       });
       itemsContainer.appendChild(empty);
       return;
@@ -1824,6 +1900,11 @@ sessionSearchInput.addEventListener("input", () => {
  * so the newly created session shows up once pi writes its first message to disk.
  */
 async function resetUiForNewSession() {
+  pendingNewSessionPreviousFile =
+    mirrorActiveSessionFile ||
+    sidebar.activeSessionFile ||
+    liveInstances.find((i) => i?.port === foregroundPort)?.sessionFile ||
+    null;
   state.reset();
   messageRenderer.clear();
   toolCardRenderer.clear();
@@ -1941,7 +2022,7 @@ async function handleNewProjectChat(project) {
         await newSession();
       } else {
         messageRenderer.renderError(
-          "Starting a new chat in another project requires the desktop broker. Reopen the LAN URL from Settings.",
+          "Starting a new chat in another project requires the desktop broker. Reopen the mobile QR code.",
         );
       }
       if (isMobile()) {
@@ -2669,27 +2750,10 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-function updateLanUrlDisplay(url = "") {
-  if (!lanUrlValue) return;
-  const value = typeof url === "string" ? url.trim() : "";
-  if (!value) {
-    lanUrlValue.textContent = "Unavailable";
-    lanUrlValue.removeAttribute("href");
-    lanUrlValue.setAttribute("aria-disabled", "true");
-    lanUrlValue.title = "";
-    return;
-  }
-  lanUrlValue.textContent = value;
-  lanUrlValue.href = value;
-  lanUrlValue.title = lanUrls.length > 1 ? lanUrls.join("\n") : value;
-  lanUrlValue.removeAttribute("aria-disabled");
-}
-
 async function refreshLanUrl() {
   try {
     const res = await fetch("/api/health");
     if (!res.ok) {
-      updateLanUrlDisplay("");
       return;
     }
     const data = await res.json();
@@ -2706,10 +2770,8 @@ async function refreshLanUrl() {
       statusText.textContent = "Connected • LAN";
       statusText.title = lanUrl;
     }
-    updateLanUrlDisplay(lanUrl);
     updateLanQrButton(lanUrl);
   } catch {
-    updateLanUrlDisplay("");
     updateLanQrButton("");
   }
 }
@@ -2739,6 +2801,7 @@ function updateConnectionStatus(status) {
 
 function updateUI() {
   const isStreaming = state.isStreaming;
+  const onboarding = updateOnboardingUI();
 
   composerCard.classList.toggle("streaming", isStreaming);
 
@@ -2752,8 +2815,8 @@ function updateUI() {
     statusText.textContent = "Connected";
   }
 
-  messageInput.disabled = false;
-  sendBtn.disabled = false;
+  messageInput.disabled = !onboarding.canQuery;
+  sendBtn.disabled = !onboarding.canQuery;
 
   if (isStreaming) {
     abortBtn.classList.remove("hidden");
@@ -2771,7 +2834,7 @@ function updateUI() {
     sendBtn.disabled = true;
     abortBtn.classList.add("hidden");
     messageInput.placeholder = "Waiting for current session to finish…";
-  } else {
+  } else if (onboarding.canQuery) {
     messageInput.placeholder = "Type a message...";
   }
 }
@@ -2802,7 +2865,6 @@ const toggleShowThinking = document.getElementById("toggle-show-thinking");
 const toggleAuth = document.getElementById("toggle-auth");
 const authSection = document.getElementById("settings-auth-section");
 const piVersionValue = document.getElementById("setting-pi-version-value");
-const lanUrlValue = document.getElementById("setting-lan-url-value");
 let piVersionCache = null;
 let piVersionInflight = null;
 let loadInlineConfigEditor = async () => {};
@@ -2810,20 +2872,19 @@ let loadInlineModelsEditor = async () => {};
 let loadApiKeysPanel = async () => {};
 
 function selectSettingsTab(tabKey = "general") {
+  const targetTabKey = tabKey === "auth" ? "configuration" : tabKey;
   settingsNavItems.forEach((item) => {
-    item.classList.toggle("active", item.dataset.settingsTab === tabKey);
+    item.classList.toggle("active", item.dataset.settingsTab === targetTabKey);
   });
   settingsTabs.forEach((tab) => {
-    tab.classList.toggle("active", tab.dataset.settingsPanel === tabKey);
+    tab.classList.toggle("active", tab.dataset.settingsPanel === targetTabKey);
   });
-  if (tabKey === "configuration") {
+  if (targetTabKey === "configuration") {
+    loadApiKeysPanel();
     loadInlineConfigEditor();
     loadInlineModelsEditor();
   }
-  if (tabKey === "auth") {
-    loadApiKeysPanel();
-  }
-  if (tabKey === "extensions") {
+  if (targetTabKey === "extensions") {
     loadBrowsePackages();
   }
 }
@@ -2883,19 +2944,6 @@ function setExtensionActionButton(button, label, loading = false) {
     return;
   }
   button.textContent = label;
-}
-
-function summarizePackageError(err) {
-  const raw = String(err?.message || err || "unknown error");
-  if (raw.includes("EACCES") || raw.includes("permission denied")) {
-    return "Permission denied in ~/.pi/agent/npm (check owner/permissions).";
-  }
-  if (raw.includes("ENOENT")) {
-    return "Missing file or directory while running embedded pi command.";
-  }
-  const compact = raw.replace(/\s+/g, " ").trim();
-  if (compact.length <= 120) return compact;
-  return `${compact.slice(0, 120)}...`;
 }
 
 // ═══════════════════════════════════════
@@ -3244,6 +3292,7 @@ function createBrowseRow(pkg) {
       const previous = installed ? "Uninstall" : "Install";
       setExtensionActionButton(button, installed ? "Uninstalling..." : "Installing...", true);
       status.hidden = false;
+      status.classList.remove("is-error");
       status.textContent = installed ? "Removing..." : "Installing...";
       status.title = status.textContent;
       try {
@@ -3256,10 +3305,7 @@ function createBrowseRow(pkg) {
         }
         renderBrowsePackages();
       } catch (err) {
-        status.hidden = false;
-        const fullMessage = String(err?.message || err || "unknown error");
-        status.textContent = `Failed: ${summarizePackageError(fullMessage)}`;
-        status.title = fullMessage;
+        renderPackageInstallFailure(status, err, installed ? "uninstall" : "install");
         button.disabled = false;
         button.classList.remove("loading");
         setExtensionActionButton(button, previous);
@@ -3459,8 +3505,11 @@ setupSettingsToggles({
 
 ({ loadApiKeysPanel, loadInlineConfigEditor, loadInlineModelsEditor } = setupSettingsEditors({
   rpcCommand,
-  fetchModelInfo,
   closeSettings,
+  onModelConfigurationChanged: async () => {
+    await fetchModelInfo();
+    updateUI();
+  },
   clearSettingsSaveMessage,
   setSettingsSaveButtonSaving,
   showSettingsSaveError,
@@ -3517,7 +3566,7 @@ document.querySelector(".mode-link:first-child")?.addEventListener("click", () =
 // Open Folder as workspace
 // ═══════════════════════════════════════
 
-openFolderBtn?.addEventListener("click", async () => {
+async function handleOpenFolder() {
   if (workspaceLaunchInProgress) return;
   setWorkspaceLaunchInProgress(true);
   try {
@@ -3532,13 +3581,16 @@ openFolderBtn?.addEventListener("click", async () => {
   } finally {
     setWorkspaceLaunchInProgress(false);
   }
-});
+}
+
+openFolderBtn?.addEventListener("click", handleOpenFolder);
 
 wsClient.connect();
 dismissBootSwapOverlayWhenReady();
 renderWorkspaceWelcome();
 sidebar.loadSessions().then(() => {
   sessionsLoaded = true;
+  updateUI();
   if (!hasAnySessionsLoaded()) {
     renderWorkspaceWelcome();
   }

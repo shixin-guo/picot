@@ -26,6 +26,7 @@ tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["json"] }
 dirs = "5"
 log = "0.4"
+fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs" }
 futures-util = "0.3"
 tokio-tungstenite = "0.24"
 percent-encoding = "2"

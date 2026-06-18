@@ -219,7 +219,6 @@
       <button class="settings-nav-item active" data-settings-tab="general">General</button>
       <button class="settings-nav-item" data-settings-tab="extensions">Extensions</button>
       <button class="settings-nav-item" data-settings-tab="usage">Usage</button>
-      <button class="settings-nav-item" data-settings-tab="auth">Authentication</button>
       <button class="settings-nav-item" data-settings-tab="configuration">Configuration</button>
       <button class="settings-nav-back" id="settings-close"><span class="settings-nav-back-icon">‹</span> Back to chat</button>
     </aside>
@@ -250,10 +249,6 @@
           </div>
           <div class="settings-section" id="setting-updater-section">
             <div class="settings-section-title">Updates</div>
-            <div class="settings-row">
-              <span class="settings-label">LAN URL</span>
-              <a class="settings-static-value" id="setting-lan-url-value" href="#" target="_blank" rel="noopener noreferrer">Unavailable</a>
-            </div>
             <div class="settings-row" id="setting-pi-version">
               <span class="settings-label">Pi version</span>
               <span class="settings-static-value" id="setting-pi-version-value">Loading...</span>
@@ -326,11 +321,11 @@
         </div>
       </div>
 
-      <div class="settings-tab" data-settings-panel="auth">
-        <div class="settings-header"><h3>Authentication</h3></div>
+      <div class="settings-tab" data-settings-panel="configuration">
+        <div class="settings-header"><h3>Configuration</h3></div>
         <div class="settings-body">
           <div class="settings-section">
-            <div class="settings-section-title">API keys</div>
+            <div class="settings-section-title">Authentication</div>
             <p class="settings-help">
               Keys are stored locally in <code>~/.pi/agent/auth.json</code> (chmod 600).
               Pi Studio launched from Finder does not read shell environment
@@ -347,12 +342,7 @@
               <button class="settings-toggle" id="toggle-auth"></button>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div class="settings-tab" data-settings-panel="configuration">
-        <div class="settings-header"><h3>Configuration</h3></div>
-        <div class="settings-body">
           <div class="settings-section">
             <div class="settings-section-title">Agent</div>
             <div class="settings-config-meta">

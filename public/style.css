@@ -303,6 +303,47 @@ body {
   font-size: 12px;
 }
 
+.session-empty-state {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 12px;
+}
+
+.session-empty-open-project {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 96px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    color var(--duration) var(--ease),
+    transform var(--duration) var(--ease);
+}
+
+.session-empty-open-project:hover {
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.session-empty-open-project svg {
+  color: currentColor;
+}
+
+.session-empty-open-project span {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
 /* Loading skeletons */
 .session-skeleton {
   display: flex;
@@ -1830,6 +1871,34 @@ body {
   white-space: nowrap;
 }
 
+.settings-extension-status.is-error {
+  padding: 8px 10px;
+  color: #991b1b;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: var(--radius-sm, 4px);
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.settings-extension-status-title {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.settings-extension-status-note,
+.settings-extension-status-detail {
+  margin-top: 3px;
+  line-height: 16px;
+}
+
+.settings-extension-status-detail {
+  font-family: "SF Mono", "Menlo", "Monaco", monospace;
+  overflow-wrap: anywhere;
+}
+
 .settings-extension-actions {
   display: flex;
   gap: 8px;
@@ -2195,7 +2264,7 @@ body {
 .api-key-editor input {
   width: 100%;
   padding: 6px 10px;
-  background: var(--bg-base, #fff);
+  background: var(--bg-glass-strong);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -4021,6 +4090,10 @@ body.hide-thinking .thinking-block {
 }
 #message-input::placeholder {
   color: var(--text-dim);
+}
+
+.composer-card.onboarding-disabled {
+  background: color-mix(in srgb, var(--bg-glass) 82%, var(--bg-solid));
 }
 
 :root[data-theme="clean"] .composer-card:not(:focus-within):not(.streaming),

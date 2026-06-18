@@ -76,6 +76,84 @@ fn configure_child_process_for_windows(command: &mut Command) {
 #[cfg(not(target_os = "windows"))]
 fn configure_child_process_for_windows(_command: &mut Command) {}
 
+/// Build an augmented PATH for child processes.
+///
+/// `fix_path_env::fix()` is called at app startup and already merges the
+/// user's login-shell PATH into this process.  This function is a second
+/// safety net: it appends any well-known tool directories that might still
+/// be absent (e.g. nvm-managed node versions, Volta, Bun, Mise shims) so
+/// that `npm`, `npx`, and friends are always reachable.
+///
+/// Directories already present in PATH are not duplicated.
+fn build_augmented_path() -> String {
+    use std::path::{Path, PathBuf};
+
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|v| std::env::split_paths(&v).collect())
+        .unwrap_or_default();
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let mut extras: Vec<PathBuf> = vec![
+            PathBuf::from("/opt/homebrew/bin"),
+            PathBuf::from("/opt/homebrew/sbin"),
+            PathBuf::from("/usr/local/bin"),
+            PathBuf::from("/usr/local/sbin"),
+            PathBuf::from("/usr/bin"),
+            PathBuf::from("/bin"),
+        ];
+
+        if let Ok(home) = std::env::var("HOME") {
+            let h = Path::new(&home);
+            extras.push(h.join(".local/bin"));
+            extras.push(h.join(".bun/bin"));
+            extras.push(h.join(".volta/bin"));
+            extras.push(h.join(".cargo/bin"));
+            extras.push(h.join(".local/share/mise/shims"));
+            // nvm: enumerate all installed node versions
+            let nvm_root = h.join(".nvm/versions/node");
+            if let Ok(entries) = std::fs::read_dir(nvm_root) {
+                for entry in entries.flatten() {
+                    let bin = entry.path().join("bin");
+                    if bin.is_dir() {
+                        extras.push(bin);
+                    }
+                }
+            }
+        }
+
+        for extra in extras {
+            if !dirs.iter().any(|d| d == &extra) {
+                dirs.push(extra);
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut extras: Vec<PathBuf> = Vec::new();
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            extras.push(Path::new(&appdata).join("npm"));
+        }
+        if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
+            let h = Path::new(&home);
+            extras.push(h.join(".cargo").join("bin"));
+            extras.push(h.join(".bun").join("bin"));
+            extras.push(h.join("scoop").join("shims"));
+        }
+        for extra in extras {
+            if !dirs.iter().any(|d| d == &extra) {
+                dirs.push(extra);
+            }
+        }
+    }
+
+    std::env::join_paths(dirs)
+        .ok()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| std::env::var("PATH").unwrap_or_default())
+}
+
 /// Strip a Windows verbatim / extended-length path prefix (`\\?\` or
 /// `\\?\UNC\`) from a path string.
 ///
@@ -415,6 +493,7 @@ impl PiManager {
         child
             .args(&args)
             .current_dir(&cwd)
+            .env("PATH", build_augmented_path())
             .env("PI_STUDIO_STATIC_DIR", &static_dir)
             .env("PI_STUDIO_PORT", port.to_string())
             .env("PI_STUDIO_PI_VERSION", locked_pi_version())
@@ -554,6 +633,7 @@ impl PiManager {
         configure_child_process_for_windows(&mut command);
         command
             .args(args)
+            .env("PATH", build_augmented_path())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

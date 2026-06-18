@@ -1255,7 +1255,7 @@ export default function (pi: ExtensionAPI) {
       const ext = path.extname(filePath).toLowerCase();
       const contentType = MIME_TYPES[ext] || "application/octet-stream";
 
-      res.writeHead(200, { "Content-Type": contentType });
+      res.writeHead(200, { "Content-Type": contentType, "Cache-Control": "no-store" });
       fs.createReadStream(filePath).pipe(res);
     });
   }
@@ -2692,7 +2692,9 @@ export default function (pi: ExtensionAPI) {
           }
           const ext = path.extname(filePath).toLowerCase();
           const contentType = MIME_TYPES[ext] || file.type || "application/octet-stream";
-          return new Response(file, { headers: { "Content-Type": contentType } });
+          return new Response(file, {
+            headers: { "Content-Type": contentType, "Cache-Control": "no-store" },
+          });
         } catch (err: any) {
           return new Response(`Internal error: ${err?.message || String(err)}`, { status: 500 });
         }

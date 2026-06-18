@@ -808,41 +808,6 @@ body {
   margin-top: 16px;
 }
 
-/* ── Responsive ──────────────────────────────────────────────────── */
-
-@media (max-width: 980px) {
-  .cost-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .kpi-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .panel.split {
-    grid-template-columns: 1fr;
-  }
-  .infobar-overview-grid,
-  .infobar-usage-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .infobar-section-row,
-  .infobar-project-list {
-    grid-template-columns: 1fr;
-  }
-  .infobar-right-col {
-    flex-direction: column;
-  }
-  .infobar-cost-split {
-    grid-template-columns: 1fr;
-  }
-  .infobar-topbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .infobar-topbar-actions {
-    justify-content: space-between;
-  }
-}
-
 @media (max-width: 640px) {
   .infobar-topbar-actions {
     flex-wrap: wrap;

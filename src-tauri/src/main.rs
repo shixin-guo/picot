@@ -912,6 +912,16 @@ fn install_control_handler(broker: &Arc<BrokerWs>, manager: Arc<PiManager>, app:
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 fn main() {
+    // Sync PATH from the user's login shell before anything else.
+    // macOS GUI apps (launched from Finder/Dock) inherit only the minimal
+    // system PATH (/usr/bin:/bin:/usr/sbin:/sbin).  fix_path_env::fix() runs
+    // the user's login shell and merges its environment into this process so
+    // that all child processes (pi binary, npm, git, …) see the same tools
+    // as a normal terminal session.
+    if let Err(err) = fix_path_env::fix() {
+        eprintln!("[picot] failed to sync PATH from login shell: {err}");
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())

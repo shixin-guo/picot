@@ -14,6 +14,7 @@ describe("cost infobar renderers", () => {
     renderInfobarOverview(
       target,
       {
+        totalCost: 9,
         sessions: 7,
         messages: 22,
         totalTokens: 3550,
@@ -33,6 +34,9 @@ describe("cost infobar renderers", () => {
     );
 
     expect(target.querySelectorAll(".infobar-stat-card")).toHaveLength(12);
+    expect(target.textContent).toContain("Total cost");
+    expect(target.textContent).toContain("$9.00");
+    expect(target.textContent).not.toContain("Peak hour");
     expect(target.textContent).toContain("Sessions");
     expect(target.textContent).toContain("Messages");
     expect(target.textContent).toContain("Tool Calls");
@@ -261,6 +265,7 @@ describe("cost infobar renderers", () => {
       },
       infobar: {
         overview: {
+          totalCost: 9,
           sessionCount: 7,
           messageCount: 22,
           daysActive: 4,
@@ -282,6 +287,9 @@ describe("cost infobar renderers", () => {
     });
 
     expect(section.querySelectorAll("#infobar-overview-grid .infobar-stat-card")).toHaveLength(12);
+    expect(section.querySelector("#infobar-overview-grid").textContent).toContain("Total cost");
+    expect(section.querySelector("#infobar-overview-grid").textContent).toContain("$9.00");
+    expect(section.querySelector("#infobar-overview-grid").textContent).not.toContain("Peak hour");
     expect(
       section.querySelector("#infobar-activity-panel").querySelectorAll(".infobar-activity-cell")
         .length,
