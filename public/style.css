@@ -317,30 +317,31 @@ body {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  width: min(180px, 100%);
-  min-height: 136px;
-  padding: 18px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-glass);
+  min-width: 96px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 13px;
   cursor: pointer;
   transition:
-    background var(--duration) var(--ease),
-    border-color var(--duration) var(--ease),
+    color var(--duration) var(--ease),
     transform var(--duration) var(--ease);
 }
 
 .session-empty-open-project:hover {
-  background: var(--bg-glass-hover);
-  border-color: var(--border-hover);
+  color: var(--accent);
   transform: translateY(-1px);
 }
 
 .session-empty-open-project svg {
-  color: var(--accent);
+  color: currentColor;
+}
+
+.session-empty-open-project span {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.2;
 }
 
 /* Loading skeletons */
@@ -4093,15 +4094,6 @@ body.hide-thinking .thinking-block {
 
 .composer-card.onboarding-disabled {
   background: color-mix(in srgb, var(--bg-glass) 82%, var(--bg-solid));
-}
-
-.composer-setup-actions {
-  display: none;
-  padding: 2px 12px 10px;
-}
-
-.composer-card.onboarding-disabled .composer-setup-actions {
-  display: flex;
 }
 
 :root[data-theme="clean"] .composer-card:not(:focus-within):not(.streaming),

@@ -169,7 +169,6 @@ const sidebar = new SessionSidebar(
 const messageInput = document.getElementById("message-input");
 const chatForm = document.getElementById("chat-form");
 const sendBtn = document.getElementById("send-btn");
-const composerOpenConfigBtn = document.getElementById("composer-open-config");
 const abortBtn = document.getElementById("abort-btn");
 const statusIndicator = document.getElementById("status-indicator");
 const statusText = document.getElementById("status-text");
@@ -1491,6 +1490,8 @@ function updateThinkingBtn() {
 }
 let currentModelId = "";
 let availableModels = [];
+let hasLoadedAvailableModels = false;
+let didAutoOpenEmptyModelsDropdown = false;
 let currentThinkingLevel = "off";
 
 function currentOnboardingState() {
@@ -1532,8 +1533,12 @@ async function fetchModelInfo() {
     const modelsData = await modelsResp.json();
     const stateData = await stateResp.json();
 
-    if (modelsData.success && modelsData.data?.models) {
+    if (modelsData.success && Array.isArray(modelsData.data?.models)) {
       availableModels = modelsData.data.models;
+      hasLoadedAvailableModels = true;
+      if (availableModels.length > 0) {
+        didAutoOpenEmptyModelsDropdown = false;
+      }
     }
     if (stateData.success && stateData.data?.model) {
       currentModelId = stateData.data.model.id || "";
@@ -1554,6 +1559,20 @@ async function fetchModelInfo() {
   } finally {
     updateModelLabel();
     updateUI();
+    maybeAutoOpenEmptyModelsDropdown();
+  }
+}
+
+function maybeAutoOpenEmptyModelsDropdown() {
+  if (
+    hasLoadedAvailableModels &&
+    availableModels.length === 0 &&
+    !didAutoOpenEmptyModelsDropdown &&
+    modelDropdownMenu.classList.contains("hidden") &&
+    settingsPanel.classList.contains("hidden")
+  ) {
+    didAutoOpenEmptyModelsDropdown = true;
+    openModelDropdown();
   }
 }
 
@@ -1669,9 +1688,6 @@ function closeModelDropdown() {
 }
 
 modelDropdownBtn.addEventListener("click", toggleModelDropdown);
-composerOpenConfigBtn?.addEventListener("click", () => {
-  openConfigurationSettings().catch(() => {});
-});
 
 // Close dropdown on outside click
 document.addEventListener("click", (e) => {
