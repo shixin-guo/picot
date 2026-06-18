@@ -148,7 +148,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "Pi Studio ${{ github.ref_name }}"
+          releaseName: "Picot ${{ github.ref_name }}"
           releaseBody: |
             Automated release for `${{ github.ref_name }}`.
             Download the installer for your platform from the assets below.
@@ -178,7 +178,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "Pi Studio ${{ github.ref_name }}"
+          releaseName: "Picot ${{ github.ref_name }}"
           releaseBody: |
             Automated release for `${{ github.ref_name }}`.
             Download the installer for your platform from the assets below.

@@ -51,6 +51,7 @@ export const themes = {
   },
 };
 
+// TODO(rename->picot): cookie key kept as `pi-studio-theme` for backward compat — changing it would reset all existing users' theme preference.
 const THEME_COOKIE = "pi-studio-theme";
 const THEME_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365 * 10; // 10 years
 

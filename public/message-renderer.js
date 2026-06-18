@@ -32,8 +32,8 @@ export class MessageRenderer {
       : "";
     this.container.innerHTML = `
       <div class="welcome">
-        <div class="welcome-icon"><img src="icons/logo-dark.svg" alt="Pi Studio logo" class="tau-icon-welcome"></div>
-        <p>Welcome to Pi Studio</p>
+        <div class="welcome-icon"><img src="icons/logo-dark.svg" alt="Picot logo" class="tau-icon-welcome"></div>
+        <p>Welcome to Picot</p>
         <p class="hint">Type a message below to start chatting with Pi, or select a session from the sidebar.</p>
         ${workspaceHtml}
         <div class="shortcuts-hint">

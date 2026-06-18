@@ -64,6 +64,8 @@ const HAS_BUN_SERVE =
 
 // Pi Studio settings live under `pistudio` key in ~/.pi/agent/settings.json.
 // We only honor the fields that still make sense in desktop-only mode.
+// TODO(rename->picot): key is `pistudio` for historical reasons. Changing it to `picot`
+// would break existing users' settings — add a migration path before renaming.
 function buildHomeDirCandidates(): string[] {
   const candidates: string[] = [];
   const seen = new Set<string>();
@@ -151,6 +153,7 @@ function loadSettings(): { port: number } {
   let settings: any = {};
   try {
     const settingsPath = path.join(PI_AGENT_ROOT, "settings.json");
+    // TODO(rename->picot): key `pistudio` kept for backward compat — migrate to `picot` once a settings-migration path exists.
     settings = JSON.parse(fs.readFileSync(settingsPath, "utf8")).pistudio || {};
   } catch {}
   return {
@@ -192,6 +195,7 @@ function findPublicDir(): string {
   return path.resolve(process.cwd(), "public");
 }
 const SESSIONS_DIR = path.join(PI_AGENT_ROOT, "sessions");
+// TODO(rename->picot): directory `pistudio-instances` kept for backward compat — migrate to `picot-instances` once existing users are handled.
 const INSTANCES_DIR = path.join(path.dirname(PI_AGENT_ROOT), "pistudio-instances");
 
 // Minimal single-process instance registry. We keep this so the frontend's
