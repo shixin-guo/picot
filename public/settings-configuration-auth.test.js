@@ -24,4 +24,13 @@ describe("settings authentication placement", () => {
     expect(appJs).toContain('selectSettingsTab("configuration")');
     expect(appJs).not.toContain('selectSettingsTab("auth")');
   });
+
+  test("keeps LAN access behind the QR code instead of showing the raw URL", () => {
+    const dom = new JSDOM(html);
+    const { document } = dom.window;
+
+    expect(Boolean(document.querySelector("#setting-lan-url-value"))).toBe(false);
+    expect(document.querySelector("#lan-qr-btn")).not.toBeNull();
+    expect(document.querySelector("#lan-qr-modal")).not.toBeNull();
+  });
 });

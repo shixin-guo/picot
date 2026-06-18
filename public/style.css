@@ -2264,7 +2264,7 @@ body {
 .api-key-editor input {
   width: 100%;
   padding: 6px 10px;
-  background: var(--bg-base, #fff);
+  background: var(--bg-glass-strong);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text-primary);

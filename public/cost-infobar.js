@@ -34,6 +34,7 @@ function renderEmpty(target, message = "No data in selected range.") {
 }
 
 const STAT_ICONS = {
+  "Total cost": `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.5v13M11.5 4H6.75a2.25 2.25 0 0 0 0 4.5h2.5a2.25 2.25 0 0 1 0 4.5H4.5" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   Sessions: `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 2.5A1.5 1.5 0 0 1 3.5 1h9A1.5 1.5 0 0 1 14 2.5v6A1.5 1.5 0 0 1 12.5 10H9l-3 3v-3H3.5A1.5 1.5 0 0 1 2 8.5v-6z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></svg>`,
   Messages: `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 3a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5l-4 4V3z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/><circle cx="5.5" cy="6.5" r="1" fill="currentColor"/><circle cx="8" cy="6.5" r="1" fill="currentColor"/><circle cx="10.5" cy="6.5" r="1" fill="currentColor"/></svg>`,
   "Total tokens": `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><ellipse cx="8" cy="4" rx="5.5" ry="2" stroke="currentColor" stroke-width="1.25"/><path d="M2.5 4v4c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2V4" stroke="currentColor" stroke-width="1.25"/><path d="M2.5 8v4c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2V8" stroke="currentColor" stroke-width="1.25"/></svg>`,
@@ -60,13 +61,13 @@ function buildStatCard(title, value, tone, extraClass = "") {
 
 export function renderInfobarOverview(target, overview = {}, usage = {}) {
   const stats = [
+    ["Total cost", formatUsd(overview.totalCost), "green", ""],
     ["Sessions", formatInt(overview.sessions), "blue", ""],
     ["Messages", formatInt(overview.messages), "violet", ""],
     ["Total tokens", formatCompact(overview.totalTokens), "teal", ""],
     ["Active days", formatInt(overview.activeDays), "amber", ""],
     ["Current streak", `${formatInt(overview.currentStreak)}d`, "blue", ""],
     ["Longest streak", `${formatInt(overview.longestStreak)}d`, "violet", ""],
-    ["Peak hour", overview.peakHour || "N/A", "amber", "infobar-stat-card-compact"],
     ["Input", formatCompact(usage.inputTokens), "teal", ""],
     ["Output", formatCompact(usage.outputTokens), "green", ""],
     ["Cache Read", formatCompact(usage.cacheRead), "amber", ""],
@@ -327,6 +328,7 @@ function deriveOverviewMetrics(payload, overview) {
     null;
 
   return {
+    totalCost: overview.totalCost || payload.summary?.totalCost || 0,
     sessions: overview.sessionCount || sessions.length,
     messages: overview.messageCount || 0,
     totalTokens: payload.summary?.totalTokens || 0,

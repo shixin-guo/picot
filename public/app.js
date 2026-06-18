@@ -1987,7 +1987,7 @@ async function handleNewProjectChat(project) {
         await newSession();
       } else {
         messageRenderer.renderError(
-          "Starting a new chat in another project requires the desktop broker. Reopen the LAN URL from Settings.",
+          "Starting a new chat in another project requires the desktop broker. Reopen the mobile QR code.",
         );
       }
       if (isMobile()) {
@@ -2715,27 +2715,10 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-function updateLanUrlDisplay(url = "") {
-  if (!lanUrlValue) return;
-  const value = typeof url === "string" ? url.trim() : "";
-  if (!value) {
-    lanUrlValue.textContent = "Unavailable";
-    lanUrlValue.removeAttribute("href");
-    lanUrlValue.setAttribute("aria-disabled", "true");
-    lanUrlValue.title = "";
-    return;
-  }
-  lanUrlValue.textContent = value;
-  lanUrlValue.href = value;
-  lanUrlValue.title = lanUrls.length > 1 ? lanUrls.join("\n") : value;
-  lanUrlValue.removeAttribute("aria-disabled");
-}
-
 async function refreshLanUrl() {
   try {
     const res = await fetch("/api/health");
     if (!res.ok) {
-      updateLanUrlDisplay("");
       return;
     }
     const data = await res.json();
@@ -2752,10 +2735,8 @@ async function refreshLanUrl() {
       statusText.textContent = "Connected • LAN";
       statusText.title = lanUrl;
     }
-    updateLanUrlDisplay(lanUrl);
     updateLanQrButton(lanUrl);
   } catch {
-    updateLanUrlDisplay("");
     updateLanQrButton("");
   }
 }
@@ -2849,7 +2830,6 @@ const toggleShowThinking = document.getElementById("toggle-show-thinking");
 const toggleAuth = document.getElementById("toggle-auth");
 const authSection = document.getElementById("settings-auth-section");
 const piVersionValue = document.getElementById("setting-pi-version-value");
-const lanUrlValue = document.getElementById("setting-lan-url-value");
 let piVersionCache = null;
 let piVersionInflight = null;
 let loadInlineConfigEditor = async () => {};
