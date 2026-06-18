@@ -808,8 +808,6 @@ body {
   margin-top: 16px;
 }
 
-
-
 @media (max-width: 640px) {
   .infobar-topbar-actions {
     flex-wrap: wrap;

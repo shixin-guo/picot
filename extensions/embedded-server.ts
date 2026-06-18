@@ -2692,7 +2692,9 @@ export default function (pi: ExtensionAPI) {
           }
           const ext = path.extname(filePath).toLowerCase();
           const contentType = MIME_TYPES[ext] || file.type || "application/octet-stream";
-          return new Response(file, { headers: { "Content-Type": contentType, "Cache-Control": "no-store" } });
+          return new Response(file, {
+            headers: { "Content-Type": contentType, "Cache-Control": "no-store" },
+          });
         } catch (err: any) {
           return new Response(`Internal error: ${err?.message || String(err)}`, { status: 500 });
         }
