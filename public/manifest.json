@@ -1,6 +1,6 @@
 {
-  "name": "Pi Studio",
-  "short_name": "Pi Studio",
+  "name": "Picot",
+  "short_name": "Picot",
   "description": "Local desktop GUI for the Pi coding agent",
   "start_url": "/",
   "display": "standalone",

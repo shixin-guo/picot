@@ -101,7 +101,7 @@ export function createAppUpdater({
     }
     updateInstallRow.hidden = false;
     const from = update.currentVersion ? ` (from ${update.currentVersion})` : "";
-    updateInstallLabel.textContent = `Pi Studio ${update.version}${from}`;
+    updateInstallLabel.textContent = `Picot ${update.version}${from}`;
     installUpdateBtn.disabled = false;
     installUpdateBtn.textContent = "Download & install";
   }
@@ -270,7 +270,7 @@ export function createAppUpdater({
       setTimeout(() => {
         transport?.relaunchApp?.().catch((err) => {
           console.error("[updater] relaunch failed:", err);
-          setUpdateStatus("Please restart Pi Studio to finish updating.", "warn");
+          setUpdateStatus("Please restart Picot to finish updating.", "warn");
           updateCheckFailed = true;
           syncSidebarUpdateButton();
         });

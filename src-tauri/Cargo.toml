@@ -1,12 +1,12 @@
 [package]
-name = "pi-studio"
+name = "picot"
 version = "0.1.29"
 description = "Pi Agent Desktop - session manager for pi coding agent"
 authors = ["Pi Desktop"]
 edition = "2021"
 
 [[bin]]
-name = "pi-studio"
+name = "picot"
 path = "src/main.rs"
 
 [build-dependencies]

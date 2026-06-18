@@ -11,6 +11,7 @@ export class SessionSidebar {
     this.projects = [];
     this.collapsedProjects = new Set();
     this.searchQuery = "";
+    // TODO(rename->picot): localStorage keys kept as `pi-studio-*` for backward compat — migration needed before changing.
     this.favourites = JSON.parse(localStorage.getItem("pi-studio-favourites") || "[]");
     this.archived = JSON.parse(localStorage.getItem("pi-studio-archived") || "[]");
     this.archivedCollapsed = localStorage.getItem("pi-studio-archived-collapsed") !== "false";
