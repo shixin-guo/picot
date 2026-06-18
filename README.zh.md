@@ -1,15 +1,8 @@
-# Picot
+# Picot （π-cot(e)）
 
 [English](./README.md) | **中文**
 
 本地桌面 GUI，专为 [Pi](https://github.com/badlogic/pi-mono) 编程 Agent 打造。无需云端，无需账号，完全在本机运行。
-
-## 为什么叫 "Picot"?
-
-**Picot** (Pi-COT) 包含两层深刻的寓意：
-
-- **π + cot** — 数学常数 π（无限、无界）与余切函数 cot（定义角度和关系）的完美结合。就像这些函数塑造圆的几何形状一样，Picot 塑造你的代码工作流的几何。
-
 
 
 Picot 将 `pi` 运行时**直接打包进 .app**，无需单独安装 `pi`，无需配置 PATH，也不存在版本不一致的问题。
