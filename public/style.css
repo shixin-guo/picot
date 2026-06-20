@@ -441,6 +441,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 14px;
 }
 
 .project-new-chat-btn {
@@ -938,8 +939,8 @@ body {
   align-items: center;
   padding: 5px 14px;
   background: var(--header-bg);
-  backdrop-filter: blur(40px) saturate(1.5);
-  -webkit-backdrop-filter: blur(40px) saturate(1.5);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border-bottom: 1px solid var(--border);
   min-height: 36px;
   -webkit-app-region: drag;
@@ -1512,9 +1513,9 @@ body {
 .thinking-tag {
   padding: 4px 10px;
   background: var(--bg-glass);
-  border: 1px solid var(--thinking-accent);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  color: var(--thinking-accent-text);
+  color: var(--text-dim);
   font-size: 12px;
   font-family: "SF Mono", "Menlo", "Monaco", monospace;
   cursor: pointer;
@@ -1524,7 +1525,6 @@ body {
 
 .thinking-tag.off {
   border-color: var(--border);
-  color: var(--text-dim);
 }
 
 .thinking-tag:hover {
@@ -2291,6 +2291,21 @@ body {
 
 .settings-label {
   font-size: 13px;
+}
+
+.settings-label-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-label-main {
+  color: var(--text-primary);
+}
+
+.settings-label-sub {
+  color: var(--text-dim);
+  font-size: 11px;
 }
 
 .settings-toggle {
@@ -3989,9 +4004,6 @@ body.hide-thinking .thinking-block {
 
 .composer-toolbar .thinking-tag {
   background: transparent;
-}
-
-.composer-toolbar .thinking-tag.off {
   border-color: transparent;
 }
 

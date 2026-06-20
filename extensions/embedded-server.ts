@@ -45,6 +45,7 @@ import {
   buildCostDashboardPayload,
   buildEmptyCostDashboardPayload,
 } from "./cost-dashboard-data.ts";
+import { buildProjectSearchMatch } from "./session-search";
 
 // `pi` is compiled with `bun build --compile`. Inside that runtime,
 // `http.createServer(...).on("upgrade", ...)` accepts the upgrade event
@@ -2367,6 +2368,7 @@ export default function (pi: ExtensionAPI) {
             let sessionName = "";
             let sessionTimestamp = "";
             let firstMessage = "";
+            let sessionWorkspace = decodedPath;
             const matches: any[] = [];
 
             for await (const line of rl) {
@@ -2377,6 +2379,9 @@ export default function (pi: ExtensionAPI) {
                 if (entry.type === "session") {
                   sessionId = entry.id;
                   sessionTimestamp = entry.timestamp || "";
+                  if (typeof entry.cwd === "string" && entry.cwd.trim()) {
+                    sessionWorkspace = entry.cwd;
+                  }
                 }
                 if (entry.type === "session_info" && entry.name) {
                   sessionName = entry.name;
@@ -2422,10 +2427,15 @@ export default function (pi: ExtensionAPI) {
             rl.close();
             stream.destroy();
 
+            const projectMatch = buildProjectSearchMatch(q, sessionWorkspace);
+            if (projectMatch && !matches.some((match) => match.role === "project")) {
+              matches.unshift(projectMatch);
+            }
+
             if (matches.length > 0) {
               results.push({
                 filePath,
-                project: decodedPath,
+                project: sessionWorkspace,
                 sessionId,
                 sessionName,
                 sessionTimestamp,

@@ -105,6 +105,7 @@ fn build_augmented_path() -> String {
 
         if let Ok(home) = std::env::var("HOME") {
             let h = Path::new(&home);
+            extras.push(pi_extension_npm_bin_dir(h));
             extras.push(h.join(".local/bin"));
             extras.push(h.join(".bun/bin"));
             extras.push(h.join(".volta/bin"));
@@ -137,6 +138,7 @@ fn build_augmented_path() -> String {
         }
         if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
             let h = Path::new(&home);
+            extras.push(pi_extension_npm_bin_dir(h));
             extras.push(h.join(".cargo").join("bin"));
             extras.push(h.join(".bun").join("bin"));
             extras.push(h.join("scoop").join("shims"));
@@ -152,6 +154,48 @@ fn build_augmented_path() -> String {
         .ok()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| std::env::var("PATH").unwrap_or_default())
+}
+
+fn pi_extension_npm_bin_dir(home: &Path) -> PathBuf {
+    home.join(".pi")
+        .join("agent")
+        .join("npm")
+        .join("node_modules")
+        .join(".bin")
+}
+
+fn log_child_path_diagnostics(context: &str, path: &str) {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .ok();
+    let Some(home) = home else {
+        log::info!(
+            "[pi-desktop] child PATH diagnostics: context={} home=<unset> path={}",
+            context,
+            path
+        );
+        return;
+    };
+
+    let pi_extension_bin = pi_extension_npm_bin_dir(Path::new(&home));
+    let hypa_bin = pi_extension_bin.join(if cfg!(target_os = "windows") {
+        "hypa.cmd"
+    } else {
+        "hypa"
+    });
+    let dirs: Vec<PathBuf> = std::env::split_paths(path).collect();
+    let contains_pi_extension_bin = dirs.iter().any(|dir| dir == &pi_extension_bin);
+
+    log::info!(
+        "[pi-desktop] child PATH diagnostics: context={} pi_extension_bin={} exists={} hypa_bin={} hypa_exists={} contains_pi_extension_bin={} path={}",
+        context,
+        pi_extension_bin.display(),
+        pi_extension_bin.is_dir(),
+        hypa_bin.display(),
+        hypa_bin.is_file(),
+        contains_pi_extension_bin,
+        path
+    );
 }
 
 /// Strip a Windows verbatim / extended-length path prefix (`\\?\` or
@@ -488,12 +532,15 @@ impl PiManager {
             static_dir
         );
 
+        let augmented_path = build_augmented_path();
+        log_child_path_diagnostics("spawn", &augmented_path);
+
         let mut child = Command::new(&pi_bin_str);
         configure_child_process_for_windows(&mut child);
         child
             .args(&args)
             .current_dir(&cwd)
-            .env("PATH", build_augmented_path())
+            .env("PATH", augmented_path)
             .env("PI_STUDIO_STATIC_DIR", &static_dir)
             .env("PI_STUDIO_PORT", port.to_string())
             .env("PI_STUDIO_PI_VERSION", locked_pi_version())
@@ -629,11 +676,13 @@ impl PiManager {
     pub fn run_pi_command(&self, args: &[String]) -> Result<String, String> {
         let pi_bin = self.resolve_bundled_pi()?;
         let pi_bin_str = strip_verbatim_prefix(&pi_bin.to_string_lossy());
+        let augmented_path = build_augmented_path();
+        log_child_path_diagnostics("run_pi_command", &augmented_path);
         let mut command = Command::new(&pi_bin_str);
         configure_child_process_for_windows(&mut command);
         command
             .args(args)
-            .env("PATH", build_augmented_path())
+            .env("PATH", augmented_path)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -738,5 +787,30 @@ pub async fn wait_for_endpoint(port: u16, path: &str, timeout_secs: u64) -> Resu
             }
         }
         tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn augmented_path_includes_pi_extension_npm_bin() {
+        let home = std::env::var("HOME").expect("HOME must be set for this test");
+        let expected = Path::new(&home)
+            .join(".pi")
+            .join("agent")
+            .join("npm")
+            .join("node_modules")
+            .join(".bin");
+
+        let path = build_augmented_path();
+        let dirs: Vec<PathBuf> = std::env::split_paths(&path).collect();
+
+        assert!(
+            dirs.iter().any(|dir| dir == &expected),
+            "expected augmented PATH to include {}",
+            expected.display()
+        );
     }
 }

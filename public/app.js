@@ -1293,6 +1293,8 @@ function refreshSidebarAfterUserPrompt() {
 }
 
 function sendMessage() {
+  if (!currentOnboardingState().canQuery) return;
+
   const message = messageInput.value.trim();
   if (!message) return;
 
@@ -1512,8 +1514,19 @@ const modelDropdownBtn = document.getElementById("model-dropdown-btn");
 const modelDropdownLabel = document.getElementById("model-dropdown-label");
 const modelDropdownMenu = document.getElementById("model-dropdown-menu");
 const thinkingBtn = document.getElementById("thinking-btn");
+function formatThinkingLevelLabel(level) {
+  return `Thinking: ${level || "off"}`;
+}
+function formatCompactThinkingLevelLabel(level) {
+  return `Think ${level || "off"}`;
+}
 function updateThinkingBtn() {
-  thinkingBtn.textContent = currentThinkingLevel;
+  thinkingBtn.textContent = formatCompactThinkingLevelLabel(currentThinkingLevel);
+  thinkingBtn.title = "Thinking effort controls reasoning depth. Click to cycle.";
+  thinkingBtn.setAttribute(
+    "aria-label",
+    `Thinking effort: ${currentThinkingLevel}. Click to cycle reasoning depth.`,
+  );
   thinkingBtn.classList.toggle("off", currentThinkingLevel === "off");
 }
 let currentModelId = "";
@@ -2813,7 +2826,7 @@ function updateUI() {
     statusText.textContent = "Connected";
   }
 
-  messageInput.disabled = !onboarding.canQuery;
+  messageInput.disabled = !onboarding.canType;
   sendBtn.disabled = !onboarding.canQuery;
 
   if (isStreaming) {
@@ -3439,7 +3452,7 @@ async function openSettings() {
       // Auto-compaction toggle
       toggleAutoCompact.className = `settings-toggle${s.autoCompactionEnabled ? " on" : ""}`;
       // Thinking level
-      btnThinkingLevel.textContent = s.thinkingLevel || "off";
+      btnThinkingLevel.textContent = formatThinkingLevelLabel(s.thinkingLevel);
       currentThinkingLevel = s.thinkingLevel || "off";
       updateThinkingBtn();
       // Session name

@@ -179,7 +179,7 @@
                   </button>
                   <div class="model-dropdown-menu hidden" id="model-dropdown-menu"></div>
                 </div>
-                <button type="button" class="thinking-tag off" id="thinking-btn" title="Cycle thinking level" tabindex="-1">off</button>
+                <button type="button" class="thinking-tag off" id="thinking-btn" title="Thinking effort controls reasoning depth. Click to cycle." aria-label="Thinking effort: off. Click to cycle reasoning depth." tabindex="-1">Think off</button>
                 <button type="button" class="input-mic-btn" id="mic-btn" title="Voice input" tabindex="-1">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
                 </button>
@@ -239,8 +239,11 @@
               <button class="settings-toggle" id="toggle-auto-compact"></button>
             </div>
             <div class="settings-row" id="setting-thinking">
-              <span class="settings-label">Thinking level</span>
-              <button class="settings-value-btn" id="btn-thinking-level">off</button>
+              <span class="settings-label settings-label-stack">
+                <span class="settings-label-main">Thinking effort</span>
+                <span class="settings-label-sub">Reasoning depth</span>
+              </span>
+              <button class="settings-value-btn" id="btn-thinking-level" title="Click to cycle: off, minimal, low, medium, high">Thinking: off</button>
             </div>
             <div class="settings-row">
               <span class="settings-label">Show thinking</span>

@@ -8,6 +8,8 @@ export function setupSettingsToggles({
   setCurrentThinkingLevel,
   updateThinkingBtn,
 }) {
+  const formatThinkingLevelLabel = (level) => `Thinking: ${level || "off"}`;
+
   toggleAutoCompact?.addEventListener("click", async () => {
     const isOn = toggleAutoCompact.classList.contains("on");
     toggleAutoCompact.className = `settings-toggle${isOn ? "" : " on"}`;
@@ -17,7 +19,7 @@ export function setupSettingsToggles({
   btnThinkingLevel?.addEventListener("click", async () => {
     const data = await rpcCommand({ type: "cycle_thinking_level" });
     if (data?.success && data.data?.level) {
-      btnThinkingLevel.textContent = data.data.level;
+      btnThinkingLevel.textContent = formatThinkingLevelLabel(data.data.level);
       setCurrentThinkingLevel(data.data.level);
       updateThinkingBtn();
     }

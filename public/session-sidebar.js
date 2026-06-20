@@ -385,8 +385,7 @@ export class SessionSidebar {
     if (favSection) {
       let hasVisible = false;
       favSection.querySelectorAll(".session-item").forEach((item) => {
-        const title = (item.querySelector(".session-title")?.textContent || "").toLowerCase();
-        const matches = title.includes(this.searchQuery);
+        const matches = this.sessionItemMatchesSearch(item);
         item.classList.toggle("hidden", !matches);
         if (matches) hasVisible = true;
       });
@@ -395,14 +394,20 @@ export class SessionSidebar {
 
     this.container.querySelectorAll(".project-group, .archived-group").forEach((group) => {
       let hasVisible = false;
+      const projectMatches = (group.dataset.projectSearchText || "").includes(this.searchQuery);
       group.querySelectorAll(".session-item").forEach((item) => {
-        const title = (item.querySelector(".session-title")?.textContent || "").toLowerCase();
-        const matches = title.includes(this.searchQuery);
+        const matches = projectMatches || this.sessionItemMatchesSearch(item);
         item.classList.toggle("hidden", !matches);
         if (matches) hasVisible = true;
       });
       group.style.display = hasVisible ? "" : "none";
     });
+  }
+
+  sessionItemMatchesSearch(item) {
+    const title = (item.querySelector(".session-title")?.textContent || "").toLowerCase();
+    const projectText = item.dataset.projectSearchText || "";
+    return title.includes(this.searchQuery) || projectText.includes(this.searchQuery);
   }
 
   setActive(filePath) {
@@ -550,6 +555,7 @@ export class SessionSidebar {
     const item = document.createElement("div");
     item.className = "session-item";
     item.dataset.filePath = session.filePath;
+    item.dataset.projectSearchText = this.getProjectSearchText(project);
 
     if (session.filePath === this.activeSessionFile) {
       item.classList.add("active");
@@ -655,6 +661,7 @@ export class SessionSidebar {
 
       const group = document.createElement("div");
       group.className = "project-group";
+      group.dataset.projectSearchText = this.getProjectSearchText(project);
       const isCollapsed = this.collapsedProjects.has(project.dirName);
 
       const header = document.createElement("div");
@@ -776,6 +783,14 @@ export class SessionSidebar {
     this.container
       .querySelector(".session-empty-open-project")
       ?.addEventListener("click", () => this.onOpenProject?.());
+  }
+
+  getProjectSearchText(project) {
+    const path = typeof project?.path === "string" ? project.path : "";
+    const dirName = typeof project?.dirName === "string" ? project.dirName : "";
+    const pathParts = path.split("/").filter(Boolean);
+    const shortPath = pathParts.length > 0 ? pathParts[pathParts.length - 1] : path;
+    return [shortPath, dirName, path].join(" ").toLowerCase();
   }
 
   formatTime(isoTimestamp) {

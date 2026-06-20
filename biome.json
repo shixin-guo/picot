@@ -5,6 +5,7 @@
       "**",
       "!src-tauri/resources",
       "!src-tauri/target",
+      "!src-tauri/gen",
       "!dist",
       "!extensions/dist",
       "!node_modules",

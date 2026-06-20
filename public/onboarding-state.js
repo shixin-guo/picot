@@ -5,6 +5,7 @@ export function getOnboardingState({ hasSessions, workspacePath, availableModels
   if (!hasWorkspace && !hasSessions) {
     return {
       canQuery: false,
+      canType: false,
       needsProject: true,
       needsModel: false,
       message: "Open a project to start chatting.",
@@ -14,6 +15,7 @@ export function getOnboardingState({ hasSessions, workspacePath, availableModels
   if (!hasModel) {
     return {
       canQuery: false,
+      canType: true,
       needsProject: false,
       needsModel: true,
       message: "Configure an API key or provider to start chatting.",
@@ -22,6 +24,7 @@ export function getOnboardingState({ hasSessions, workspacePath, availableModels
 
   return {
     canQuery: true,
+    canType: true,
     needsProject: false,
     needsModel: false,
     message: "",

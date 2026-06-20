@@ -11,6 +11,7 @@ describe("onboarding state", () => {
       }),
     ).toEqual({
       canQuery: false,
+      canType: false,
       needsProject: true,
       needsModel: false,
       message: "Open a project to start chatting.",
@@ -26,10 +27,21 @@ describe("onboarding state", () => {
       }),
     ).toEqual({
       canQuery: false,
+      canType: true,
       needsProject: false,
       needsModel: true,
       message: "Configure an API key or provider to start chatting.",
     });
+  });
+
+  test("allows typing a draft when model setup is missing", () => {
+    expect(
+      getOnboardingState({
+        hasSessions: true,
+        workspacePath: "/tmp/project",
+        availableModels: [],
+      }).canType,
+    ).toBe(true);
   });
 
   test("allows query when a project and model are available", () => {

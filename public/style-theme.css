@@ -33,7 +33,7 @@
   color-scheme: dark;
 
   --bg-solid: #212121;
-  --header-bg: rgba(33, 33, 33, 0.7);
+  --header-bg: rgba(33, 33, 33);
   --sidebar-bg-mobile: rgba(40, 40, 38, 0.95);
   --bg-glass: rgba(255, 255, 255, 0.04);
   --bg-glass-hover: rgba(255, 255, 255, 0.06);
@@ -82,7 +82,7 @@
   color-scheme: dark;
 
   --bg-solid: #000000;
-  --header-bg: rgba(0, 0, 0, 0.65);
+  --header-bg: rgba(0, 0, 0);
   --sidebar-bg-mobile: rgba(18, 18, 17, 0.95);
   --bg-glass: rgba(255, 255, 255, 0.03);
   --bg-glass-hover: rgba(255, 255, 255, 0.05);
@@ -131,7 +131,7 @@
   color-scheme: dark;
 
   --bg-solid: #1a1d26;
-  --header-bg: rgba(26, 29, 38, 0.65);
+  --header-bg: rgba(26, 29, 38, 1);
   --sidebar-bg-mobile: rgba(30, 34, 44, 0.95);
   --bg-glass: rgba(255, 255, 255, 0.04);
   --bg-glass-hover: rgba(255, 255, 255, 0.07);
@@ -182,7 +182,7 @@
   color-scheme: light;
 
   --bg-solid: #ffffff;
-  --header-bg: rgba(255, 255, 255, 0.65);
+  --header-bg: rgba(255, 255, 255, 1);
   --sidebar-bg-mobile: rgba(242, 242, 247, 0.95);
   --bg-glass: rgba(0, 0, 0, 0.03);
   --bg-glass-hover: rgba(0, 0, 0, 0.06);
@@ -229,7 +229,7 @@
   color-scheme: light;
 
   --bg-solid: #f4f1ec;
-  --header-bg: rgba(244, 241, 236, 0.65);
+  --header-bg: rgba(244, 241, 236, 1);
   --sidebar-bg-mobile: rgba(240, 234, 224, 0.95);
   --bg-glass: rgba(244, 241, 236, 0.6);
   --bg-glass-hover: rgba(0, 0, 0, 0.06);
@@ -276,7 +276,7 @@
   color-scheme: light;
 
   --bg-solid: #f0f2ec;
-  --header-bg: rgba(240, 242, 236, 0.65);
+  --header-bg: rgba(240, 242, 236, 1);
   --sidebar-bg-mobile: rgba(232, 238, 226, 0.95);
   --bg-glass: rgba(240, 242, 236, 0.6);
   --bg-glass-hover: rgba(0, 0, 0, 0.06);
