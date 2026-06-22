@@ -44,6 +44,7 @@ import { type WebSocket, WebSocketServer } from "ws";
 import {
   buildCostDashboardPayload,
   buildEmptyCostDashboardPayload,
+  type CostSession,
 } from "./cost-dashboard-data.ts";
 import { buildProjectSearchMatch } from "./session-search";
 
@@ -58,10 +59,19 @@ import { buildProjectSearchMatch } from "./session-search";
 // work in the bundled binary, so when the global is present we go that
 // route. The plain Node path is kept for dev (jiti/tsx loading the .ts
 // source directly under Node) and as a defensive fallback.
-declare const Bun: any;
+interface BunRuntime {
+  serve: (...args: unknown[]) => unknown;
+  file: (path: string) => {
+    exists: () => Promise<boolean>;
+    type: string;
+    size: number;
+    slice: (start: number, end?: number) => unknown;
+  };
+}
+declare const Bun: BunRuntime;
 const HAS_BUN_SERVE =
-  typeof (globalThis as any).Bun !== "undefined" &&
-  typeof (globalThis as any).Bun?.serve === "function";
+  typeof (globalThis as { Bun?: BunRuntime }).Bun !== "undefined" &&
+  typeof (globalThis as { Bun?: BunRuntime }).Bun?.serve === "function";
 
 // Picot settings live under `pistudio` key in ~/.pi/agent/settings.json.
 // We only honor the fields that still make sense in desktop-only mode.
@@ -151,14 +161,14 @@ function buildLanUrls(port: number): string[] {
 }
 
 function loadSettings(): { port: number } {
-  let settings: any = {};
+  let settings: { port?: number | string } = {};
   try {
     const settingsPath = path.join(PI_AGENT_ROOT, "settings.json");
     // TODO(rename->picot): key `pistudio` kept for backward compat — migrate to `picot` once a settings-migration path exists.
     settings = JSON.parse(fs.readFileSync(settingsPath, "utf8")).pistudio || {};
   } catch {}
   return {
-    port: parseInt(process.env.PI_STUDIO_PORT || settings.port || "47821", 10),
+    port: parseInt(String(process.env.PI_STUDIO_PORT || settings.port || "47821"), 10),
   };
 }
 
@@ -228,7 +238,7 @@ function getRunningInstances(): Array<{
   cwd: string;
 }> {
   if (!fs.existsSync(INSTANCES_DIR)) return [];
-  const instances: any[] = [];
+  const instances: Array<{ port: number; pid: number; sessionFile: string; cwd: string }> = [];
   for (const file of fs.readdirSync(INSTANCES_DIR)) {
     if (!file.endsWith(".json")) continue;
     try {
@@ -302,7 +312,7 @@ type ServerHandle = {
   // The native handle, for callers that genuinely need it (currently
   // only the `server.address()` peek in the re-register path).
   nodeServer: http.Server | null;
-  bunServer: any | null;
+  bunServer: unknown | null;
 };
 
 // Unified WebSocket wrapper: either the `ws`-library WebSocket (node path)
@@ -314,9 +324,26 @@ type ServerHandle = {
 // the bun ServerWebSocket already exposes `.send(string)`, `.readyState`,
 // `.ping()`, and `.close()` — they just lack `.terminate()` and the
 // event-emitter `.on(...)` API. The wrapper closes that gap minimally.
+interface RpcCommand {
+  type: string;
+  id?: string;
+  apiKey?: string;
+  customInstructions?: string;
+  images?: Array<{ data?: string; mimeType?: string }>;
+  level?: string;
+  message: string;
+  modelId?: string;
+  name?: string;
+  outputPath?: string;
+  provider?: string;
+  sessionPath?: string;
+  streamingBehavior?: string;
+  [key: string]: unknown;
+}
+
 type UnifiedWS = {
   readyState: number;
-  send: (data: string) => any;
+  send: (data: string) => unknown;
   close: () => void;
   terminate: () => void;
   ping: () => void;
@@ -332,8 +359,8 @@ type EmbeddedServerGlobal = {
   lanUrl: string;
   // Re-published by every extension instance on session_start so the
   // connection handler dispatches to the new session's pi/ctx.
-  handleCommand: ((ws: WebSocket, command: any) => Promise<void>) | null;
-  buildStateSnapshot: ((ctx: ExtensionContext) => Promise<any>) | null;
+  handleCommand: ((ws: WebSocket, command: RpcCommand) => Promise<void>) | null;
+  buildStateSnapshot: ((ctx: ExtensionContext) => Promise<unknown>) | null;
   getLatestCtx: (() => ExtensionContext | null) | null;
   // Cached process-scoped references that don't change across sessions.
   //
@@ -364,14 +391,42 @@ type EmbeddedServerGlobal = {
   // `/api/sessions` re-reads + re-parses the JSONL header of every session
   // file in `~/.pi/agent/sessions/**` on every request, which dominates
   // launcher / sidebar warmup latency for users with many sessions.
-  sessionHeaderCache: Map<string, SessionFileCacheEntry<any>>;
-  sessionMetricsCache: Map<string, SessionFileCacheEntry<any>>;
+  sessionHeaderCache: Map<string, SessionFileCacheEntry<unknown>>;
+  sessionMetricsCache: Map<string, SessionFileCacheEntry<unknown>>;
 };
 
 const EMBEDDED_GLOBAL_KEY = "__piStudioEmbeddedServer__";
 
+interface SessionMetrics {
+  id: string;
+  title: string;
+  cwd: string;
+  timestamp: Date | null;
+  lastActive: Date | null;
+  model: string;
+  totalCost: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheRead: number;
+  cacheWrite: number;
+  userMessages: number;
+  assistantMessages: number;
+  toolCalls: number;
+  toolCostByName: Record<string, number>;
+}
+
+// Normalize an unknown thrown value to a human-readable message.
+function errMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object" && "message" in e) {
+    const m = (e as { message?: unknown }).message;
+    if (typeof m === "string") return m;
+  }
+  return String(e);
+}
+
 function getOrCreateGlobalState(): EmbeddedServerGlobal {
-  const g = globalThis as any;
+  const g = globalThis as Record<string, unknown>;
   if (!g[EMBEDDED_GLOBAL_KEY]) {
     g[EMBEDDED_GLOBAL_KEY] = {
       server: null,
@@ -385,8 +440,8 @@ function getOrCreateGlobalState(): EmbeddedServerGlobal {
       getLatestCtx: null,
       getApi: null,
       modelRegistry: null,
-      sessionHeaderCache: new Map<string, SessionFileCacheEntry<any>>(),
-      sessionMetricsCache: new Map<string, SessionFileCacheEntry<any>>(),
+      sessionHeaderCache: new Map<string, SessionFileCacheEntry<unknown>>(),
+      sessionMetricsCache: new Map<string, SessionFileCacheEntry<unknown>>(),
     } as EmbeddedServerGlobal;
   }
   return g[EMBEDDED_GLOBAL_KEY] as EmbeddedServerGlobal;
@@ -444,26 +499,27 @@ export default function (pi: ExtensionAPI) {
     try {
       const entries = ctx.sessionManager.getEntries();
       const sessionEntry = entries.find(
-        (e: any) => e?.type === "session" && typeof e?.id === "string",
+        (e: { type?: string; id?: unknown }) => e?.type === "session" && typeof e?.id === "string",
       );
       if (sessionEntry?.id) return sessionEntry.id;
     } catch {}
     return null;
   }
 
-  function withRouteMeta(data: any) {
+  function withRouteMeta(data: unknown) {
     const currentCtx = globalState.getLatestCtx?.() ?? latestCtx;
     const sessionId = currentSessionIdFromCtx(currentCtx);
+    const extra = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
     return {
       protocolVersion: PROTOCOL_VERSION,
       workspaceId,
       sessionId: sessionId || undefined,
       port: globalState.server?.port || PORT,
-      ...data,
+      ...extra,
     };
   }
 
-  function sendTo(ws: UnifiedWS, data: any) {
+  function sendTo(ws: UnifiedWS, data: unknown) {
     if (ws.readyState === WS_OPEN) {
       try {
         ws.send(JSON.stringify(withRouteMeta(data)));
@@ -474,7 +530,7 @@ export default function (pi: ExtensionAPI) {
   // ═══════════════════════════════════════
   // Helper: broadcast to all clients
   // ═══════════════════════════════════════
-  function broadcast(data: any) {
+  function broadcast(data: unknown) {
     const json = JSON.stringify(withRouteMeta(data));
     for (const client of globalState.clients) {
       if (client.readyState === WS_OPEN) {
@@ -523,13 +579,19 @@ export default function (pi: ExtensionAPI) {
   }
 
   for (const eventType of eventTypes) {
-    pi.on(eventType as any, async (event: any, ctx: ExtensionContext) => {
-      rememberCtx(ctx);
+    pi.on(
+      eventType as Parameters<typeof pi.on>[0],
+      async (event: unknown, ctx: ExtensionContext) => {
+        rememberCtx(ctx);
 
-      // Forward event to all connected browser clients
-      // Wrap in { type: "event", event: ... } to match the existing frontend protocol
-      broadcast({ type: "event", event: { type: eventType, ...event } });
-    });
+        // Forward event to all connected browser clients
+        // Wrap in { type: "event", event: ... } to match the existing frontend protocol
+        broadcast({
+          type: "event",
+          event: { type: eventType, ...(event as Record<string, unknown>) },
+        });
+      },
+    );
   }
 
   // Also capture context from session events
@@ -560,7 +622,7 @@ export default function (pi: ExtensionAPI) {
     let text = "";
     if (typeof content === "string") text = content;
     else if (Array.isArray(content)) {
-      const tb = content.find((b: any) => b.type === "text");
+      const tb = content.find((b: { type?: string }) => b.type === "text");
       if (tb) text = tb.text;
     }
     if (text) userMessages.push(text.substring(0, 300));
@@ -676,15 +738,15 @@ export default function (pi: ExtensionAPI) {
   // ═══════════════════════════════════════
   // Handle commands from browser clients
   // ═══════════════════════════════════════
-  async function handleCommand(ws: UnifiedWS, command: any) {
+  async function handleCommand(ws: UnifiedWS, command: RpcCommand) {
     const id = command.id;
     const ctx = latestCtx;
     // Always resolve `pi` from the global publisher rather than the
     // closure-captured one. See `currentPi()` for the rationale.
     const api = currentPi();
 
-    const success = (cmd: string, data?: any) => {
-      const resp: any = { type: "response", command: cmd, success: true, id };
+    const success = (cmd: string, data?: unknown) => {
+      const resp: Record<string, unknown> = { type: "response", command: cmd, success: true, id };
       if (data !== undefined) resp.data = data;
       return resp;
     };
@@ -721,6 +783,7 @@ export default function (pi: ExtensionAPI) {
             // Build content with optional images
             if (command.images?.length) {
               const validMimes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+              // biome-ignore lint/suspicious/noExplicitAny: mixed text/image content blocks for sendUserMessage
               const content: any[] = [
                 { type: "text", text: command.message || "(see attached image)" },
               ];
@@ -731,11 +794,9 @@ export default function (pi: ExtensionAPI) {
                 }
                 // Strip data URL prefix if accidentally included
                 const data = img.data.includes(",") ? img.data.split(",")[1] : img.data;
-                const mimeType = (validMimes.includes(img.mimeType) ? img.mimeType : "image/png") as
-                  | "image/png"
-                  | "image/jpeg"
-                  | "image/gif"
-                  | "image/webp";
+                const mimeType = (
+                  validMimes.includes(img.mimeType ?? "") ? (img.mimeType as string) : "image/png"
+                ) as "image/png" | "image/jpeg" | "image/gif" | "image/webp";
                 console.log(
                   `[embedded-server] Image: mimeType=${mimeType}, dataLen=${data.length}, rawMimeType=${img.mimeType}`,
                 );
@@ -754,7 +815,7 @@ export default function (pi: ExtensionAPI) {
                 content.push(imageBlock);
               }
               // Only send content array if we actually have images, otherwise just text
-              const hasImages = content.some((c: any) => c.type === "image");
+              const hasImages = content.some((c) => c.type === "image");
               if (hasImages) {
                 a.sendUserMessage(content);
               } else {
@@ -795,7 +856,7 @@ export default function (pi: ExtensionAPI) {
             sendTo(ws, error("new_session", "No context available"));
             break;
           }
-          if (typeof (ctx as any).newSession !== "function") {
+          if (typeof (ctx as unknown as { newSession?: unknown }).newSession !== "function") {
             sendTo(
               ws,
               error(
@@ -819,7 +880,7 @@ export default function (pi: ExtensionAPI) {
             sendTo(ws, error("switch_session", "sessionPath is required"));
             break;
           }
-          if (typeof (ctx as any).switchSession !== "function") {
+          if (typeof (ctx as unknown as { switchSession?: unknown }).switchSession !== "function") {
             sendTo(
               ws,
               error(
@@ -952,8 +1013,8 @@ export default function (pi: ExtensionAPI) {
             // Refresh so getAvailable() picks up the new key without restart.
             registry.refresh();
             sendTo(ws, success("set_api_key", { provider }));
-          } catch (e: any) {
-            sendTo(ws, error("set_api_key", e?.message || String(e)));
+          } catch (e: unknown) {
+            sendTo(ws, error("set_api_key", errMessage(e)));
           }
           break;
         }
@@ -976,8 +1037,8 @@ export default function (pi: ExtensionAPI) {
             registry.authStorage.remove(provider);
             registry.refresh();
             sendTo(ws, success("remove_api_key", { provider }));
-          } catch (e: any) {
-            sendTo(ws, error("remove_api_key", e?.message || String(e)));
+          } catch (e: unknown) {
+            sendTo(ws, error("remove_api_key", errMessage(e)));
           }
           break;
         }
@@ -991,7 +1052,8 @@ export default function (pi: ExtensionAPI) {
           if (!a) break;
           const models = await ctx.modelRegistry.getAvailable();
           const model = models.find(
-            (m: any) => m.provider === command.provider && m.id === command.modelId,
+            (m: { provider?: string; id?: string }) =>
+              m.provider === command.provider && m.id === command.modelId,
           );
           if (!model) {
             sendTo(
@@ -1025,7 +1087,8 @@ export default function (pi: ExtensionAPI) {
             break;
           }
           const idx = availModels.findIndex(
-            (m: any) => m.provider === currentModel.provider && m.id === currentModel.id,
+            (m: { provider?: string; id?: string }) =>
+              m.provider === currentModel.provider && m.id === currentModel.id,
           );
           const nextModel = availModels[(idx + 1) % availModels.length];
           await a.setModel(nextModel);
@@ -1047,7 +1110,7 @@ export default function (pi: ExtensionAPI) {
           const current = a.getThinkingLevel();
           const idx = levels.indexOf(current);
           const next = levels[(idx + 1) % levels.length];
-          a.setThinkingLevel(next as any);
+          a.setThinkingLevel(next as Parameters<typeof a.setThinkingLevel>[0]);
           sendTo(ws, success("cycle_thinking_level", { level: next }));
           break;
         }
@@ -1055,7 +1118,7 @@ export default function (pi: ExtensionAPI) {
         case "set_thinking_level": {
           const a = requireApi("set_thinking_level");
           if (!a) break;
-          a.setThinkingLevel(command.level);
+          a.setThinkingLevel(command.level as Parameters<typeof a.setThinkingLevel>[0]);
           sendTo(ws, success("set_thinking_level"));
           break;
         }
@@ -1118,11 +1181,11 @@ export default function (pi: ExtensionAPI) {
             broadcast({ type: "auto_compaction_start" });
             ctx.compact({
               customInstructions: command.customInstructions,
-              onComplete: (result: any) => {
+              onComplete: (result: { summary?: string }) => {
                 broadcast({ type: "auto_compaction_end", summary: result?.summary });
               },
-              onError: (err: any) => {
-                broadcast({ type: "auto_compaction_end", summary: `Error: ${err.message}` });
+              onError: (err: unknown) => {
+                broadcast({ type: "auto_compaction_end", summary: `Error: ${errMessage(err)}` });
               },
             });
           }
@@ -1153,8 +1216,8 @@ export default function (pi: ExtensionAPI) {
             const result =
               output.trim().split("\n").pop() || sessionFile.replace(".jsonl", ".html");
             sendTo(ws, success("export_html", { path: result }));
-          } catch (e: any) {
-            sendTo(ws, error("export_html", e.message));
+          } catch (e: unknown) {
+            sendTo(ws, error("export_html", errMessage(e)));
           }
           break;
         }
@@ -1189,8 +1252,8 @@ export default function (pi: ExtensionAPI) {
           sendTo(ws, error(command.type, `Unknown command: ${command.type}`));
         }
       }
-    } catch (e: any) {
-      sendTo(ws, error(command.type || "unknown", e.message || String(e)));
+    } catch (e: unknown) {
+      sendTo(ws, error(command.type || "unknown", errMessage(e)));
     }
   }
 
@@ -1285,7 +1348,7 @@ export default function (pi: ExtensionAPI) {
       // still reads it via the old name, and renaming is a churn-without-
       // benefit change scoped out of this migration.
       res.writeHead(200, { "Content-Type": "application/json" });
-      const healthPayload: Record<string, any> = {
+      const healthPayload: Record<string, unknown> = {
         status: "ok",
         mode: "embedded",
         mirrorUrl: globalState.localUrl,
@@ -1350,7 +1413,7 @@ export default function (pi: ExtensionAPI) {
       if (latestCtx) {
         try {
           const entries = latestCtx.sessionManager.getEntries();
-          const sessionEntry = entries.find((e: any) => e.type === "session");
+          const sessionEntry = entries.find((e: { type?: string }) => e.type === "session");
           if (sessionEntry?.cwd) cwd = sessionEntry.cwd;
         } catch {}
       }
@@ -1388,14 +1451,14 @@ export default function (pi: ExtensionAPI) {
         if (!explicitPath && latestCtx) {
           try {
             const entries = latestCtx.sessionManager.getEntries();
-            const sessionEntry = entries.find((e: any) => e.type === "session");
+            const sessionEntry = entries.find((e: { type?: string }) => e.type === "session");
             if (sessionEntry?.cwd) dirPath = sessionEntry.cwd;
           } catch {}
         }
         serveFileList(res, dirPath);
-      } catch (err: any) {
+      } catch (err: unknown) {
         res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: err.message }));
+        res.end(JSON.stringify({ error: errMessage(err) }));
       }
       return;
     }
@@ -1417,15 +1480,15 @@ export default function (pi: ExtensionAPI) {
           execFile("open", [fp], (err) => {
             if (err) {
               res.writeHead(500, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ error: err.message }));
+              res.end(JSON.stringify({ error: errMessage(err) }));
               return;
             }
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ ok: true }));
           });
-        } catch (err: any) {
+        } catch (err: unknown) {
           res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: err.message }));
+          res.end(JSON.stringify({ error: errMessage(err) }));
         }
       });
       return;
@@ -1448,7 +1511,7 @@ export default function (pi: ExtensionAPI) {
         try {
           const command = JSON.parse(body);
           // Create a fake WebSocket-like object to capture the response
-          const responsePromise = new Promise<any>((resolve) => {
+          const responsePromise = new Promise<unknown>((resolve) => {
             const fakeWs: UnifiedWS = {
               readyState: WS_OPEN,
               send: (data: string) => resolve(JSON.parse(data)),
@@ -1461,9 +1524,9 @@ export default function (pi: ExtensionAPI) {
           const response = await responsePromise;
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(response));
-        } catch (e: any) {
+        } catch (e: unknown) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: e.message }));
+          res.end(JSON.stringify({ error: errMessage(e) }));
         }
       });
       return;
@@ -1509,9 +1572,9 @@ export default function (pi: ExtensionAPI) {
 
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ deleted, errors }));
-        } catch (e: any) {
+        } catch (e: unknown) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: e.message }));
+          res.end(JSON.stringify({ error: errMessage(e) }));
         }
       });
       return;
@@ -1573,9 +1636,9 @@ export default function (pi: ExtensionAPI) {
           }
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: true, path: resolved }));
-        } catch (e: any) {
+        } catch (e: unknown) {
           res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: e.message }));
+          res.end(JSON.stringify({ error: errMessage(e) }));
         }
       });
       return;
@@ -1588,9 +1651,9 @@ export default function (pi: ExtensionAPI) {
         const content = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "{}";
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true, content, path: configPath }));
-      } catch (e: any) {
+      } catch (e: unknown) {
         res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: false, error: e.message }));
+        res.end(JSON.stringify({ success: false, error: errMessage(e) }));
       }
       return;
     }
@@ -1615,9 +1678,9 @@ export default function (pi: ExtensionAPI) {
           fs.writeFileSync(configPath, content, "utf8");
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: true }));
-        } catch (e: any) {
+        } catch (e: unknown) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: false, error: e.message }));
+          res.end(JSON.stringify({ success: false, error: errMessage(e) }));
         }
       });
       return;
@@ -1643,9 +1706,9 @@ export default function (pi: ExtensionAPI) {
           : '{\n  "providers": {}\n}\n';
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true, content, path: configPath }));
-      } catch (e: any) {
+      } catch (e: unknown) {
         res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: false, error: e.message }));
+        res.end(JSON.stringify({ success: false, error: errMessage(e) }));
       }
       return;
     }
@@ -1694,8 +1757,8 @@ export default function (pi: ExtensionAPI) {
           let refreshed = false;
           try {
             const registry = globalState.modelRegistry;
-            if (registry && typeof (registry as any).refresh === "function") {
-              await (registry as any).refresh();
+            if (registry && typeof (registry as { refresh?: unknown }).refresh === "function") {
+              await (registry as { refresh: () => unknown }).refresh();
               refreshed = true;
             }
           } catch {
@@ -1703,9 +1766,9 @@ export default function (pi: ExtensionAPI) {
           }
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: true, refreshed }));
-        } catch (e: any) {
+        } catch (e: unknown) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: false, error: e.message }));
+          res.end(JSON.stringify({ success: false, error: errMessage(e) }));
         }
       });
       return;
@@ -1720,7 +1783,10 @@ export default function (pi: ExtensionAPI) {
   // A `null` parse result (file rejected by the trivial-session filter) is
   // also cached so we don't keep retrying. Also returns the stat so callers
   // can avoid a second `fs.statSync`.
-  async function parseSessionFileCached(filePath: string, readline: any) {
+  async function parseSessionFileCached(
+    filePath: string,
+    readline: typeof import("node:readline"),
+  ) {
     let stat: fs.Stats;
     try {
       stat = fs.statSync(filePath);
@@ -1823,6 +1889,7 @@ export default function (pi: ExtensionAPI) {
           projectWork,
           8,
           async ({ dirName, projectDir, files, decodedPath }) => {
+            // biome-ignore lint/suspicious/noExplicitAny: dynamic session-list entries built by spreading parsed JSONL headers
             const sessions: any[] = [];
             const results = await mapWithConcurrencyLimit(files, 24, async (file) => {
               const filePath = path.join(projectDir, file);
@@ -1865,7 +1932,10 @@ export default function (pi: ExtensionAPI) {
             return { path: inferredPath, dirName, sessions };
           },
         )
-      ).filter((p): p is { path: string; dirName: string; sessions: any[] } => p !== null);
+      ).filter(
+        // biome-ignore lint/suspicious/noExplicitAny: dynamic session-list entries
+        (p): p is { path: string; dirName: string; sessions: any[] } => p !== null,
+      );
 
       projects.sort((a, b) => {
         const aSession = a.sessions[0];
@@ -1881,9 +1951,9 @@ export default function (pi: ExtensionAPI) {
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ projects }));
-    } catch (e: any) {
+    } catch (e: unknown) {
       res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: e.message }));
+      res.end(JSON.stringify({ error: errMessage(e) }));
     }
   }
 
@@ -1938,16 +2008,19 @@ export default function (pi: ExtensionAPI) {
     };
   }
 
-  async function parseSessionMetrics(filePath: string, readline: any) {
+  async function parseSessionMetrics(
+    filePath: string,
+    readline: typeof import("node:readline"),
+  ): Promise<SessionMetrics | null> {
     const stream = fs.createReadStream(filePath, { encoding: "utf8" });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
-    const data: any = {
+    const data: SessionMetrics = {
       id: "",
       title: "",
       cwd: "",
-      timestamp: null as Date | null,
-      lastActive: null as Date | null,
+      timestamp: null,
+      lastActive: null,
       model: "unknown",
       totalCost: 0,
       inputTokens: 0,
@@ -2015,7 +2088,10 @@ export default function (pi: ExtensionAPI) {
         data.cacheWrite += Number(usage?.cacheWrite || 0);
 
         const toolCalls = Array.isArray(msg.content)
-          ? msg.content.filter((b: any) => b?.type === "toolCall" && typeof b?.name === "string")
+          ? msg.content.filter(
+              (b: { type?: string; name?: unknown }) =>
+                b?.type === "toolCall" && typeof b?.name === "string",
+            )
           : [];
         data.toolCalls += toolCalls.length;
         if (toolCalls.length > 0 && cost > 0) {
@@ -2061,7 +2137,7 @@ export default function (pi: ExtensionAPI) {
       })();
 
       const dirEntries = fs.readdirSync(SESSIONS_DIR, { withFileTypes: true });
-      const sessions: any[] = [];
+      const sessions: CostSession[] = [];
 
       for (const dir of dirEntries) {
         if (!dir.isDirectory()) continue;
@@ -2081,10 +2157,10 @@ export default function (pi: ExtensionAPI) {
             globalState.sessionMetricsCache.delete(filePath);
             continue;
           }
-          let parsed: any;
+          let parsed: SessionMetrics | null;
           const cached = globalState.sessionMetricsCache.get(filePath);
           if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
-            parsed = cached.value;
+            parsed = cached.value as SessionMetrics;
           } else {
             parsed = await parseSessionMetrics(filePath, readline);
             globalState.sessionMetricsCache.set(filePath, {
@@ -2139,9 +2215,9 @@ export default function (pi: ExtensionAPI) {
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(payload));
-    } catch (e: any) {
+    } catch (e: unknown) {
       res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: e?.message || "Failed to build cost dashboard" }));
+      res.end(JSON.stringify({ error: errMessage(e) || "Failed to build cost dashboard" }));
     }
   }
 
@@ -2157,6 +2233,7 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
+    // biome-ignore lint/suspicious/noExplicitAny: heterogeneous parsed JSONL entries
     const entries: any[] = [];
     const stream = fs.createReadStream(filePath, { encoding: "utf8" });
     let buffer = "";
@@ -2190,18 +2267,18 @@ export default function (pi: ExtensionAPI) {
 
     stream.on("error", (e: Error) => {
       res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: e.message }));
+      res.end(JSON.stringify({ error: errMessage(e) }));
     });
   }
 
   // ═══════════════════════════════════════
   // Parse session file header
   // ═══════════════════════════════════════
-  async function parseSessionFile(filePath: string, readline: any) {
+  async function parseSessionFile(filePath: string, readline: typeof import("node:readline")) {
     const stream = fs.createReadStream(filePath, { encoding: "utf8" });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
-    let header: any = null;
+    let header: { id?: string; timestamp?: string; cwd?: string } | null = null;
     let firstMessage: string | null = null;
     let sessionName: string | null = null;
     let userMessageCount = 0;
@@ -2221,7 +2298,7 @@ export default function (pi: ExtensionAPI) {
             const content = entry.message.content;
             if (typeof content === "string") firstMessage = content.substring(0, 120);
             else if (Array.isArray(content)) {
-              const tb = content.find((b: any) => b.type === "text");
+              const tb = content.find((b: { type?: string }) => b.type === "text");
               if (tb) firstMessage = tb.text.substring(0, 120);
             }
           }
@@ -2287,6 +2364,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      // biome-ignore lint/suspicious/noExplicitAny: dynamic file-browser entries (name/isDirectory/etc.)
       const items: any[] = [];
 
       for (const entry of entries) {
@@ -2317,9 +2395,9 @@ export default function (pi: ExtensionAPI) {
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ path: dirPath, items }));
-    } catch (err: any) {
+    } catch (err: unknown) {
       res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err.message }));
+      res.end(JSON.stringify({ error: errMessage(err) }));
     }
   }
 
@@ -2337,6 +2415,7 @@ export default function (pi: ExtensionAPI) {
 
       const q = query.toLowerCase();
       const readline = await import("node:readline");
+      // biome-ignore lint/suspicious/noExplicitAny: dynamic search result rows
       const results: any[] = [];
       const MAX_RESULTS = 30;
 
@@ -2369,6 +2448,7 @@ export default function (pi: ExtensionAPI) {
             let sessionTimestamp = "";
             let firstMessage = "";
             let sessionWorkspace = decodedPath;
+            // biome-ignore lint/suspicious/noExplicitAny: dynamic search match rows
             const matches: any[] = [];
 
             for await (const line of rl) {
@@ -2392,8 +2472,8 @@ export default function (pi: ExtensionAPI) {
                   if (typeof content === "string") text = content;
                   else if (Array.isArray(content)) {
                     text = content
-                      .filter((b: any) => b.type === "text")
-                      .map((b: any) => b.text)
+                      .filter((b: { type?: string }) => b.type === "text")
+                      .map((b: { text?: string }) => b.text)
                       .join(" ");
                   }
 
@@ -2451,9 +2531,9 @@ export default function (pi: ExtensionAPI) {
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ results }));
-    } catch (err: any) {
+    } catch (err: unknown) {
       res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err.message }));
+      res.end(JSON.stringify({ error: errMessage(err) }));
     }
   }
 
@@ -2581,7 +2661,7 @@ export default function (pi: ExtensionAPI) {
     if (HAS_BUN_SERVE) {
       const tryBunListen = (port: number, maxAttempts = 10) => {
         try {
-          const bunServer: any = Bun.serve({
+          const bunServer = Bun.serve({
             port,
             hostname: BIND_HOST,
             // Sustained streaming responses (e.g. SSE / long polls hitting
@@ -2590,13 +2670,13 @@ export default function (pi: ExtensionAPI) {
             idleTimeout: 0,
             fetch: bunFetchHandler,
             websocket: {
-              open(ws: any) {
+              open(ws: unknown) {
                 onClientConnected(ws as UnifiedWS);
               },
-              message(ws: any, msg: string | Buffer) {
+              message(ws: unknown, msg: string | Buffer) {
                 onClientMessage(ws as UnifiedWS, msg);
               },
-              close(ws: any) {
+              close(ws: unknown) {
                 onClientClosed(ws as UnifiedWS);
               },
               drain() {
@@ -2604,7 +2684,7 @@ export default function (pi: ExtensionAPI) {
               },
               // Bun marks the client as alive on any pong it receives; we
               // expose a hook to flip the heartbeat sentinel.
-              pong(ws: any) {
+              pong(ws: unknown) {
                 (ws as UnifiedWS).isAlive = true;
               },
             },
@@ -2614,19 +2694,20 @@ export default function (pi: ExtensionAPI) {
             port,
             close: () => {
               try {
-                bunServer.stop?.(true);
+                (bunServer as { stop?: (force?: boolean) => void }).stop?.(true);
               } catch {}
             },
             nodeServer: null,
             bunServer,
           };
-        } catch (err: any) {
-          const msg = String(err?.message || err);
+        } catch (err: unknown) {
+          const msg = errMessage(err);
           // Bun surfaces EADDRINUSE as both `err.code === "EADDRINUSE"`
           // and as a message containing the literal string, depending on
           // version. Check both.
+          const errCode = (err as { code?: string } | null)?.code;
           if (
-            (err?.code === "EADDRINUSE" || msg.includes("EADDRINUSE")) &&
+            (errCode === "EADDRINUSE" || msg.includes("EADDRINUSE")) &&
             port < PORT + maxAttempts
           ) {
             console.log(`[Embedded] Port ${port} in use, trying ${port + 1}...`);
@@ -2646,10 +2727,10 @@ export default function (pi: ExtensionAPI) {
       // `Bun.file(path)` already supports byte ranges, content-type
       // inference, and zero-copy streaming, and the adapter's buffered
       // body approach would defeat all of that for the 200+ KB JS bundle.
-      async function bunFetchHandler(req: Request, server: any): Promise<Response | undefined> {
+      async function bunFetchHandler(req: Request, server: unknown): Promise<Response | undefined> {
         const url = new URL(req.url);
         if (url.pathname === "/ws") {
-          if (server.upgrade(req)) return undefined;
+          if ((server as { upgrade: (req: Request) => boolean }).upgrade(req)) return undefined;
           return new Response("WebSocket upgrade failed", { status: 400 });
         }
         if (!url.pathname.startsWith("/api/")) {
@@ -2702,11 +2783,11 @@ export default function (pi: ExtensionAPI) {
           }
           const ext = path.extname(filePath).toLowerCase();
           const contentType = MIME_TYPES[ext] || file.type || "application/octet-stream";
-          return new Response(file, {
+          return new Response(file as unknown as BodyInit, {
             headers: { "Content-Type": contentType, "Cache-Control": "no-store" },
           });
-        } catch (err: any) {
-          return new Response(`Internal error: ${err?.message || String(err)}`, { status: 500 });
+        } catch (err: unknown) {
+          return new Response(`Internal error: ${errMessage(err)}`, { status: 500 });
         }
       }
 
@@ -2772,13 +2853,13 @@ export default function (pi: ExtensionAPI) {
           bunServer: null,
         };
       });
-      server.once("error", (err: any) => {
+      server.once("error", (err: NodeJS.ErrnoException) => {
         if (err.code === "EADDRINUSE" && port < PORT + maxAttempts) {
           console.log(`[Embedded] Port ${port} in use, trying ${port + 1}...`);
           server.removeAllListeners("error");
           tryListen(port + 1, maxAttempts);
         } else {
-          console.error(`[Embedded] Failed to start server:`, err.message);
+          console.error("[Embedded] Failed to start server:", errMessage(err));
         }
       });
     };
@@ -2837,17 +2918,17 @@ export default function (pi: ExtensionAPI) {
       // our handlers actually touch are emulated; everything else is a
       // sealed `undefined` to fail loudly if a handler ever reaches for
       // something Bun.serve can't provide.
-      const dataListeners: Array<(chunk: any) => void> = [];
+      const dataListeners: Array<(chunk: unknown) => void> = [];
       const endListeners: Array<() => void> = [];
-      const reqLike: any = {
+      const reqLike: Record<string, unknown> = {
         url: url.pathname + url.search,
         method: req.method,
         headers,
         // Only `data`/`end` are consumed by our POST handlers — see
         // /api/rpc, /api/agent-config (PUT), etc.
-        on(event: string, fn: any) {
+        on(event: string, fn: (chunk?: unknown) => void) {
           if (event === "data") dataListeners.push(fn);
-          else if (event === "end") endListeners.push(fn);
+          else if (event === "end") endListeners.push(fn as () => void);
           return reqLike;
         },
       };
@@ -2856,7 +2937,7 @@ export default function (pi: ExtensionAPI) {
       let statusCode = 200;
       const resHeaders: Record<string, string> = {};
       const bodyChunks: Array<Buffer> = [];
-      const resLike: any = {
+      const resLike: Record<string, unknown> = {
         setHeader(name: string, value: string) {
           resHeaders[name] = value;
         },
@@ -2868,11 +2949,11 @@ export default function (pi: ExtensionAPI) {
             }
           }
         },
-        write(chunk: any) {
+        write(chunk: unknown) {
           if (chunk == null) return;
           bodyChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
         },
-        end(chunk?: any) {
+        end(chunk?: unknown) {
           if (resolved) return;
           resolved = true;
           if (chunk != null) {
@@ -2888,14 +2969,17 @@ export default function (pi: ExtensionAPI) {
       // implement pipe, so emulate it with `on("data")`+`on("end")`.
       // We attach the pipe shim only when the handler tries to use it.
       resLike.pipe = undefined;
-      (resLike as any).on = (_event: string, _fn: any) => resLike;
+      resLike.on = (_event: string, _fn: unknown) => resLike;
 
       try {
-        serveStaticFile(reqLike, resLike);
-      } catch (err: any) {
+        serveStaticFile(
+          reqLike as unknown as http.IncomingMessage,
+          resLike as unknown as http.ServerResponse,
+        );
+      } catch (err: unknown) {
         if (!resolved) {
           resolved = true;
-          resolve(new Response(`Internal error: ${err?.message || String(err)}`, { status: 500 }));
+          resolve(new Response(`Internal error: ${errMessage(err)}`, { status: 500 }));
         }
       }
 

@@ -1,5 +1,30 @@
 import * as path from "node:path";
 
+export interface CostSession {
+  time: string;
+  model?: string;
+  workspace?: string;
+  totalCost?: number;
+  totalTokens?: number;
+  userMessages?: number;
+  assistantMessages?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  toolCalls?: number;
+  toolCostByName?: Record<string, number>;
+  [key: string]: unknown;
+}
+
+export interface CostParams {
+  from?: Date;
+  to?: Date;
+  granularity?: string;
+  scope?: string;
+  range?: string;
+}
+
 function bucketForDate(date: Date, granularity: string): string {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
@@ -26,7 +51,7 @@ function getProjectName(workspace: string): string {
   return base || trimmed;
 }
 
-export function buildEmptyCostDashboardPayload(params: any = {}) {
+export function buildEmptyCostDashboardPayload(params: CostParams = {}) {
   return {
     range: {
       from: params.from?.toISOString?.() || null,
@@ -71,7 +96,11 @@ export function buildEmptyCostDashboardPayload(params: any = {}) {
   };
 }
 
-export function buildCostDashboardPayload(sessions: any[], params: any, now = new Date()) {
+export function buildCostDashboardPayload(
+  sessions: CostSession[],
+  params: CostParams,
+  now = new Date(),
+) {
   const payload = buildEmptyCostDashboardPayload(params);
   payload.sessions = [...sessions].sort((a, b) => Date.parse(b.time) - Date.parse(a.time));
   payload.summary.sessionCount = payload.sessions.length;
