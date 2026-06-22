@@ -763,7 +763,7 @@ impl PiManager {
 }
 
 pub fn is_port_in_use(port: u16) -> bool {
-    std::net::TcpListener::bind(format!("127.0.0.1:{}", port)).is_err()
+    std::net::TcpListener::bind(format!("0.0.0.0:{}", port)).is_err()
 }
 
 pub async fn wait_for_health(port: u16, timeout_secs: u64) -> Result<(), String> {
@@ -793,6 +793,7 @@ pub async fn wait_for_endpoint(port: u16, path: &str, timeout_secs: u64) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 
     #[test]
     fn augmented_path_includes_pi_extension_npm_bin() {
@@ -812,5 +813,14 @@ mod tests {
             "expected augmented PATH to include {}",
             expected.display()
         );
+    }
+
+    #[test]
+    fn port_in_use_detects_unspecified_ipv4_listener() {
+        let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
+            .expect("bind ephemeral port");
+        let port = listener.local_addr().expect("listener addr").port();
+
+        assert!(is_port_in_use(port));
     }
 }
