@@ -258,6 +258,45 @@ function getRunningInstances(): Array<{
   return instances;
 }
 
+type GitBranchContextLike = {
+  sessionManager?: {
+    getEntries?: () => Array<{ type?: string; cwd?: string }>;
+  };
+} | null;
+
+export function normalizeApiRoutePath(urlPath: string): string {
+  return urlPath.split("?")[0] || "/";
+}
+
+export function resolveGitBranchCwd({
+  foregroundPort,
+  fallbackCwd,
+  instances,
+  latestCtx,
+}: {
+  foregroundPort: number | null;
+  fallbackCwd: string;
+  instances: Array<{ port: number; pid: number; sessionFile: string; cwd: string }>;
+  latestCtx: GitBranchContextLike;
+}): string {
+  if (typeof foregroundPort === "number" && Number.isFinite(foregroundPort)) {
+    const matchedWorkspace = instances.find((instance) => instance?.port === foregroundPort)?.cwd;
+    if (typeof matchedWorkspace === "string" && matchedWorkspace.trim()) {
+      return matchedWorkspace;
+    }
+  }
+
+  if (latestCtx?.sessionManager?.getEntries) {
+    try {
+      const entries = latestCtx.sessionManager.getEntries();
+      const sessionEntry = entries.find((e: { type?: string }) => e.type === "session");
+      if (sessionEntry?.cwd) return sessionEntry.cwd;
+    } catch {}
+  }
+
+  return fallbackCwd;
+}
+
 // MIME types for static file serving
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html",
@@ -1332,6 +1371,8 @@ export default function (pi: ExtensionAPI) {
     res: http.ServerResponse,
     urlPath: string,
   ) {
+    urlPath = normalizeApiRoutePath(urlPath);
+
     // CORS headers
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -1409,14 +1450,14 @@ export default function (pi: ExtensionAPI) {
 
     // Current git branch for the active workspace
     if (urlPath === "/api/git-branch" && req.method === "GET") {
-      let cwd = process.cwd();
-      if (latestCtx) {
-        try {
-          const entries = latestCtx.sessionManager.getEntries();
-          const sessionEntry = entries.find((e: { type?: string }) => e.type === "session");
-          if (sessionEntry?.cwd) cwd = sessionEntry.cwd;
-        } catch {}
-      }
+      const gitBranchUrl = new URL(`http://localhost${req.url}`);
+      const requestedPort = Number(gitBranchUrl.searchParams.get("foregroundPort"));
+      const cwd = resolveGitBranchCwd({
+        foregroundPort: Number.isFinite(requestedPort) ? requestedPort : null,
+        fallbackCwd: process.cwd(),
+        instances: getRunningInstances(),
+        latestCtx,
+      });
       execFile("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd }, (err, stdout) => {
         res.writeHead(200, { "Content-Type": "application/json" });
         if (err) {

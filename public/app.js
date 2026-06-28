@@ -291,7 +291,11 @@ function updateGitBranchIndicator(branch = "") {
 
 async function refreshGitBranch() {
   try {
-    const res = await fetch("/api/git-branch");
+    const params = new URLSearchParams();
+    if (typeof foregroundPort === "number" && Number.isFinite(foregroundPort)) {
+      params.set("foregroundPort", String(foregroundPort));
+    }
+    const res = await fetch(`/api/git-branch${params.size ? `?${params.toString()}` : ""}`);
     if (!res.ok) {
       updateGitBranchIndicator("");
       return;
