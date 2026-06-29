@@ -33,8 +33,9 @@ Picot currently ships macOS builds without Apple Developer ID signing/notarizati
 2. Right-click → **Open**
 3. If blocked: **System Settings → Privacy & Security → Open Anyway**
 
+
 <p align="center">
-  <img width="420" alt="macOS Gatekeeper warning" src="https://github.com/user-attachments/assets/cb09f1f8-9eb8-4c0d-aee0-2fc9b704b201" />
+  <img width="420" alt="macOS Gatekeeper warning" src="https://github.com/user-attachments/assets/02e9cb30-9314-4c47-bc61-87d9f37b6848" />
 </p>
 
 Then click **Done**:
