@@ -2144,6 +2144,13 @@ async function handleSessionSelectImpl(session, project) {
   );
   foregroundPort = findPortForSession(liveInstances, session.filePath, foregroundPort);
   syncWorkspaceIndicatorFromInstances();
+  // Historical sessions in another workspace have no live instance, so the
+  // indicator path resolved from liveInstances may be null. Refresh the file
+  // tree directly from the project the user just clicked into so it doesn't
+  // stay stale while the chat history replays.
+  if (project?.path && project.path !== fileBrowserWorkspacePath) {
+    refreshFileBrowserForWorkspace(project.path, { force: true });
+  }
   if (session.filePath) {
     wsClient.setRoutingContext({
       workspaceId: `workspace:${project?.path || getCurrentWorkspacePath() || "unknown"}`,

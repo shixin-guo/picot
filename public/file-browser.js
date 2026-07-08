@@ -1,6 +1,7 @@
 /**
  * File Browser — right sidebar file tree with drag-and-drop
  */
+import { onLocaleChange, t } from "./i18n.js";
 
 const FILE_ICONS = {
   // Folders
@@ -64,8 +65,22 @@ export class FileBrowser {
     this.messageInput = messageInput;
     this.currentPath = null;
     this.loadSequence = 0;
+    this.fileStatus = null;
+    this.fileErrorText = null;
+
+    // Item interactions are delegated to the container — one set of listeners
+    // total instead of one per rendered row. `event.target.closest(".file-item")`
+    // resolves the originating row (or null when the click missed any row).
+    this.container.addEventListener("click", (e) => this.onItemClick(e));
+    this.container.addEventListener("dblclick", (e) => this.onItemDoubleClick(e));
+    this.container.addEventListener("dragstart", (e) => this.onItemDragStart(e));
+    this.container.addEventListener("dragend", (e) => this.onItemDragEnd(e));
 
     this.setupDropTarget();
+
+    onLocaleChange(() => {
+      this.refreshStatusText();
+    });
   }
   setWorkspaceRoot(path = "") {
     const normalized = typeof path === "string" ? path.trim() : "";
@@ -73,6 +88,7 @@ export class FileBrowser {
     // overwrite the workspace reset.
     this.loadSequence++;
     this.currentPath = null;
+    this.fileStatus = null;
     this.pathEl.textContent = normalized;
     this.pathEl.title = normalized;
     this.container.innerHTML = "";
@@ -80,7 +96,7 @@ export class FileBrowser {
 
   async load(dirPath) {
     const sequence = ++this.loadSequence;
-    this.container.innerHTML = '<div class="file-loading">Loading…</div>';
+    this.showFileStatus("loading");
 
     try {
       const url = dirPath ? `/api/files?path=${encodeURIComponent(dirPath)}` : "/api/files";
@@ -91,7 +107,7 @@ export class FileBrowser {
       if (sequence !== this.loadSequence) return;
 
       if (data.error) {
-        this.container.innerHTML = `<div class="file-loading">${data.error}</div>`;
+        this.showFileStatus("error", data.error);
         return;
       }
 
@@ -101,7 +117,7 @@ export class FileBrowser {
       this.render(data.items);
     } catch (_err) {
       if (sequence !== this.loadSequence) return;
-      this.container.innerHTML = '<div class="file-loading">Failed to load</div>';
+      this.showFileStatus("failed");
     }
   }
 
@@ -116,55 +132,119 @@ export class FileBrowser {
     this.container.innerHTML = "";
 
     if (items.length === 0) {
-      this.container.innerHTML = '<div class="file-loading">Empty directory</div>';
+      this.showFileStatus("empty");
       return;
     }
+    this.fileStatus = null;
 
+    // Build items into a DocumentFragment, then append once — one layout
+    // invalidation per refresh instead of N. Item event handling is delegated
+    // to a single set of container-level listeners, so per-item listener
+    // allocation is also O(1) instead of O(N).
+    const fragment = document.createDocumentFragment();
     for (const item of items) {
       const el = document.createElement("div");
       el.className = `file-item${item.isDirectory ? " directory" : ""}`;
       el.draggable = true;
       el.dataset.path = item.path;
       el.dataset.name = item.name;
-      el.dataset.isDirectory = item.isDirectory;
+      el.dataset.isDirectory = item.isDirectory ? "true" : "false";
 
       const icon = getFileIcon(item.name, item.isDirectory);
       const size = item.isDirectory ? "" : formatSize(item.size);
 
-      el.innerHTML = `
-        <span class="file-icon">${icon}</span>
-        <span class="file-name" title="${item.name}">${item.name}</span>
-        ${size ? `<span class="file-size">${size}</span>` : ""}
-      `;
+      const iconEl = document.createElement("span");
+      iconEl.className = "file-icon";
+      iconEl.textContent = icon;
+      el.appendChild(iconEl);
 
-      // Click: open directory or open file natively
-      el.addEventListener("click", () => {
-        if (item.isDirectory) {
-          this.load(item.path);
-        }
-      });
+      const nameEl = document.createElement("span");
+      nameEl.className = "file-name";
+      nameEl.title = item.name;
+      nameEl.textContent = item.name;
+      el.appendChild(nameEl);
 
-      // Double-click: open file natively
-      el.addEventListener("dblclick", (e) => {
-        e.preventDefault();
-        if (!item.isDirectory) {
-          this.openNatively(item.path);
-        }
-      });
+      if (size) {
+        const sizeEl = document.createElement("span");
+        sizeEl.className = "file-size";
+        sizeEl.textContent = size;
+        el.appendChild(sizeEl);
+      }
 
-      // Drag start
-      el.addEventListener("dragstart", (e) => {
-        e.dataTransfer.setData("text/plain", item.path);
-        e.dataTransfer.effectAllowed = "copy";
-        el.classList.add("dragging");
-      });
-
-      el.addEventListener("dragend", () => {
-        el.classList.remove("dragging");
-      });
-
-      this.container.appendChild(el);
+      fragment.appendChild(el);
     }
+    this.container.appendChild(fragment);
+  }
+
+  /**
+   * Locate the originating `.file-item` for a delegated event. Returns
+   * `null` when the event target is outside any row (e.g. clicks on empty
+   * space inside the file list).
+   */
+  itemFromEvent(event) {
+    return event.target?.closest?.(".file-item") || null;
+  }
+
+  onItemClick(event) {
+    const item = this.itemFromEvent(event);
+    if (!item) return;
+    if (item.dataset.isDirectory === "true") {
+      this.load(item.dataset.path);
+    }
+  }
+
+  onItemDoubleClick(event) {
+    const item = this.itemFromEvent(event);
+    if (!item) return;
+    if (item.dataset.isDirectory !== "true") {
+      event.preventDefault();
+      this.openNatively(item.dataset.path);
+    }
+  }
+
+  onItemDragStart(event) {
+    const item = this.itemFromEvent(event);
+    if (!item) return;
+    event.dataTransfer.setData("text/plain", item.dataset.path);
+    event.dataTransfer.effectAllowed = "copy";
+    item.classList.add("dragging");
+  }
+
+  onItemDragEnd(event) {
+    const item = this.itemFromEvent(event);
+    if (!item) return;
+    item.classList.remove("dragging");
+  }
+  showFileStatus(status, errorText = null) {
+    this.fileStatus = status;
+    this.fileErrorText = status === "error" ? errorText : null;
+    this.container.innerHTML = "";
+    const el = document.createElement("div");
+    el.className = "file-loading";
+    el.textContent = this.statusText();
+    this.container.appendChild(el);
+  }
+
+  statusText() {
+    switch (this.fileStatus) {
+      case "loading":
+        return t("files.loading");
+      case "empty":
+        return t("files.empty");
+      case "failed":
+        return t("files.failedLoad");
+      case "error":
+        return this.fileErrorText ?? "";
+      default:
+        return "";
+    }
+  }
+
+  refreshStatusText() {
+    if (!this.fileStatus) return;
+    const el = this.container.querySelector(".file-loading");
+    if (!el) return;
+    el.textContent = this.statusText();
   }
 
   async openNatively(filePath) {
