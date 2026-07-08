@@ -775,13 +775,25 @@ pub async fn wait_for_health(port: u16, timeout_secs: u64) -> Result<(), String>
 /// is ready before navigating, avoiding cold-start races where /api/health is up but route
 /// handlers are still warming.
 pub async fn wait_for_endpoint(port: u16, path: &str, timeout_secs: u64) -> Result<(), String> {
+    // A dedicated client with `.no_proxy()`: the embedded pi is a localhost
+    // loopback service, so the request must never traverse a system HTTP proxy
+    // (e.g. Clash/ClashX on 127.0.0.1:7890). The default `reqwest::get` honors
+    // HTTP_PROXY/HTTPS_PROXY env vars and, on macOS, the system proxy config —
+    // which routes the loopback request through the proxy. The proxy can't
+    // reach the upstream and returns `502 Bad Gateway` with an empty body,
+    // which the old `status < 500` check kept retrying until the deadline,
+    // making Picot appear to hang forever on startup with no window.
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
     let url = format!("http://localhost:{}{}", port, path);
     let deadline = std::time::Instant::now() + Duration::from_secs(timeout_secs);
     loop {
         if std::time::Instant::now() > deadline {
             return Err(format!("Timed out waiting for {} on port {}", path, port));
         }
-        if let Ok(resp) = reqwest::get(&url).await {
+        if let Ok(resp) = client.get(&url).send().await {
             if resp.status().as_u16() < 500 {
                 return Ok(());
             }
