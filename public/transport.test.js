@@ -59,6 +59,32 @@ describe("WsTransport", () => {
     );
   });
 
+  test("pickImageFiles sends a pick_image_files control command with initialDir and no timeout", async () => {
+    const ws = fakeWsClient();
+    const transport = createTransport({ wsClient: ws, env: { location: { port: "47821" } } });
+
+    await transport.pickImageFiles("/tmp/workspace");
+
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "pick_image_files",
+      { initialDir: "/tmp/workspace" },
+      { timeoutMs: 0 },
+    );
+  });
+
+  test("pickImageFiles sends null initialDir when no path is provided", async () => {
+    const ws = fakeWsClient();
+    const transport = createTransport({ wsClient: ws, env: { location: { port: "47821" } } });
+
+    await transport.pickImageFiles();
+
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "pick_image_files",
+      { initialDir: null },
+      { timeoutMs: 0 },
+    );
+  });
+
   test("capabilities reflect the underlying ws client", () => {
     const transport = new WsTransport(fakeWsClient({ native: false }), {});
     expect(transport.capabilities.native).toBe(false);

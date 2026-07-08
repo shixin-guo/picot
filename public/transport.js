@@ -122,6 +122,13 @@ export class WsTransport {
   pickFolder() {
     return this._control("pick_folder", {}, { timeoutMs: NO_TIMEOUT });
   }
+  pickImageFiles(initialDir) {
+    return this._control(
+      "pick_image_files",
+      { initialDir: initialDir || null },
+      { timeoutMs: NO_TIMEOUT },
+    );
+  }
 
   listInstalledApps() {
     return this._control("list_installed_apps", {});

@@ -10,6 +10,7 @@ import { setupVoiceInput } from "./app-voice-input.js";
 import { DialogHandler } from "./dialogs.js";
 import { FileBrowser } from "./file-browser.js";
 import { anchorHistoryToBottom } from "./history-scroll-anchor.js";
+import { processImageFile, processImagePayload } from "./image-attachments.js";
 import { setupMessagesInsets } from "./layout-insets.js";
 import { MessageRenderer } from "./message-renderer.js";
 import { resolveNewSessionLiveFile } from "./new-session-refresh.js";
@@ -328,6 +329,7 @@ function syncWorkspaceIndicatorFromInstances() {
   const workspacePath = getWorkspacePathForPort(liveInstances, foregroundPort);
   if (workspacePath) foregroundWorkspacePath = workspacePath;
   updateWorkspaceIndicator(workspacePath || foregroundWorkspacePath);
+  refreshFileBrowserForWorkspace(workspacePath || foregroundWorkspacePath);
   refreshGitBranch();
 }
 
@@ -376,10 +378,25 @@ const fileSidebarUp = document.getElementById("file-sidebar-up");
 const fileList = document.getElementById("file-list");
 const fileSidebarPath = document.getElementById("file-sidebar-path");
 const fileBrowser = new FileBrowser(fileList, fileSidebarPath, messageInput);
+let fileBrowserWorkspacePath = null;
+
+function refreshFileBrowserForWorkspace(path = getCurrentWorkspacePath(), { force = false } = {}) {
+  const normalized = typeof path === "string" ? path.trim() : "";
+  if (!force && normalized === fileBrowserWorkspacePath) return;
+  fileBrowserWorkspacePath = normalized;
+
+  const isCollapsed = fileSidebar.classList.contains("collapsed");
+  if (isCollapsed && !force) {
+    fileBrowser.setWorkspaceRoot(normalized);
+    return;
+  }
+  fileBrowser.load(normalized || undefined);
+}
+
 fileSidebarToggle.addEventListener("click", () => {
   const isCollapsed = fileSidebar.classList.toggle("collapsed");
-  if (!isCollapsed && !fileBrowser.currentPath) {
-    fileBrowser.load(); // Load session cwd
+  if (!isCollapsed) {
+    refreshFileBrowserForWorkspace(getCurrentWorkspacePath(), { force: true });
   }
   localStorage.setItem("pi-studio-file-sidebar", isCollapsed ? "closed" : "open");
 });
@@ -557,7 +574,7 @@ void loadHeaderOpenApps();
 // Restore file sidebar state
 if (localStorage.getItem("pi-studio-file-sidebar") === "open") {
   fileSidebar.classList.remove("collapsed");
-  fileBrowser.load();
+  refreshFileBrowserForWorkspace(getCurrentWorkspacePath(), { force: true });
 }
 
 // ═══════════════════════════════════════
@@ -1152,54 +1169,6 @@ const imageInput = document.getElementById("image-input");
 const imagePreviews = document.getElementById("image-previews");
 let pendingImages = []; // Array of { data: base64, mimeType: string }
 
-// Max dimension — resize images larger than this to reduce token cost & avoid API limits
-const MAX_IMAGE_DIM = 2048;
-const VALID_MIME_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
-
-function processImageFile(file) {
-  return new Promise((resolve, reject) => {
-    // Validate mime type
-    const mimeType = VALID_MIME_TYPES.includes(file.type) ? file.type : "image/png";
-
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        // Resize if too large
-        let { width, height } = img;
-        if (width > MAX_IMAGE_DIM || height > MAX_IMAGE_DIM) {
-          const scale = MAX_IMAGE_DIM / Math.max(width, height);
-          width = Math.round(width * scale);
-          height = Math.round(height * scale);
-        }
-
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
-
-        // Output as PNG for screenshots/diagrams, JPEG for photos
-        const outputMime = mimeType === "image/jpeg" ? "image/jpeg" : "image/png";
-        const quality = outputMime === "image/jpeg" ? 0.85 : undefined;
-        const dataUrl = canvas.toDataURL(outputMime, quality);
-        const base64 = dataUrl.split(",")[1];
-
-        if (!base64) {
-          reject(new Error("Failed to encode image"));
-          return;
-        }
-
-        resolve({ data: base64, mimeType: outputMime });
-      };
-      img.onerror = () => reject(new Error("Failed to decode image"));
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
 async function addImageFiles(files) {
   for (const file of files) {
     if (!file.type.startsWith("image/")) continue;
@@ -1213,7 +1182,33 @@ async function addImageFiles(files) {
   renderImagePreviews();
 }
 
-attachBtn.addEventListener("click", () => imageInput.click());
+async function addImagePayloads(payloads) {
+  for (const payload of payloads) {
+    try {
+      const img = await processImagePayload(payload);
+      pendingImages.push(img);
+    } catch (e) {
+      console.error("[Picot] Native image processing failed:", e);
+    }
+  }
+  renderImagePreviews();
+}
+
+attachBtn.addEventListener("click", async () => {
+  if (!nativeAvailable() || typeof transport.pickImageFiles !== "function") {
+    imageInput.click();
+    return;
+  }
+  const workspacePath = getCurrentWorkspacePath();
+  try {
+    const result = await transport.pickImageFiles(workspacePath || null);
+    if (!Array.isArray(result) || result.length === 0) return;
+    await addImagePayloads(result);
+  } catch (err) {
+    console.error("[Picot] Native image picker failed:", err);
+    messageRenderer.renderError(`Failed to attach image: ${err}`);
+  }
+});
 
 imageInput.addEventListener("change", () => {
   addImageFiles(imageInput.files);
@@ -1950,6 +1945,7 @@ async function activateNewParallelSession(port, cwd) {
   if (cwd) {
     foregroundWorkspacePath = cwd;
     updateWorkspaceIndicator(cwd);
+    refreshFileBrowserForWorkspace(cwd);
   }
   wsClient.setRoutingContext({
     workspaceId: `workspace:${cwd || getCurrentWorkspacePath() || "unknown"}`,

@@ -33,30 +33,50 @@ describe("thinking effort cycle controls", () => {
   });
 
   test("keeps Settings thinking effort as click-to-cycle behavior", async () => {
-    const dom = new JSDOM('<button id="btn-thinking-level">Thinking: off</button>');
-    const button = dom.window.document.querySelector("#btn-thinking-level");
-    const rpcCommand = vi.fn().mockResolvedValue({ success: true, data: { level: "medium" } });
-    const setCurrentThinkingLevel = vi.fn();
-    const updateThinkingBtn = vi.fn();
+    // setupSettingsToggles reads globalThis.localStorage during init. JSDOM's
+    // default opaque origin disables storage, so install a minimal in-memory
+    // implementation just for this test.
+    const memoryStore = new Map();
+    const storageStub = {
+      getItem: (key) => (memoryStore.has(key) ? memoryStore.get(key) : null),
+      setItem: (key, value) => {
+        memoryStore.set(key, String(value));
+      },
+      removeItem: (key) => {
+        memoryStore.delete(key);
+      },
+      clear: () => memoryStore.clear(),
+    };
+    const previousLocalStorage = globalThis.localStorage;
+    globalThis.localStorage = storageStub;
+    try {
+      const dom = new JSDOM('<button id="btn-thinking-level">Thinking: off</button>');
+      const button = dom.window.document.querySelector("#btn-thinking-level");
+      const rpcCommand = vi.fn().mockResolvedValue({ success: true, data: { level: "medium" } });
+      const setCurrentThinkingLevel = vi.fn();
+      const updateThinkingBtn = vi.fn();
 
-    setupSettingsToggles({
-      toggleAutoCompact: null,
-      btnThinkingLevel: button,
-      toggleShowThinking: null,
-      toggleAuth: null,
-      rpcCommand,
-      getCurrentThinkingLevel: () => "off",
-      setCurrentThinkingLevel,
-      updateThinkingBtn,
-    });
+      setupSettingsToggles({
+        toggleAutoCompact: null,
+        btnThinkingLevel: button,
+        toggleShowThinking: null,
+        toggleAuth: null,
+        rpcCommand,
+        getCurrentThinkingLevel: () => "off",
+        setCurrentThinkingLevel,
+        updateThinkingBtn,
+      });
 
-    button.click();
-    await Promise.resolve();
+      button.click();
+      await Promise.resolve();
 
-    expect(rpcCommand).toHaveBeenCalledWith({ type: "cycle_thinking_level" });
-    expect(button.textContent).toBe("Thinking: medium");
-    expect(setCurrentThinkingLevel).toHaveBeenCalledWith("medium");
-    expect(updateThinkingBtn).toHaveBeenCalled();
+      expect(rpcCommand).toHaveBeenCalledWith({ type: "cycle_thinking_level" });
+      expect(button.textContent).toBe("Thinking: medium");
+      expect(setCurrentThinkingLevel).toHaveBeenCalledWith("medium");
+      expect(updateThinkingBtn).toHaveBeenCalled();
+    } finally {
+      globalThis.localStorage = previousLocalStorage;
+    }
   });
 
   test("uses neutral styling for every thinking level chip state", () => {

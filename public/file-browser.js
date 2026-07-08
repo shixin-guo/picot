@@ -63,17 +63,32 @@ export class FileBrowser {
     this.pathEl = pathEl;
     this.messageInput = messageInput;
     this.currentPath = null;
+    this.loadSequence = 0;
 
     this.setupDropTarget();
   }
+  setWorkspaceRoot(path = "") {
+    const normalized = typeof path === "string" ? path.trim() : "";
+    // Invalidate any in-flight load so a stale /api/files response can't
+    // overwrite the workspace reset.
+    this.loadSequence++;
+    this.currentPath = null;
+    this.pathEl.textContent = normalized;
+    this.pathEl.title = normalized;
+    this.container.innerHTML = "";
+  }
 
   async load(dirPath) {
+    const sequence = ++this.loadSequence;
     this.container.innerHTML = '<div class="file-loading">Loading…</div>';
 
     try {
       const url = dirPath ? `/api/files?path=${encodeURIComponent(dirPath)}` : "/api/files";
       const res = await fetch(url);
       const data = await res.json();
+
+      // A newer load() or setWorkspaceRoot() has superseded this request.
+      if (sequence !== this.loadSequence) return;
 
       if (data.error) {
         this.container.innerHTML = `<div class="file-loading">${data.error}</div>`;
@@ -85,6 +100,7 @@ export class FileBrowser {
       this.pathEl.title = data.path;
       this.render(data.items);
     } catch (_err) {
+      if (sequence !== this.loadSequence) return;
       this.container.innerHTML = '<div class="file-loading">Failed to load</div>';
     }
   }

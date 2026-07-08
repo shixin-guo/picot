@@ -174,9 +174,9 @@ describe("cost infobar renderers", () => {
 
       expect(chartCalls).toHaveLength(1);
       const datasets = chartCalls[0].data.datasets;
-      expect(datasets[0].backgroundColor).toBe("#4f8ff7");
-      expect(datasets[1].backgroundColor).toBe("#67c587");
-      expect(datasets[2].backgroundColor).toBe("#f3a64f");
+      expect(datasets[0].backgroundColor).toBe("#3b82f6");
+      expect(datasets[1].backgroundColor).toBe("#10b981");
+      expect(datasets[2].backgroundColor).toBe("#f59e0b");
       expect(datasets[0].borderRadius({ dataIndex: 0 })).toEqual({
         topLeft: 6,
         topRight: 6,

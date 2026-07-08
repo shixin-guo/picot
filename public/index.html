@@ -122,7 +122,7 @@
               <span id="context-viz-total"></span>
             </div>
           </div>
-          <span class="header-open-app hidden" id="header-open-app" role="group">
+          <fieldset class="header-open-app hidden" id="header-open-app">
             <button class="header-open-app-btn" id="header-open-app-btn" title="Open workspace" aria-label="Open workspace in app">
               <span class="header-open-app-logo" id="header-open-app-logo" aria-hidden="true"><img src="icons/app-cursor.svg" alt="" class="header-open-app-logo-img"></span>
             </button>
@@ -130,7 +130,7 @@
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="header-open-app-menu hidden" id="header-open-app-menu"></div>
-          </span>
+          </fieldset>
           <button class="icon-btn" id="file-sidebar-toggle" title="Files" aria-label="Toggle file browser">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
           </button>
@@ -381,7 +381,7 @@
               Edit <code>~/.pi/agent/models.json</code> to add custom providers
               (Ollama, vLLM, LM Studio, OpenAI-compatible proxies, OpenRouter
               routing overrides, etc). See the
-              <a href="#" id="models-config-docs-link">models.json docs</a>
+              <a href="https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/models.md" id="models-config-docs-link">models.json docs</a>
               for the full schema. Changes are picked up immediately — no
               restart needed.
             </p>
