@@ -146,7 +146,7 @@ WebSocket）和路径 ②（HTTP REST）跟它通讯。
    `rpcEvent` `CustomEvent`。
 4. `public/app.js` 里的编排器按事件类型分发：`message_start` →
    `handleMessageStart` → `messageRenderer.renderAssistantMessage(
-   { content: "" }, true)`；`message_update`（带 `text_delta` /
+{ content: "" }, true)`；`message_update`（带 `text_delta` /
    `thinking_delta`）→ `updateStreamingMessage` /
    `updateStreamingThinking`；`message_end` → `finalizeStreamingMessage`
    （usage + cost）。
@@ -289,7 +289,7 @@ Tauri command handler（`new_session_core`、`switch_session_core`、
    （`ws://127.0.0.1:{port}/ws` 失败时每 `750 ms` 重连）。
 5. `wait_for_pi_health(port, 30)` —— 轮询 `GET /api/health`，最多 30 秒。
    轮询使用 `.no_proxy()` 构建的 `reqwest::Client`，确保 loopback 请求
-   绝不经由系统 HTTP 代理（见下方不变量 *loopback HTTP 必须绕过系统代理*）。
+   绝不经由系统 HTTP 代理（见下方不变量 _loopback HTTP 必须绕过系统代理_）。
 6. **成功：** `open_workspace_window(port, broker.url())` 创建 WebView；
    WebView 从 URL query string 读 `brokerWs`，然后连上 broker WebSocket。
 7. **失败：** `broker.unregister_port(port)`，**不创建**窗口。
@@ -307,10 +307,10 @@ Tauri command handler（`new_session_core`、`switch_session_core`、
 所有 Picot 窗口都由 Rust 构造（`tauri.conf.json` 的 `app.windows: []`
 故意留空）。
 
-| Label | 构造者 | URL | 用途 |
-| --- | --- | --- | --- |
-| `workspace-{port}` | `open_workspace_window` | `http://localhost:{port}/?brokerWs=ws://localhost:{broker}/ui-ws` | 主聊天 UI。每个工作区一个。 |
-| `bootstrap` | `open_bootstrap_window` | `bootstrap.html?startupError=...` | 错误兜底窗口。仅当 `manager.spawn` 派生失败时打开。 |
+| Label              | 构造者                  | URL                                                               | 用途                                                |
+| ------------------ | ----------------------- | ----------------------------------------------------------------- | --------------------------------------------------- |
+| `workspace-{port}` | `open_workspace_window` | `http://localhost:{port}/?brokerWs=ws://localhost:{broker}/ui-ws` | 主聊天 UI。每个工作区一个。                         |
+| `bootstrap`        | `open_bootstrap_window` | `bootstrap.html?startupError=...`                                 | 错误兜底窗口。仅当 `manager.spawn` 派生失败时打开。 |
 
 同一工作区下开新 session **不会**开新 OS 窗口；它派生一个无头
 专用 pi 进程，再把现有 WebView 导航到新端口。之前在跑的 pi 进程
@@ -320,18 +320,18 @@ Tauri command handler（`new_session_core`、`switch_session_core`、
 
 ## 配置布局
 
-| 文件 | 作用域 | 用途 |
-| --- | --- | --- |
-| `scripts/pi-version.json` | 仓库 | 内嵌 pi 版本的唯一真理源。 |
-| `tauri.conf.json` | 仓库 | 打包配置、`beforeBuildCommand`、图标、CSP、updater pubkey。 |
-| `package.json` | 仓库 | JS 依赖和 dev 脚本。 |
-| `biome.json` | 仓库 | Lint 和 format 规则。 |
-| `~/.pi/agent/settings.json` | 用户 | provider 配置、API key、默认端口（pi 后备值）。 |
-| `~/.pi/agent/sessions/` | 用户 | 每个工作区的 session `.jsonl` 文件。 |
-| `~/.pi/agent/extensions/` | 用户 | 全局加载的 pi extension。 |
-| `<workspace>/.pi/extensions/` | 工作区 | 工作区级 pi extension。 |
-| `~/.pi/pistudio-instances/` | 用户 | 由 embedded-server 写的每进程 instance registry（pid → port）。 |
-| `src-tauri/capabilities/` | 仓库 | Tauri v2 capability 声明；由 `scripts/check-tauri-permissions.js` 校验。 |
+| 文件                          | 作用域 | 用途                                                                     |
+| ----------------------------- | ------ | ------------------------------------------------------------------------ |
+| `scripts/pi-version.json`     | 仓库   | 内嵌 pi 版本的唯一真理源。                                               |
+| `tauri.conf.json`             | 仓库   | 打包配置、`beforeBuildCommand`、图标、CSP、updater pubkey。              |
+| `package.json`                | 仓库   | JS 依赖和 dev 脚本。                                                     |
+| `biome.json`                  | 仓库   | Lint 和 format 规则。                                                    |
+| `~/.pi/agent/settings.json`   | 用户   | provider 配置、API key、默认端口（pi 后备值）。                          |
+| `~/.pi/agent/sessions/`       | 用户   | 每个工作区的 session `.jsonl` 文件。                                     |
+| `~/.pi/agent/extensions/`     | 用户   | 全局加载的 pi extension。                                                |
+| `<workspace>/.pi/extensions/` | 工作区 | 工作区级 pi extension。                                                  |
+| `~/.pi/pistudio-instances/`   | 用户   | 由 embedded-server 写的每进程 instance registry（pid → port）。          |
+| `src-tauri/capabilities/`     | 仓库   | Tauri v2 capability 声明；由 `scripts/check-tauri-permissions.js` 校验。 |
 
 ---
 
@@ -420,6 +420,154 @@ Tauri command handler（`new_session_core`、`switch_session_core`、
 - embedded-server.ts 中的 HTTP/WS server 是进程作用域、单实例；
   每个 session 的状态在 `session_start` 时发布到全局，在
   `session_shutdown` 时清理。
+
+### 国际化 (i18n)
+
+首期支持**中英双语**（Picot 的 WebView 都是同一个仓库内的 ES module）；
+架构上预留扩展其他语言的能力。完整方案来源：
+[`docs/superpowers/specs/2026-07-08-i18n-design.md`](docs/superpowers/specs/2026-07-08-i18n-design.md)。
+本节只描述设计骨架与对工程的影响，决策理由详见 spec；code review 时的
+硬性规则清单见 AGENTS.md §Localization。
+
+**核心约束**
+
+- **零依赖、零构建**。i18n 引擎是 `public/i18n.js` 自建的 ~250 行模块，
+  与 `themes.js` 的 cookie 持久化模式完全对称。不引入 i18next 等第三方。
+- **cookie 而不是 localStorage** 来持久化语言偏好（cookie key：
+  `picot-language`）。每个 workspace 是不同端口的 `localhost` ——
+  localStorage 按端口隔离，无法跨 workspace 窗口共享；cookie 同源共享，
+  是唯一可行解。
+- **顶层 await**：`app.js` 启动时 `await initI18n()`，locale JSON < 15KB，
+  阻塞几十毫秒可接受。`initI18n()` 内部捕获所有错误，失败 fallback
+  英文，绝不阻塞 app 启动（最差情况显示英文或 key 本身）。
+
+**初始化时序**
+
+`app.js` 启动时按 `applyTheme()` → `await initI18n()` → 其它 UI 初始化
+的顺序执行。`initI18n()` 必须在任何 `t()` 调用、任何带 `data-i18n`
+属性的节点被读之前完成；放在 `applyTheme()` 之后是因为主题切换早
+完成早对用户可见，把 i18n 串在后面读 cookie + fetch locale JSON 让首
+屏不卡。
+
+**引擎架构（`public/i18n.js`）**
+
+模块导出的核心 API：
+
+| API                                          | 行为                                                                                                                                                                           |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `await initI18n()`                           | 加载英文 fallback + 当前 locale JSON，扫描 `document` 上的 `data-i18n*`，设置 `document.documentElement.lang` 为 BCP47 tag（`en` / `zh-CN`）                                   |
+| `t(key, params?)`                            | 翻译函数。`activeMessages` → 英文 `enMessages` → 缺失时 `console.warn` 并返回 key。支持 `{var}` 插值。**返回纯文本**，不可直接进入 `innerHTML` —— 详见 AGENTS.md §Localization |
+| `await setLocale(preference)`                | 切换语言：`"system" \| "en" \| "zh"`。内部用 `localeLoadSequence` 防快速切换的竞态；fetch 成功才写 cookie（fetch-then-persist），失败 fallback 英文但不持久化坏偏好            |
+| `getLocale()`                                | 当前生效 locale（`"en" \| "zh"`）。fallback 后返回 `"en"`                                                                                                                      |
+| `getLanguagePreference()`                    | 用户偏好（含 `"system"`）。非法 cookie 值归一化为 `"system"`                                                                                                                   |
+| `onLocaleChange(listener)`                   | 订阅语言变化，返回 unsubscribe。**即时切换**成立的核心                                                                                                                         |
+| `LANGUAGES`                                  | 设置面板用的语言选项常量                                                                                                                                                       |
+| `resolveLocale(preference, systemLanguage?)` | 纯函数（测试可注入）：根据偏好 + 系统语言解析 locale                                                                                                                           |
+
+**`t()` 查找链**：`activeMessages` 命中即返回 → 缺则查常驻的
+`enMessages` → 都没有则 `console.warn` 并返回 key 本身。`enMessages`
+在初始化时加载一次，永不卸载 —— 是整个 fallback 链路的"地板"。
+
+**`setLocale()` 竞态保护**：每次 `setLocale` 调用把 `localeLoadSequence`
+加一，fetch 完成后比对当前值。晚返回的旧 fetch 会被丢弃（不会覆盖
+新选择的 locale / cookie / preference），与 `FileBrowser.loadSequence`
+同模式。这个保护是必须的，因为用户可以在 Settings → Language 里
+快速点多个 radio。
+
+**`onLocaleChange()` 事件总线**：内部维护一个 `Set<listener>`，
+`setLocale()` 成功后逐个回调，最后派发一个 `CustomEvent("picot:locale-change")`
+作为兜底。两个入口都安全；模块要么 `import` 回调函数，要么监听
+`window` 的事件（后者是兜底，主要给像 `cost.html` iframe 这种
+运行在独立 document 的场景用）。
+
+**静态 HTML 标注**
+
+| 属性                         | 替换目标      |
+| ---------------------------- | ------------- |
+| `data-i18n="key"`            | `textContent` |
+| `data-i18n-ph="key"`         | `placeholder` |
+| `data-i18n-title="key"`      | `title`       |
+| `data-i18n-aria-label="key"` | `aria-label`  |
+
+HTML 上保留英文原文作为 fallback（i18n 初始化前极短窗口可见，避免
+空文本闪烁）。
+
+**Phase 1 不支持 `data-i18n-html`**。需要 HTML 结构的复杂文本（含
+`<code>` / `<a>` 等内嵌元素）用"拆分 DOM 节点"方案：相邻兄弟节点
+各自带 `data-i18n`，用静态 `<code>` / `<a>` 拼接。SPEC §4.5 有完整示例。
+
+**Listener 生命周期**
+
+两类订阅者，规则刚好相反：
+
+- **单例组件**（`SessionSidebar`、`MessageRenderer`、`FileBrowser`、
+  `DialogHandler`、`app-updater` 等整个 app 生命周期都活着的模块）：
+  构造时注册一次，listener 跨整个 app 生命周期保留；回调内部 guard
+  UI 是否存在。**`close()` / `hide()` 不要 unsubscribe** —— 下一次
+  打开同一单例 UI 时会失去 locale-change 支持，是最难调的一类 bug。
+- **临时组件**（每次打开都 new 一个实例的，如 `FolderPicker`）：
+  `this.unsubscribeLocaleChange = onLocaleChange(...)`；`destroy()` /
+  `close()` 中调用。
+
+回调里读动态 UI 时要 guard（如
+`if (this.container.children.length > 0) this.render();`），避免对
+已销毁节点操作。语音识别这种长生命周期但无 DOM 的模块，回调里更新
+**配置**（`recognition.lang = ...`），不重渲染。
+
+**即时切换（live switch）**
+
+`setLocale()` 后，已渲染的动态 UI 必须立即更新，无需刷新。这是
+i18n 和单纯 i18next 之类库的关键区别 —— `initI18n()` 只在启动时
+扫一次 DOM，运行时切换需要每个动态组件在 `onLocaleChange` 回调里
+自更新（welcome、sidebar、tool-card status + copy 按钮、code block
+copy 按钮、message copy 按钮、file-browser status、settings panel
+labels 等）。
+
+没有稳定 selector 的元素，渲染时**加 `data-*` 锚点**（例：
+`data-status="complete"`、`data-locale-dependent`）供回调定位。
+spec §4.10 有完整组件 → 切换范围矩阵。
+
+**Key 命名**
+
+点分嵌套，第一级为模块名：`sidebar.*`、`composer.*`、`settings.*`、
+`files.*`、`status.*`、`errors.*`、`actions.*`、`messages.*`、
+`tools.*`、`onboarding.*`、`bootstrap.*`。`actions.*` 存按钮文本
+（Save、Cancel、Remove、Retry），`status.*` 存状态文本（Saving、
+Saved、Connecting、Connected 等），`errors.*` 只存错误消息（不放
+按钮文本）。嵌套不超过 3 层。`en.json` 是 source of truth，
+`zh.json` 必须包含所有 en 的 key（CI 强制）。
+
+**底层错误边界**
+
+`transport.js` 等底层模块的协议错误**不翻译**。上层展示时用 `t()`
+包裹用户可见的前缀文本，原始 error message 保留英文作为 `{error}`
+插值参数：
+
+```js
+const message = t("errors.failedToStart", {
+  what: "session",
+  error: String(e),
+});
+renderError(message);
+```
+
+`renderError` 内部要么用 `textContent`，要么对入参 `escapeHtml` —
+裸字符串不可进入 `innerHTML`。
+
+**明确不改造的文件**
+
+| 文件 / 模块                                                                                                                                                                                                                               | 原因                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `themes.js`                                                                                                                                                                                                                               | 颜色 / 排版样式，不涉及翻译                                                                                      |
+| `transport.js`, `state.js`, `image-attachments.js`, `session-routing.js`, `layout-insets.js`, `history-scroll-anchor.js`, `new-session-refresh.js`, `sidebar-search-control.js`, `summarizePackageError()` in `package-install-status.js` | 底层 / 工具代码，无用户可见文本；上层展示时用 `t()` 包裹用户可见前缀，原始 error 保留英文作为 `{error}` 插值参数 |
+| `bootstrap.html`                                                                                                                                                                                                                          | 内联翻译（独立错误页，非 ES module）；正确处理 `"system"` 偏好                                                   |
+| `cost.html` / `cost.js` / `cost-infobar.js` (Phase 2)                                                                                                                                                                                     | iframe 加载，通过 `postMessage` 同步；Phase 2 之前不需 i18n 化                                                   |
+
+**Phase 1 / Phase 2 边界**
+
+Phase 1 = 基础设施 + 核心聊天 UI + Bootstrap 错误页；Phase 2 = Cost
+仪表盘 iframe 同步。当前仓库的 main branch 已经实施 Phase 1；Cost
+页面尚未 i18n 化，是后续工作的明确 todo。
 
 ---
 

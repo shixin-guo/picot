@@ -101,6 +101,7 @@ bun run format:fix    # auto-fix formatting
 - **Always** run `bun run check` after editing any `.js` / `.ts` file under `public/` or `extensions/`.
 - Only mark the task complete if `bun run check` exits 0 (or all remaining violations are intentional and documented).
 - Prefer `bun run check:fix` over manual reformatting — Biome is the source of truth for style.
+- **i18n safety grep**: when reviewing any PR that touches user-visible text, run `grep -nE 'innerHTML.*t\(|insertAdjacentHTML.*t\(|\$\{t\('` on the diff. Hits without a paired `escapeHtml(t(` block the PR. See [Localization](#localization-i18n).
 
 ## Module Design
 
@@ -111,6 +112,28 @@ The frontend (`public/`) is vanilla JS with **no framework**. Keep it modular:
 - **New file threshold.** If a feature adds more than ~50 lines of logic, extract it into its own module (e.g. `public/my-feature.js`) and import it from the appropriate entry point.
 - **No shared-state side-effects at import time.** Modules should export functions/classes; side-effects that mutate global state should be triggered explicitly by the caller, not at module load.
 - **Naming.** Use kebab-case filenames that match the single responsibility (`session-sidebar.js`, `file-browser.js`, `workspace-actions.js`).
+
+## Localization (i18n)
+
+Picot ships bilingual UI (English + Chinese, first release). All user-visible text MUST go through `t()` from `public/i18n.js`; do not hardcode English strings, and do not bypass `t()` and write `innerHTML` directly. Full design lives in [`ARCHITECTURE.md`](ARCHITECTURE.md) (§Internationalization) and the spec at [`docs/superpowers/specs/2026-07-08-i18n-design.md`](docs/superpowers/specs/2026-07-08-i18n-design.md).
+
+### Code-review checklist (apply on every PR that touches user-visible text)
+
+- **Safe sinks for `t()`**: only `el.textContent`, `el.placeholder`, `el.title`, `el.setAttribute("aria-label", ...)`, or DOM construction. If `innerHTML` is unavoidable, wrap as `escapeHtml(t(...))`.
+- **HTML annotation**: new static text needs `data-i18n` (or `-ph` / `-title` / `-aria-label`); keep the original English string in the HTML as fallback.
+- **Keys**: dot-separated nested keys (e.g. `sidebar.openFolder`); one key per concept; update `public/locales/en.json` (source of truth) and `public/locales/zh.json` in the same commit.
+- **Live locale switching**: singletons (`SessionSidebar`, `MessageRenderer`, `FileBrowser`, `DialogHandler`, ...) subscribe to `onLocaleChange` in the constructor and never unsubscribe on `close()`; transient components (`FolderPicker`, ...) subscribe, store the unsubscribe on `this`, then call it from `destroy()`.
+- **New module**: add `public/<module>.test.js` covering translation behaviour; run `bun run check` and the i18n safety grep on the diff.
+
+### Static analysis
+
+Add this grep to PR review when the diff touches user-visible text:
+
+```bash
+grep -nE 'innerHTML.*t\(|insertAdjacentHTML.*t\(|\$\{t\(' public/**/*.js extensions/**/*.ts
+```
+
+Any hit must be paired with a matching `escapeHtml(t(...))`. Bare `t()` insertions are blocked.
 
 ## Architecture
 
