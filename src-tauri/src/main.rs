@@ -193,6 +193,121 @@ async fn pick_folder_core(app: &AppHandle) -> Option<String> {
     rx.await.ok().flatten()
 }
 
+/// Maximum per-image file size accepted by the native picker (20 MB raw).
+/// Images are read fully into memory and base64-encoded before being sent
+/// over the control channel, so a cap prevents memory spikes on large photos.
+const MAX_IMAGE_FILE_SIZE: u64 = 20 * 1024 * 1024;
+
+/// Maximum number of images selectable in a single picker invocation.
+const MAX_IMAGE_COUNT: usize = 10;
+
+/// One selected image from the native multi-file picker. `data` is raw base64
+/// of the file bytes (no `data:` prefix); the frontend image pipeline wraps it.
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PickedImageFile {
+    name: String,
+    mime_type: String,
+    data: String,
+}
+
+/// Map a file path's extension to a supported image MIME type. Case-insensitive.
+/// Returns `None` for anything that is not a recognized image type.
+fn image_mime_from_path(path: &std::path::Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    match ext.as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
+/// Native multi-file image picker. Opens a dialog filtered to image types,
+/// optionally starting at `initial_dir`. Returns `Ok(None)` when the user
+/// cancels. Each selected file is read and base64-encoded; unsupported or
+/// unreadable selections are surfaced as an error rather than silently dropped.
+/// Enforces a per-file size limit (`MAX_IMAGE_FILE_SIZE`) and a count limit
+/// (`MAX_IMAGE_COUNT`) before reading any bytes.
+async fn pick_image_files_core(
+    app: &AppHandle,
+    initial_dir: Option<String>,
+) -> Result<Option<Vec<PickedImageFile>>, String> {
+    use base64::Engine;
+
+    let mut dialog = app
+        .dialog()
+        .file()
+        .add_filter("Images", &["png", "jpg", "jpeg", "gif", "webp"]);
+
+    if let Some(dir) = initial_dir.as_deref() {
+        let p = std::path::Path::new(dir);
+        if p.is_dir() {
+            dialog = dialog.set_directory(p);
+        }
+    }
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    dialog.pick_files(move |paths| {
+        let _ = tx.send(paths);
+    });
+    let picked = rx.await.ok().flatten();
+
+    let Some(paths) = picked else {
+        return Ok(None);
+    };
+
+    if paths.len() > MAX_IMAGE_COUNT {
+        return Err(format!(
+            "Too many images selected: {}; maximum is {}",
+            paths.len(),
+            MAX_IMAGE_COUNT
+        ));
+    }
+
+    let mut files = Vec::with_capacity(paths.len());
+    for fp in paths {
+        let pb = match fp {
+            tauri_plugin_fs::FilePath::Path(pb) => pb,
+            tauri_plugin_fs::FilePath::Url(url) => url
+                .to_file_path()
+                .map_err(|_| "Only local image files can be attached".to_string())?,
+        };
+
+        let mime = image_mime_from_path(&pb)
+            .ok_or_else(|| format!("Unsupported image type: {}", pb.display()))?;
+
+        let metadata = std::fs::metadata(&pb)
+            .map_err(|e| format!("Failed to stat image {}: {}", pb.display(), e))?;
+        if metadata.len() > MAX_IMAGE_FILE_SIZE {
+            return Err(format!(
+                "Image is too large: {} is {} MB; maximum is {} MB",
+                pb.display(),
+                metadata.len() / (1024 * 1024),
+                MAX_IMAGE_FILE_SIZE / (1024 * 1024)
+            ));
+        }
+
+        let bytes = std::fs::read(&pb)
+            .map_err(|e| format!("Failed to read image {}: {}", pb.display(), e))?;
+
+        let name = pb
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("image")
+            .to_string();
+
+        files.push(PickedImageFile {
+            name,
+            mime_type: mime.to_string(),
+            data: base64::engine::general_purpose::STANDARD.encode(&bytes),
+        });
+    }
+
+    Ok(Some(files))
+}
+
 /// A launchable external app target (editor / terminal / file manager).
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -248,7 +363,12 @@ fn list_installed_apps_core() -> Vec<AppTarget> {
     let candidates: [(&str, &str, &[&str], &str); 6] = [
         ("vscode", "VS Code", &["Visual Studio Code", "Code"], "code"),
         ("cursor", "Cursor", &["Cursor"], "cursor"),
-        ("webstorm", "WebStorm", &["WebStorm", "WebStorm EAP"], "webstorm"),
+        (
+            "webstorm",
+            "WebStorm",
+            &["WebStorm", "WebStorm EAP"],
+            "webstorm",
+        ),
         ("zed", "Zed", &["Zed"], "zed"),
         ("terminal", "Terminal", &["Terminal", "iTerm", "Warp"], ""),
         ("ghostty", "Ghostty", &["Ghostty"], ""),
@@ -568,7 +688,7 @@ fn list_session_files(root: &PathBuf) -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_static_dir;
+    use super::{image_mime_from_path, resolve_static_dir};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -602,6 +722,38 @@ mod tests {
         assert_eq!(resolved, fs::canonicalize(&workspace_public).unwrap());
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn image_mime_from_path_maps_known_extensions() {
+        assert_eq!(
+            image_mime_from_path(std::path::Path::new("photo.png")),
+            Some("image/png")
+        );
+        assert_eq!(
+            image_mime_from_path(std::path::Path::new("photo.JPG")),
+            Some("image/jpeg")
+        );
+        assert_eq!(
+            image_mime_from_path(std::path::Path::new("photo.Jpeg")),
+            Some("image/jpeg")
+        );
+        assert_eq!(
+            image_mime_from_path(std::path::Path::new("anim.gif")),
+            Some("image/gif")
+        );
+        assert_eq!(
+            image_mime_from_path(std::path::Path::new("modern.webp")),
+            Some("image/webp")
+        );
+    }
+
+    #[test]
+    fn image_mime_from_path_rejects_unknown_and_missing_extensions() {
+        assert_eq!(image_mime_from_path(std::path::Path::new("doc.pdf")), None);
+        assert_eq!(image_mime_from_path(std::path::Path::new("img.bmp")), None);
+        assert_eq!(image_mime_from_path(std::path::Path::new("noext")), None);
+        assert_eq!(image_mime_from_path(std::path::Path::new("/")), None);
     }
 }
 
@@ -856,6 +1008,13 @@ fn install_control_handler(broker: &Arc<BrokerWs>, manager: Arc<PiManager>, app:
                         Some(path) => Value::from(path),
                         None => Value::Null,
                     }),
+                    "pick_image_files" => {
+                        let initial_dir = arg_str("initialDir");
+                        match pick_image_files_core(&app, initial_dir).await? {
+                            Some(files) => Ok(serde_json::to_value(files).unwrap_or(Value::Null)),
+                            None => Ok(Value::Null),
+                        }
+                    }
                     "list_installed_apps" => {
                         Ok(serde_json::to_value(list_installed_apps_core()).unwrap_or(Value::Null))
                     }

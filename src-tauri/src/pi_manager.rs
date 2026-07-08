@@ -714,39 +714,7 @@ impl PiManager {
     pub fn list_configured_package_sources(&self) -> Result<Vec<String>, String> {
         let args = vec!["list".to_string()];
         let output = self.run_pi_command(&args)?;
-        let mut sources = Vec::new();
-        for line in output.lines() {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            if trimmed.eq_ignore_ascii_case("No packages installed.") {
-                continue;
-            }
-            if trimmed.ends_with(':') {
-                continue;
-            }
-            if let Some(rest) = trimmed.strip_prefix('-') {
-                let value = rest.trim();
-                if !value.is_empty() {
-                    sources.push(value.to_string());
-                }
-                continue;
-            }
-            // `pi list` currently emits entries prefixed with two spaces.
-            if let Some(value) = trimmed.strip_prefix("npm:") {
-                sources.push(format!("npm:{}", value));
-                continue;
-            }
-            if let Some(value) = trimmed.strip_prefix("git:") {
-                sources.push(format!("git:{}", value));
-                continue;
-            }
-            if trimmed.starts_with('/') || trimmed.starts_with("./") || trimmed.starts_with("../") {
-                sources.push(trimmed.to_string());
-            }
-        }
-        Ok(sources)
+        Ok(parse_package_sources(&output))
     }
 
     pub fn install_package_source(&self, source: &str) -> Result<(), String> {
@@ -760,6 +728,44 @@ impl PiManager {
         let _ = self.run_pi_command(&args)?;
         Ok(())
     }
+}
+
+/// Parse `pi list` stdout into the list of configured package sources.
+/// Pure extraction of the loop previously inlined in `list_configured_package_sources`.
+fn parse_package_sources(output: &str) -> Vec<String> {
+    let mut sources = Vec::new();
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.eq_ignore_ascii_case("No packages installed.") {
+            continue;
+        }
+        if trimmed.ends_with(':') {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix('-') {
+            let value = rest.trim();
+            if !value.is_empty() {
+                sources.push(value.to_string());
+            }
+            continue;
+        }
+        // `pi list` currently emits entries prefixed with two spaces.
+        if let Some(value) = trimmed.strip_prefix("npm:") {
+            sources.push(format!("npm:{}", value));
+            continue;
+        }
+        if let Some(value) = trimmed.strip_prefix("git:") {
+            sources.push(format!("git:{}", value));
+            continue;
+        }
+        if trimmed.starts_with('/') || trimmed.starts_with("./") || trimmed.starts_with("../") {
+            sources.push(trimmed.to_string());
+        }
+    }
+    sources
 }
 
 pub fn is_port_in_use(port: u16) -> bool {
@@ -834,5 +840,92 @@ mod tests {
         let port = listener.local_addr().expect("listener addr").port();
 
         assert!(is_port_in_use(port));
+    }
+
+    #[test]
+    fn next_port_starts_at_or_above_47821() {
+        // Empty manager must hand out a port in the documented range; a
+        // regression that returns 0 or some unrelated port would make the
+        // WebView fail to load the embedded pi instance.
+        let manager = PiManager::new(PathBuf::from("."));
+        let port = manager.next_port();
+        assert!(port >= 47821, "next_port must be >= 47821, got {}", port);
+    }
+
+    #[test]
+    fn is_port_in_use_roundtrip() {
+        // is_port_in_use probes 0.0.0.0:port, so bind on the unspecified
+        // IPv4 address to mirror what production listeners do.
+        let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
+            .expect("bind ephemeral port");
+        let port = listener.local_addr().expect("listener addr").port();
+
+        assert!(
+            is_port_in_use(port),
+            "freshly bound port must report in use"
+        );
+        drop(listener);
+        // The OS may reuse the port immediately after drop, so we only assert
+        // the listener-bound case.
+    }
+
+    #[test]
+    fn parse_package_sources_handles_every_branch() {
+        // Empty / whitespace-only → no sources.
+        assert_eq!(parse_package_sources(""), Vec::<String>::new());
+        assert_eq!(parse_package_sources("   \n  \n"), Vec::<String>::new());
+
+        // "No packages installed." sentinel is skipped (case-insensitive).
+        assert_eq!(
+            parse_package_sources("No packages installed."),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            parse_package_sources("no packages installed."),
+            Vec::<String>::new()
+        );
+
+        // Section headers ending in ':' are skipped.
+        assert_eq!(
+            parse_package_sources("Installed packages:"),
+            Vec::<String>::new()
+        );
+
+        // '-' prefixed → value after '-', trimmed.
+        assert_eq!(parse_package_sources("- @scope/pkg"), vec!["@scope/pkg"]);
+        assert_eq!(parse_package_sources("-  spaced"), vec!["spaced"]);
+        // bare '-' (empty value) is dropped, not emitted.
+        assert_eq!(parse_package_sources("-"), Vec::<String>::new());
+
+        // npm: / git: prefixes preserved with their scheme.
+        assert_eq!(parse_package_sources("npm:foo"), vec!["npm:foo"]);
+        assert_eq!(
+            parse_package_sources("git:https://github.com/x/y"),
+            vec!["git:https://github.com/x/y"],
+        );
+
+        // Absolute / ./ / ../ paths kept; bare names dropped.
+        assert_eq!(parse_package_sources("/abs/pkg"), vec!["/abs/pkg"]);
+        assert_eq!(parse_package_sources("./local"), vec!["./local"]);
+        assert_eq!(parse_package_sources("../parent"), vec!["../parent"]);
+        assert_eq!(parse_package_sources("bare-name"), Vec::<String>::new());
+
+        // Mixed realistic block: headers + two-space indent + sentinel, order preserved.
+        let mixed = "\
+Installed packages:
+- @scope/pkg
+  npm:foo
+  git:https://github.com/x/y
+  /abs/pkg
+No packages installed.";
+        assert_eq!(
+            parse_package_sources(mixed),
+            vec![
+                "@scope/pkg",
+                "npm:foo",
+                "git:https://github.com/x/y",
+                "/abs/pkg",
+            ],
+        );
     }
 }

@@ -30,6 +30,7 @@ fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs" }
 futures-util = "0.3"
 tokio-tungstenite = "0.24"
 percent-encoding = "2"
+base64 = "0.22"
 
 [profile.dev]
 incremental = true
