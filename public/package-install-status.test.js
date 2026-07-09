@@ -1,5 +1,31 @@
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { initI18n } from "./i18n.js";
 import { renderPackageInstallFailure, summarizePackageError } from "./package-install-status.js";
+
+beforeEach(async () => {
+  global.fetch = vi.fn(async (url) => {
+    const u = String(url);
+    if (u.includes("/locales/en.json")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          extensions: {
+            permissionDenied: "Permission denied in ~/.pi/agent/npm (check owner/permissions).",
+            installFailed: "Install failed",
+            uninstallFailed: "Uninstall failed",
+            installFailedNote:
+              "This extension requires npm. Make sure npm is installed and available to Picot, then try again.",
+            uninstallFailedNote:
+              "Picot could not remove this extension package. Check the error details, then try again.",
+          },
+        }),
+      };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  });
+  await initI18n();
+});
 
 describe("package install failure status", () => {
   test("renders npm dependency guidance and the real error visibly", () => {

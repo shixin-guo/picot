@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 // Multi-task model
 // ──────────────────
 // A `pi --mode rpc` process can only drive ONE active session at a time.
@@ -107,7 +109,7 @@ async function attachToWorkspace({
       });
     } catch (e) {
       dismissOverlay();
-      if (renderError) renderError(`Failed to attach to workspace: ${e}`);
+      if (renderError) renderError(`${t("errors.attachWorkspaceFailed")}: ${String(e)}`);
       return null;
     }
   }
@@ -134,7 +136,7 @@ export async function startInWindowNewSession({
   renderError,
 }) {
   if (!transport) {
-    renderError("New session is only supported with a native host.");
+    renderError(t("errors.newSessionOnlyNative"));
     return false;
   }
 
@@ -158,12 +160,12 @@ export async function startInWindowNewSession({
   }
 
   if (!targetCwd) {
-    renderError("Failed to start new session: current workspace path is unavailable");
+    renderError(t("errors.newSessionPathUnavailable"));
     return false;
   }
 
   if (typeof navigate !== "function") {
-    renderError("Failed to start new session: navigation is unavailable");
+    renderError(t("errors.newSessionNavUnavailable"));
     return false;
   }
 
@@ -187,7 +189,7 @@ export async function startInWindowNewSession({
       // If the in-place target port has drifted to a dead/unmanaged process,
       // don't fail — recover by spawning a fresh process for this workspace.
       if (!isDeadPortError(e)) {
-        renderError(`Failed to start new session: ${e}`);
+        renderError(`${t("errors.newSessionFailed")}: ${String(e)}`);
         return false;
       }
       console.warn("[Session route] newSession:in-place-dead-port, spawning fresh process", {
@@ -204,7 +206,7 @@ export async function startInWindowNewSession({
     onBeforeSwap,
     onParallelSessionCreated,
     renderError,
-    label: "Starting session…",
+    label: t("sidebar.startingSession"),
     debugTag: "newSession",
   });
 }
@@ -222,7 +224,7 @@ async function spawnFreshSession({
   renderError,
   label,
   debugTag,
-  errorLabel = "Failed to start new session",
+  errorLabel = t("errors.newSessionFailed"),
 }) {
   const dismissOverlay = runOnBeforeSwap(onBeforeSwap, label);
   try {
@@ -285,18 +287,18 @@ export async function startNewProjectChat({
   renderError,
 }) {
   if (!transport) {
-    renderError("Project new chat is only supported with a native host.");
+    renderError(t("errors.newChatOnlyNative"));
     return false;
   }
 
   const targetCwd = resolveProjectCwd(project);
   if (!targetCwd) {
-    renderError("Failed to start new chat: project path is unavailable");
+    renderError(t("errors.newChatPathUnavailable"));
     return false;
   }
 
   if (typeof navigate !== "function") {
-    renderError("Failed to start new chat: navigation is unavailable");
+    renderError(t("errors.newChatNavUnavailable"));
     return false;
   }
 
@@ -329,7 +331,7 @@ export async function startNewProjectChat({
       // Drifted/dead foreground port: fall through to spawning a fresh
       // process for this workspace instead of surfacing the raw RPC error.
       if (!isDeadPortError(e)) {
-        renderError(`Failed to start new chat: ${e}`);
+        renderError(`${t("errors.newChatFailed")}: ${String(e)}`);
         return false;
       }
       console.warn("[Session route] projectNewChat:in-place-dead-port, spawning fresh process", {
@@ -343,9 +345,9 @@ export async function startNewProjectChat({
         onBeforeSwap,
         onParallelSessionCreated,
         renderError,
-        label: "Starting new chat…",
+        label: t("sidebar.startingSession"),
         debugTag: "projectNewChat",
-        errorLabel: "Failed to start new chat",
+        errorLabel: t("errors.newChatFailed"),
       });
     }
   }
@@ -370,9 +372,9 @@ export async function startNewProjectChat({
     onBeforeSwap,
     onParallelSessionCreated,
     renderError,
-    label: "Starting new chat…",
+    label: t("sidebar.startingSession"),
     debugTag: "projectNewChat",
-    errorLabel: "Failed to start new chat",
+    errorLabel: t("errors.newChatFailed"),
   });
 }
 
@@ -390,13 +392,13 @@ export async function openProjectWorkspace({
   renderError,
 }) {
   if (!transport) {
-    renderError("Open project is only supported with a native host.");
+    renderError(t("errors.openProjectOnlyNative"));
     return false;
   }
 
   const targetCwd = resolveProjectCwd(project);
   if (!targetCwd) {
-    renderError("Failed to open project: project path is unavailable");
+    renderError(t("errors.openProjectPathUnavailable"));
     return false;
   }
 
@@ -412,7 +414,7 @@ export async function openProjectWorkspace({
     });
     return result !== null;
   } catch (e) {
-    renderError(`Failed to open project: ${e}`);
+    renderError(`${t("errors.openProjectFailed")}: ${String(e)}`);
     return false;
   }
 }
@@ -426,7 +428,7 @@ export async function openFolderAsWorkspace({
   renderError,
 }) {
   if (!transport) {
-    renderError("Open folder is only supported with a native host.");
+    renderError(t("errors.openFolderOnlyNative"));
     return false;
   }
 
@@ -445,7 +447,7 @@ export async function openFolderAsWorkspace({
     });
     return result !== null;
   } catch (e) {
-    renderError(`Failed to open folder: ${e}`);
+    renderError(`${t("errors.openFolderFailed")}: ${String(e)}`);
     return false;
   }
 }

@@ -5,6 +5,7 @@
  * task lists, images, paragraphs.
  */
 
+import { onLocaleChange, t } from "./i18n.js";
 import remend from "./vendor/remend.js";
 
 /**
@@ -103,7 +104,7 @@ export function renderMarkdown(text) {
       const block = codeBlocks[parseInt(codeMatch[1], 10)];
       const langLabel = block.lang || "code";
       html += `<div class="code-block-wrapper">`;
-      html += `<div class="code-block-header"><span>${escapeHtml(langLabel)}</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>`;
+      html += `<div class="code-block-header"><span>${escapeHtml(langLabel)}</span><button class="copy-btn" onclick="copyCode(this)">${escapeHtml(t("messages.copy"))}</button></div>`;
       html += `<pre><code>${escapeHtml(block.code)}</code></pre></div>`;
       continue;
     }
@@ -340,11 +341,19 @@ window.copyCode = (btn) => {
   const codeBlock = btn.closest(".code-block-wrapper").querySelector("code");
   const text = codeBlock.textContent;
   navigator.clipboard.writeText(text).then(() => {
-    btn.textContent = "Copied!";
+    btn.textContent = t("messages.copied");
     btn.classList.add("copied");
     setTimeout(() => {
-      btn.textContent = "Copy";
+      btn.textContent = t("messages.copy");
       btn.classList.remove("copied");
     }, 2000);
   });
 };
+
+// Update already-rendered copy buttons when the locale changes.
+// Skip buttons marked .copied so a transient "Copied!" state is not clobbered.
+onLocaleChange(() => {
+  for (const btn of document.querySelectorAll(".copy-btn:not(.copied)")) {
+    btn.textContent = t("messages.copy");
+  }
+});

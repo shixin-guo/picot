@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { FileBrowser } from "./file-browser.js";
+import { initI18n, setLocale } from "./i18n.js";
 
 function makeContainer() {
   return {
     innerHTML: "",
     appendChild: vi.fn(),
     addEventListener: vi.fn(),
+    querySelector: vi.fn(() => null),
+    querySelectorAll: vi.fn(() => []),
     classList: { add: vi.fn(), remove: vi.fn(), contains: vi.fn(() => false) },
   };
 }
@@ -161,5 +164,86 @@ describe("FileBrowser.load", () => {
     await loadA;
     expect(browser.currentPath).toBe("/workspace-b");
     expect(pathEl.textContent).toBe("/workspace-b");
+  });
+});
+
+describe("FileBrowser locale change", () => {
+  let originalFetch;
+
+  const enMessages = {
+    files: { loading: "Loading…", empty: "Empty directory", failedLoad: "Failed to load" },
+  };
+  const zhMessages = {
+    files: { loading: "加载中…", empty: "空目录", failedLoad: "加载失败" },
+  };
+
+  beforeEach(async () => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn((url) => {
+      const u = String(url);
+      if (u.includes("/locales/zh.json")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(zhMessages) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(enMessages) });
+    });
+    // Clear any language cookie left by a prior test so initI18n starts in English.
+    document.cookie.split(";").forEach((c) => {
+      const name = c.split("=")[0].trim();
+      if (name) document.cookie = `${name}=; Max-Age=0; Path=/`;
+    });
+    await initI18n();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function makeRealContainer() {
+    const container = document.createElement("div");
+    const pathEl = document.createElement("span");
+    const messageInput = document.createElement("textarea");
+    return { container, pathEl, messageInput };
+  }
+
+  test("repaints loading status text when locale changes", async () => {
+    const { container, pathEl, messageInput } = makeRealContainer();
+    const browser = new FileBrowser(container, pathEl, messageInput);
+
+    browser.showFileStatus("loading");
+    expect(container.querySelector(".file-loading").textContent).toBe("Loading…");
+
+    await setLocale("zh");
+    expect(container.querySelector(".file-loading").textContent).toBe("加载中…");
+  });
+
+  test("repaints empty status text when locale changes", async () => {
+    const { container, pathEl, messageInput } = makeRealContainer();
+    const browser = new FileBrowser(container, pathEl, messageInput);
+
+    browser.showFileStatus("empty");
+    expect(container.querySelector(".file-loading").textContent).toBe("Empty directory");
+
+    await setLocale("zh");
+    expect(container.querySelector(".file-loading").textContent).toBe("空目录");
+  });
+
+  test("does not translate file names and sizes on locale change", async () => {
+    const { container, pathEl, messageInput } = makeRealContainer();
+    const browser = new FileBrowser(container, pathEl, messageInput);
+
+    browser.render([
+      { name: "readme.md", path: "/tmp/readme.md", isDirectory: false, size: 2048 },
+      { name: "src", path: "/tmp/src", isDirectory: true, size: 0 },
+    ]);
+
+    const namesBefore = [...container.querySelectorAll(".file-name")].map((el) => el.textContent);
+    expect(namesBefore).toEqual(["readme.md", "src"]);
+    expect(container.querySelector(".file-size").textContent).toBe("2K");
+
+    await setLocale("zh");
+
+    const namesAfter = [...container.querySelectorAll(".file-name")].map((el) => el.textContent);
+    expect(namesAfter).toEqual(["readme.md", "src"]);
+    expect(container.querySelector(".file-size").textContent).toBe("2K");
   });
 });

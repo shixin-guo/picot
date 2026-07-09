@@ -1,8 +1,32 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { JSDOM } from "jsdom";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { setupSettingsToggles } from "./app-settings-toggles.js";
+import { initI18n } from "./i18n.js";
+
+beforeEach(async () => {
+  global.fetch = vi.fn(async (url) => {
+    const u = String(url);
+    if (u.includes("/locales/en.json")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          settings: {
+            thinkingLevel: "Thinking: {level}",
+            thinkingCompact: "Think {level}",
+            off: "off",
+            thinkingTitle: "Thinking effort controls reasoning depth. Click to cycle.",
+            thinkingAriaLabel: "Thinking effort: {level}. Click to cycle reasoning depth.",
+          },
+        }),
+      };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  });
+  await initI18n();
+});
 
 describe("thinking effort cycle controls", () => {
   test("labels the composer thinking control clearly while keeping button cycling", () => {

@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 export function getOnboardingState({ hasSessions, workspacePath, availableModels }) {
   const hasWorkspace = typeof workspacePath === "string" && workspacePath.trim().length > 0;
   const hasModel = Array.isArray(availableModels) && availableModels.length > 0;
@@ -8,7 +10,7 @@ export function getOnboardingState({ hasSessions, workspacePath, availableModels
       canType: false,
       needsProject: true,
       needsModel: false,
-      message: "Open a project to start chatting.",
+      message: t("onboarding.openProject"),
     };
   }
 
@@ -18,7 +20,7 @@ export function getOnboardingState({ hasSessions, workspacePath, availableModels
       canType: true,
       needsProject: false,
       needsModel: true,
-      message: "Configure an API key or provider to start chatting.",
+      message: t("onboarding.configureKey"),
     };
   }
 

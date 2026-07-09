@@ -2,12 +2,25 @@
  * Dialogs - Handles extension UI dialogs
  */
 
+import { onLocaleChange, t } from "./i18n.js";
+
 export class DialogHandler {
   constructor(container, wsClient) {
     this.container = container;
     this.wsClient = wsClient;
-    this.currentDialog = null;
     this.timeoutId = null;
+    this.unsubscribeLocaleChange = onLocaleChange(() => {
+      if (!this.currentDialog) return;
+      const updateBtn = (selector, key) => {
+        const btn = this.currentDialog?.querySelector(selector);
+        if (btn) btn.textContent = t(key);
+      };
+      updateBtn("#dialog-cancel", "dialogs.cancel");
+      updateBtn("#dialog-no", "dialogs.no");
+      updateBtn("#dialog-yes", "dialogs.yes");
+      updateBtn("#dialog-submit", "dialogs.submit");
+      updateBtn("#dialog-save", "dialogs.save");
+    });
   }
 
   showSelect(request) {
@@ -18,10 +31,10 @@ export class DialogHandler {
     const dialog = document.createElement("div");
     dialog.className = "dialog";
     dialog.innerHTML = `
-      <div class="dialog-title">${this.escapeHtml(title || "Select an option")}</div>
+      <div class="dialog-title">${this.escapeHtml(title || t("dialogs.selectOption"))}</div>
       <div class="dialog-options" id="dialog-options"></div>
       <div class="dialog-actions">
-        <button id="dialog-cancel">Cancel</button>
+        <button id="dialog-cancel">${this.escapeHtml(t("dialogs.cancel"))}</button>
       </div>
     `;
 
@@ -52,11 +65,11 @@ export class DialogHandler {
     const dialog = document.createElement("div");
     dialog.className = "dialog";
     dialog.innerHTML = `
-      <div class="dialog-title">${this.escapeHtml(title || "Confirm")}</div>
+      <div class="dialog-title">${this.escapeHtml(title || t("dialogs.confirm"))}</div>
       ${message ? `<div class="dialog-message">${this.escapeHtml(message)}</div>` : ""}
       <div class="dialog-actions">
-        <button id="dialog-no">No</button>
-        <button id="dialog-yes">Yes</button>
+        <button id="dialog-no">${this.escapeHtml(t("dialogs.no"))}</button>
+        <button id="dialog-yes">${this.escapeHtml(t("dialogs.yes"))}</button>
       </div>
     `;
 
@@ -79,11 +92,11 @@ export class DialogHandler {
     const dialog = document.createElement("div");
     dialog.className = "dialog";
     dialog.innerHTML = `
-      <div class="dialog-title">${this.escapeHtml(title || "Input")}</div>
+      <div class="dialog-title">${this.escapeHtml(title || t("dialogs.input"))}</div>
       <input type="text" class="dialog-input" id="dialog-input" placeholder="${this.escapeHtml(placeholder || "")}" />
       <div class="dialog-actions">
-        <button id="dialog-cancel">Cancel</button>
-        <button id="dialog-submit">Submit</button>
+        <button id="dialog-cancel">${this.escapeHtml(t("dialogs.cancel"))}</button>
+        <button id="dialog-submit">${this.escapeHtml(t("dialogs.submit"))}</button>
       </div>
     `;
 
@@ -117,11 +130,11 @@ export class DialogHandler {
     const dialog = document.createElement("div");
     dialog.className = "dialog";
     dialog.innerHTML = `
-      <div class="dialog-title">${this.escapeHtml(title || "Editor")}</div>
+      <div class="dialog-title">${this.escapeHtml(title || t("dialogs.editor"))}</div>
       <textarea class="dialog-textarea" id="dialog-textarea">${this.escapeHtml(prefill || "")}</textarea>
       <div class="dialog-actions">
-        <button id="dialog-cancel">Cancel</button>
-        <button id="dialog-save">Save</button>
+        <button id="dialog-cancel">${this.escapeHtml(t("dialogs.cancel"))}</button>
+        <button id="dialog-save">${this.escapeHtml(t("dialogs.save"))}</button>
       </div>
     `;
 

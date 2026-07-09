@@ -2,6 +2,8 @@
  * Session Sidebar - Lists sessions grouped by project, handles switching
  */
 
+import { onLocaleChange, t } from "./i18n.js";
+
 export class SessionSidebar {
   constructor(container, onSessionSelect, onNewChat, options = {}) {
     this.projectSessionInitialLimit = 5;
@@ -38,6 +40,14 @@ export class SessionSidebar {
     document.addEventListener("contextmenu", (e) => {
       // Close if right-clicking outside a session item
       if (!e.target.closest(".session-item")) this.closeContextMenu();
+    });
+
+    this.unsubscribeLocaleChange = onLocaleChange(() => {
+      if (!this.container || this.container.children.length === 0) return;
+      if (this.loadSeq > this.loadCommitted) return; // load in-flight
+      const savedScroll = this.container.scrollTop;
+      this.render();
+      this.container.scrollTop = savedScroll;
     });
   }
 
@@ -172,7 +182,10 @@ export class SessionSidebar {
   }
 
   async confirmArchivedDeletion(count) {
-    const message = `Delete ${count} archived session${count === 1 ? "" : "s"} permanently? This cannot be undone.`;
+    const message =
+      count === 1
+        ? t("sidebar.deleteArchivedConfirmOne", { count })
+        : t("sidebar.deleteArchivedConfirmMany", { count });
     return this.showFallbackConfirmDialog(message);
   }
 
@@ -250,9 +263,10 @@ export class SessionSidebar {
       reason.includes("networkerror") ||
       reason.includes("load failed");
     const message = likelyRuntimeDown
-      ? "Failed to load sessions. Pi runtime may be unavailable."
-      : "Failed to load sessions.";
-    this.container.innerHTML = `<div class="session-loading">${message} <button class="retry-link" id="retry-load-sessions">Retry</button></div>`;
+      ? t("sidebar.failedToLoadSessionsRuntime")
+      : t("sidebar.failedToLoadSessions");
+    const retryLabel = this.escapeHtml(t("sidebar.retry"));
+    this.container.innerHTML = `<div class="session-loading">${this.escapeHtml(message)} <button class="retry-link" id="retry-load-sessions">${retryLabel}</button></div>`;
     const retryBtn = this.container.querySelector("#retry-load-sessions");
     if (retryBtn) {
       retryBtn.addEventListener("click", () => this.loadSessions());
@@ -323,7 +337,7 @@ export class SessionSidebar {
         item.classList.add("active");
       }
 
-      const title = result.sessionName || result.firstMessage || "Untitled";
+      const title = result.sessionName || result.firstMessage || t("sidebar.untitled");
       const snippet = result.matches[0]?.snippet || "";
       const matchCount = result.matches.length;
       const time = this.formatTime(result.sessionTimestamp);
@@ -450,7 +464,7 @@ export class SessionSidebar {
     const items = [
       {
         icon: isArchived ? "📤" : "🗄️",
-        label: isArchived ? "Unarchive" : "Archive",
+        label: isArchived ? t("sidebar.unarchive") : t("sidebar.archive"),
         action: () => this.toggleArchived(session.filePath),
       },
     ];
@@ -570,14 +584,16 @@ export class SessionSidebar {
       item.classList.add("streaming");
     }
 
-    const title = session.name || session.firstMessage || "Empty session";
+    const title = session.name || session.firstMessage || t("sidebar.emptySession");
     const time = this.formatTime(session.timestamp);
     const tmuxTag = session.tmux ? '<span class="session-tag tmux-tag">tmux</span>' : "";
     const favIcon = this.isFavourite(session.filePath)
       ? '<span class="session-fav-icon">★</span>'
       : "";
     const isArchived = this.isArchived(session.filePath);
-    const archiveBtnLabel = isArchived ? "Unarchive session" : "Archive session";
+    const archiveBtnLabel = isArchived
+      ? t("sidebar.unarchiveSession")
+      : t("sidebar.archiveSession");
     const archiveBtnIcon = `
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <rect x="3" y="4" width="18" height="4" rx="1.5"></rect>
@@ -587,7 +603,7 @@ export class SessionSidebar {
     `;
 
     const archiveButtonHtml = showArchiveButton
-      ? `<button class="session-archive-btn" title="${archiveBtnLabel}" aria-label="${archiveBtnLabel}">${archiveBtnIcon}</button>`
+      ? `<button class="session-archive-btn" title="${this.escapeHtml(archiveBtnLabel)}" aria-label="${this.escapeHtml(archiveBtnLabel)}">${archiveBtnIcon}</button>`
       : "";
 
     item.innerHTML = `
@@ -648,7 +664,7 @@ export class SessionSidebar {
       const showMoreButton = document.createElement("button");
       showMoreButton.type = "button";
       showMoreButton.className = "project-sessions-toggle";
-      showMoreButton.textContent = "Show more";
+      showMoreButton.textContent = t("sidebar.showMore");
       showMoreButton.addEventListener("click", (event) => {
         event.stopPropagation();
         this.setProjectVisibleSessionCount(project, visibleCount + this.projectSessionStep);
@@ -661,7 +677,7 @@ export class SessionSidebar {
       const showLessButton = document.createElement("button");
       showLessButton.type = "button";
       showLessButton.className = "project-sessions-toggle project-sessions-toggle-less";
-      showLessButton.textContent = "Show less";
+      showLessButton.textContent = t("sidebar.showLess");
       showLessButton.addEventListener("click", (event) => {
         event.stopPropagation();
         this.setProjectVisibleSessionCount(
@@ -705,7 +721,7 @@ export class SessionSidebar {
 
       const header = document.createElement("div");
       header.className = "project-header favourites-header";
-      header.innerHTML = `<span class="fav-star">★</span> <span>Favourites</span> <span class="project-count">${favSessions.length}</span>`;
+      header.innerHTML = `<span class="fav-star">★</span> <span>${this.escapeHtml(t("sidebar.favourites"))}</span> <span class="project-count">${favSessions.length}</span>`;
       favGroup.appendChild(header);
 
       const sessionsDiv = document.createElement("div");
@@ -739,7 +755,7 @@ export class SessionSidebar {
         <span class="chevron">▼</span>
         <span class="project-name" title="${project.path}">${shortPath}</span>
         <span class="project-count">${visibleSessions.length}</span>
-        <button class="project-new-chat-btn" title="New chat in ${this.escapeHtml(shortPath)}" aria-label="New chat in ${this.escapeHtml(shortPath)}">
+        <button class="project-new-chat-btn" title="${this.escapeHtml(t("sidebar.newChat", { path: shortPath }))}" aria-label="${this.escapeHtml(t("sidebar.newChat", { path: shortPath }))}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
       `;
@@ -805,9 +821,9 @@ export class SessionSidebar {
       header.className = `project-header archived-header${this.archivedCollapsed ? " collapsed" : ""}`;
       header.innerHTML = `
         <span class="chevron">▼</span>
-        <span>Archived</span>
+        <span>${this.escapeHtml(t("sidebar.archived"))}</span>
         <span class="project-count">${archivedSessions.length}</span>
-        <button class="archived-delete-all-btn" title="Delete all archived sessions" aria-label="Delete all archived sessions">
+        <button class="archived-delete-all-btn" title="${this.escapeHtml(t("sidebar.deleteAllArchived"))}" aria-label="${this.escapeHtml(t("sidebar.deleteAllArchived"))}">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
@@ -850,13 +866,13 @@ export class SessionSidebar {
   renderEmptyState() {
     this.container.innerHTML = `
       <div class="session-empty-state">
-        <button type="button" class="session-empty-open-project" title="Open project" aria-label="Open project">
+        <button type="button" class="session-empty-open-project" title="${this.escapeHtml(t("sidebar.openProject"))}" aria-label="${this.escapeHtml(t("sidebar.openProject"))}">
           <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path>
             <line x1="12" y1="12" x2="12" y2="18"></line>
             <line x1="9" y1="15" x2="15" y2="15"></line>
           </svg>
-          <span>Open Project</span>
+          <span>${this.escapeHtml(t("sidebar.openProject"))}</span>
         </button>
       </div>
     `;
@@ -882,10 +898,10 @@ export class SessionSidebar {
       const diffHours = Math.floor(diffMs / 3600000);
       const days = Math.floor(diffMs / 86400000);
 
-      if (diffMins < 1) return "Just now";
-      if (diffMins < 60) return `${diffMins}m ago`;
-      if (diffHours < 24) return `${diffHours}h ago`;
-      if (days === 1) return "Yesterday";
+      if (diffMins < 1) return t("sidebar.justNow");
+      if (diffMins < 60) return t("sidebar.minutesAgo", { minutes: diffMins });
+      if (diffHours < 24) return t("sidebar.hoursAgo", { hours: diffHours });
+      if (days === 1) return t("sidebar.yesterday");
       if (days < 7) return date.toLocaleDateString([], { weekday: "long" });
       return date.toLocaleDateString([], { month: "short", day: "numeric" });
     } catch {

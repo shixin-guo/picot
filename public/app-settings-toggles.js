@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 export function setupSettingsToggles({
   toggleAutoCompact,
   btnThinkingLevel,
@@ -8,7 +10,8 @@ export function setupSettingsToggles({
   setCurrentThinkingLevel,
   updateThinkingBtn,
 }) {
-  const formatThinkingLevelLabel = (level) => `Thinking: ${level || "off"}`;
+  const formatThinkingLevelLabel = (level) =>
+    t("settings.thinkingLevel", { level: level || t("settings.off") });
 
   toggleAutoCompact?.addEventListener("click", async () => {
     const isOn = toggleAutoCompact.classList.contains("on");

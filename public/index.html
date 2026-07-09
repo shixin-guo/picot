@@ -36,7 +36,7 @@
 <body class="">
   <div class="instance-swap-overlay" id="instance-swap-overlay" aria-hidden="true">
     <div class="instance-swap-overlay__spinner"></div>
-    <div class="instance-swap-overlay__label" id="instance-swap-overlay-label">Starting session…</div>
+    <div class="instance-swap-overlay__label" id="instance-swap-overlay-label" data-i18n="sidebar.startingSession">Starting session…</div>
   </div>
   <script>
     // Flip the body class as early as the body element exists. Done inline
@@ -54,16 +54,18 @@
     <div class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <div class="mode-toggle" id="mode-toggle">
-          <span class="mode-link active" title="Chat"><img src="icons/logo-dark.svg" alt="Picot logo" class="tau-icon"></span>
+        <span class="mode-link active" title="Chat" data-i18n-title="nav.chat"><img src="icons/logo-dark.svg" alt="Picot logo" class="tau-icon"></span>
         </div>
         <div class="sidebar-search-wrap">
-          <input type="text" id="session-search-input" class="sidebar-search-input" placeholder="Search..." autocomplete="off" />
+          <input type="text" id="session-search-input" class="sidebar-search-input" placeholder="Search..." data-i18n-ph="sidebar.search" autocomplete="off" />
           <button
             type="button"
             id="session-search-clear"
             class="sidebar-search-clear hidden"
             title="Clear search"
             aria-label="Clear search"
+            data-i18n-title="sidebar.clearSearch"
+            data-i18n-aria-label="sidebar.clearSearch"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
               <line x1="18" y1="6" x2="6" y2="18"/>
@@ -72,21 +74,21 @@
           </button>
         </div>
         <div class="sidebar-actions">
-          <button class="icon-btn" id="open-folder-btn" title="Open folder as workspace" aria-label="Open folder"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg></button>
-          <button class="icon-btn" id="refresh-sessions-btn" title="Refresh sessions" aria-label="Refresh sessions"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></button>
+          <button class="icon-btn" id="open-folder-btn" title="Open folder as workspace" aria-label="Open folder" data-i18n-title="sidebar.openFolder" data-i18n-aria-label="sidebar.openFolderAria"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg></button>
+          <button class="icon-btn" id="refresh-sessions-btn" title="Refresh sessions" aria-label="Refresh sessions" data-i18n-title="sidebar.refreshSessions" data-i18n-aria-label="sidebar.refreshSessions"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></button>
         </div>
       </div>
       <div class="session-list" id="session-list">
-        <div class="session-loading">Loading sessions...</div>
+        <div class="session-loading" data-i18n="sidebar.loadingSessions">Loading sessions...</div>
       </div>
       <div class="sidebar-footer">
         <div class="sidebar-settings-row">
-          <button class="sidebar-settings-btn" id="settings-btn" title="Settings" aria-label="Settings">
+          <button class="sidebar-settings-btn" id="settings-btn" title="Settings" aria-label="Settings" data-i18n-title="sidebar.settings" data-i18n-aria-label="sidebar.settings">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-            <span>Settings</span>
+            <span data-i18n="sidebar.settings">Settings</span>
           </button>
-          <button class="sidebar-update-pill hidden" id="sidebar-update-btn" title="Update available" aria-label="Open updates in settings">
-            Update
+          <button class="sidebar-update-pill hidden" id="sidebar-update-btn" title="Update available" aria-label="Open updates in settings" data-i18n-title="sidebar.updateAvailable" data-i18n-aria-label="updater.openInSettings">
+            <span data-i18n="updater.update">Update</span>
           </button>
         </div>
       </div>
@@ -100,13 +102,13 @@
       <!-- Header -->
       <div class="header">
         <div class="header-left">
-          <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
-          <button class="icon-btn lan-qr-btn hidden" id="lan-qr-btn" title="Show mobile QR code" aria-label="Show mobile QR code">
+          <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar" data-i18n-title="nav.toggleSidebar" data-i18n-aria-label="nav.toggleSidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+          <button class="icon-btn lan-qr-btn hidden" id="lan-qr-btn" title="Show mobile QR code" aria-label="Show mobile QR code" data-i18n-title="nav.showMobileQR" data-i18n-aria-label="nav.showMobileQR">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
           </button>
           <div class="status">
             <span class="status-indicator" id="status-indicator"></span>
-            <span class="status-text" id="status-text">Connecting...</span>
+            <span class="status-text" id="status-text" data-i18n="status.connecting">Connecting...</span>
           </div>
         </div>
         <div class="header-right">
@@ -114,7 +116,7 @@
           <span class="pill token-usage" id="token-usage" title="Context usage"></span>
          
           <div class="context-viz hidden" id="context-viz">
-            <div class="context-viz-title">Context Window</div>
+            <div class="context-viz-title" data-i18n="misc.contextWindow">Context Window</div>
             <div class="context-bar" id="context-bar"></div>
             <div class="context-legend" id="context-legend"></div>
             <div class="context-viz-footer">
@@ -123,15 +125,15 @@
             </div>
           </div>
           <fieldset class="header-open-app hidden" id="header-open-app">
-            <button class="header-open-app-btn" id="header-open-app-btn" title="Open workspace" aria-label="Open workspace in app">
+            <button class="header-open-app-btn" id="header-open-app-btn" title="Open workspace" aria-label="Open workspace in app" data-i18n-title="nav.openWorkspace" data-i18n-aria-label="nav.openWorkspaceInApp">
               <span class="header-open-app-logo" id="header-open-app-logo" aria-hidden="true"><img src="icons/app-cursor.svg" alt="" class="header-open-app-logo-img"></span>
             </button>
-            <button class="header-open-app-toggle" id="header-open-app-toggle" title="Choose app" aria-label="Choose app to open workspace">
+            <button class="header-open-app-toggle" id="header-open-app-toggle" title="Choose app" aria-label="Choose app to open workspace" data-i18n-title="nav.chooseApp" data-i18n-aria-label="nav.chooseApp">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="header-open-app-menu hidden" id="header-open-app-menu"></div>
           </fieldset>
-          <button class="icon-btn" id="file-sidebar-toggle" title="Files" aria-label="Toggle file browser">
+          <button class="icon-btn" id="file-sidebar-toggle" title="Files" aria-label="Toggle file browser" data-i18n-title="nav.files" data-i18n-aria-label="nav.files">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
           </button>
         </div>
@@ -141,18 +143,17 @@
       <div class="messages" id="messages">
         <div class="welcome">
           <div class="welcome-icon"><img src="icons/logo-dark.svg" alt="Picot logo" class="tau-icon-welcome"></div>
-          <p>Welcome to Picot</p>
-          <p class="hint">Type a message below to start chatting with Pi, or select a session from the sidebar.</p>
-          <div class="shortcuts-hint">
-            <span>/ Focus input</span>
-            <span>Esc Abort</span>
-          </div>
+        <p data-i18n="app.welcome">Welcome to Picot</p>
+        <p class="hint" data-i18n="app.welcomeHint">Type a message below to start chatting with Pi, or select a session from the sidebar.</p>
+        <div class="shortcuts-hint">
+          <span data-i18n="shortcuts.focusInput">/ Focus input</span>
+          <span data-i18n="shortcuts.abort">Esc Abort</span>
         </div>
       </div>
-
+    </div>
       <!-- Scroll to bottom + new message indicator -->
       <button class="scroll-bottom-btn hidden" id="scroll-bottom-btn">
-        <span class="scroll-bottom-badge hidden" id="scroll-bottom-badge">New <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></span>
+        <span class="scroll-bottom-badge hidden" id="scroll-bottom-badge"><span data-i18n="misc.new">New</span> <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></span>
         <span class="scroll-bottom-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></span>
       </button>
 
@@ -172,35 +173,36 @@
             <textarea
               id="message-input"
               placeholder="Type a message..."
+              data-i18n-ph="input.typeMessage"
               autocomplete="off"
               rows="2"
             ></textarea>
             <div class="composer-toolbar">
               <div class="composer-toolbar-left">
-                <button type="button" class="input-icon-btn" id="attach-btn" title="Attach image" aria-label="Attach image" tabindex="-1">
+                <button type="button" class="input-icon-btn" id="attach-btn" title="Attach image" aria-label="Attach image" data-i18n-title="input.attachImage" data-i18n-aria-label="input.attachImage" tabindex="-1">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 </button>
-                <button type="button" class="input-icon-btn" id="command-btn" title="Commands" aria-label="Open commands" tabindex="-1">
+                <button type="button" class="input-icon-btn" id="command-btn" title="Commands" aria-label="Open commands" data-i18n-title="input.commands" data-i18n-aria-label="input.commands" tabindex="-1">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>
                 </button>
                 <input type="file" id="image-input" accept="image/*" multiple style="display:none" />
               </div>
               <div class="composer-toolbar-right">
                 <div class="model-dropdown" id="model-dropdown">
-                  <button type="button" class="model-dropdown-btn" id="model-dropdown-btn" title="Switch model" tabindex="-1">
-                    <span class="model-dropdown-label" id="model-dropdown-label">model</span>
+                  <button type="button" class="model-dropdown-btn" id="model-dropdown-btn" title="Switch model" data-i18n-title="input.switchModel" tabindex="-1">
+                    <span class="model-dropdown-label" id="model-dropdown-label" data-i18n="misc.model">model</span>
                     <svg class="model-dropdown-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   </button>
                   <div class="model-dropdown-menu hidden" id="model-dropdown-menu"></div>
                 </div>
                 <button type="button" class="thinking-tag off" id="thinking-btn" title="Thinking effort controls reasoning depth. Click to cycle." aria-label="Thinking effort: off. Click to cycle reasoning depth." tabindex="-1">Think off</button>
-                <button type="button" class="input-mic-btn" id="mic-btn" title="Voice input" tabindex="-1">
+                <button type="button" class="input-mic-btn" id="mic-btn" title="Voice input" data-i18n-title="voice.voiceInput" tabindex="-1">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
                 </button>
-                <button type="submit" id="send-btn" title="Send message" tabindex="-1">
+                <button type="submit" id="send-btn" title="Send message" data-i18n-title="input.send" tabindex="-1">
                   <span class="send-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></span>
                 </button>
-                <button type="button" id="abort-btn" class="hidden" title="Abort (Esc)" tabindex="-1"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button>
+                <button type="button" id="abort-btn" class="hidden" title="Abort (Esc)" data-i18n-title="input.abort" tabindex="-1"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button>
               </div>
             </div>
           </div>
@@ -211,14 +213,14 @@
     <!-- File Browser (right sidebar) -->
     <div class="file-sidebar collapsed" id="file-sidebar">
       <div class="file-sidebar-header">
-        <span class="file-sidebar-title" id="file-sidebar-title">Files</span>
-        <button class="icon-btn" id="file-sidebar-up" title="Parent directory">
+        <span class="file-sidebar-title" id="file-sidebar-title" data-i18n="files.title">Files</span>
+        <button class="icon-btn" id="file-sidebar-up" title="Parent directory" data-i18n-title="files.parentDirectory">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
         </button>
-        <button class="icon-btn" id="file-sidebar-finder" title="Open in file manager">
+        <button class="icon-btn" id="file-sidebar-finder" title="Open in file manager" data-i18n-title="files.openInFileManager">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
         </button>
-        <button class="icon-btn" id="file-sidebar-close" title="Close" aria-label="Close file browser"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="icon-btn" id="file-sidebar-close" title="Close" aria-label="Close file browser" data-i18n-title="files.close" data-i18n-aria-label="files.close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <div class="file-sidebar-path" id="file-sidebar-path" title=""></div>
       <div class="file-list" id="file-list"></div>
@@ -229,73 +231,78 @@
 
   <div class="settings-panel hidden" id="settings-panel">
     <aside class="settings-nav">
-      <div class="settings-nav-title">Settings</div>
-      <button class="settings-nav-item active" data-settings-tab="general">General</button>
-      <button class="settings-nav-item" data-settings-tab="extensions">Extensions</button>
-      <button class="settings-nav-item" data-settings-tab="usage">Usage</button>
-      <button class="settings-nav-item" data-settings-tab="configuration">Configuration</button>
-      <button class="settings-nav-back" id="settings-close"><span class="settings-nav-back-icon">‹</span> Back to chat</button>
+      <div class="settings-nav-title" data-i18n="settings.title">Settings</div>
+      <button class="settings-nav-item active" data-settings-tab="general" data-i18n="settings.general">General</button>
+      <button class="settings-nav-item" data-settings-tab="extensions" data-i18n="settings.extensions">Extensions</button>
+      <button class="settings-nav-item" data-settings-tab="usage" data-i18n="settings.usage">Usage</button>
+      <button class="settings-nav-item" data-settings-tab="configuration" data-i18n="settings.configuration">Configuration</button>
+      <button class="settings-nav-back" id="settings-close"><span class="settings-nav-back-icon">‹</span> <span data-i18n="settings.backToChat">Back to chat</span></button>
     </aside>
     <section class="settings-content">
       <div class="settings-tab active" data-settings-panel="general">
         <div class="settings-header">
-          <h3>General</h3>
+          <h3 data-i18n="settings.general">General</h3>
         </div>
         <div class="settings-body">
           <div class="settings-section">
-            <div class="settings-section-title">Appearance</div>
+            <div class="settings-section-title" data-i18n="settings.appearance">Appearance</div>
             <div class="theme-grid" id="theme-grid"></div>
           </div>
           <div class="settings-section">
-            <div class="settings-section-title">Agent</div>
+            <div class="settings-section-title" data-i18n="settings.language.title">Language</div>
+            <p class="settings-help" data-i18n="settings.language.description">Choose the interface language. System Default follows your operating system.</p>
+            <div class="theme-grid" id="settings-language-options"></div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title" data-i18n="settings.agent">Agent</div>
             <div class="settings-row" id="setting-auto-compact">
-              <span class="settings-label">Auto-compaction</span>
+              <span class="settings-label" data-i18n="settings.autoCompaction">Auto-compaction</span>
               <button class="settings-toggle" id="toggle-auto-compact"></button>
             </div>
             <div class="settings-row" id="setting-thinking">
               <span class="settings-label settings-label-stack">
-                <span class="settings-label-main">Thinking effort</span>
-                <span class="settings-label-sub">Reasoning depth</span>
+                <span class="settings-label-main" data-i18n="settings.thinkingEffort">Thinking effort</span>
+                <span class="settings-label-sub" data-i18n="settings.reasoningDepth">Reasoning depth</span>
               </span>
               <button class="settings-value-btn" id="btn-thinking-level" title="Click to cycle: off, minimal, low, medium, high">Thinking: off</button>
             </div>
             <div class="settings-row">
-              <span class="settings-label">Show thinking</span>
+              <span class="settings-label" data-i18n="settings.showThinking">Show thinking</span>
               <button class="settings-toggle on" id="toggle-show-thinking"></button>
             </div>
           </div>
           <div class="settings-section" id="setting-updater-section">
-            <div class="settings-section-title">Updates</div>
+            <div class="settings-section-title" data-i18n="settings.updates">Updates</div>
             <div class="settings-row" id="setting-pi-version">
-              <span class="settings-label">Pi version</span>
-              <span class="settings-static-value" id="setting-pi-version-value">Loading...</span>
+              <span class="settings-label" data-i18n="settings.piVersion">Pi version</span>
+              <span class="settings-static-value" id="setting-pi-version-value" data-i18n="status.loading">Loading...</span>
             </div>
             <div class="settings-row">
-              <span class="settings-label">Picot version</span>
-              <span class="settings-static-value" id="setting-app-version-value">Loading...</span>
+              <span class="settings-label" data-i18n="settings.picotVersion">Picot version</span>
+              <span class="settings-static-value" id="setting-app-version-value" data-i18n="status.loading">Loading...</span>
             </div>
             <div class="settings-row">
-              <span class="settings-label">Check for updates</span>
-              <button class="settings-value-btn" id="btn-check-updates">Check now</button>
+              <span class="settings-label" data-i18n="settings.checkForUpdates">Check for updates</span>
+              <button class="settings-value-btn" id="btn-check-updates" data-i18n="updater.checkNow">Check now</button>
             </div>
             <div class="settings-row" id="setting-update-status-row" hidden>
-              <span class="settings-label">Status</span>
+              <span class="settings-label" data-i18n="settings.status">Status</span>
               <span class="settings-static-value" id="setting-update-status"></span>
             </div>
             <div class="settings-row" id="setting-update-install-row" hidden>
-              <span class="settings-label" id="setting-update-install-label">Update available</span>
-              <button class="settings-value-btn" id="btn-install-update">Download &amp; install</button>
+              <span class="settings-label" id="setting-update-install-label" data-i18n="settings.updateAvailable">Update available</span>
+              <button class="settings-value-btn" id="btn-install-update" data-i18n="updater.downloadInstall">Download &amp; install</button>
             </div>
           </div>
         </div>
       </div>
 
       <div class="settings-tab" data-settings-panel="extensions">
-        <div class="settings-header"><h3>Extensions</h3></div>
+        <div class="settings-header"><h3 data-i18n="settings.extensions">Extensions</h3></div>
         <div class="settings-body">
           <div class="settings-section">
-            <div class="settings-section-title">Browse Community Packages</div>
-            <p class="settings-help">
+            <div class="settings-section-title" data-i18n="settings.browseCommunityPackages">Browse Community Packages</div>
+            <p class="settings-help" data-i18n="settings.browseHelp">
               Discover extensions, skills, themes, and prompts from the Pi ecosystem. Install with one click.
             </p>
             <div class="pkg-browse-filters">
@@ -304,24 +311,25 @@
                 id="pkg-browse-search"
                 class="pkg-browse-search"
                 placeholder="Search packages..."
+                data-i18n-ph="extensions.searchPackages"
                 autocomplete="off"
                 spellcheck="false"
               />
               <div class="pkg-browse-pills" id="pkg-browse-pills">
-                <button type="button" class="pkg-browse-pill active" data-pkg-type="all">All</button>
-                <button type="button" class="pkg-browse-pill" data-pkg-type="extension">Extensions</button>
-                <button type="button" class="pkg-browse-pill" data-pkg-type="skill">Skills</button>
-                <button type="button" class="pkg-browse-pill" data-pkg-type="theme">Themes</button>
-                <button type="button" class="pkg-browse-pill" data-pkg-type="prompt">Prompts</button>
+                <button type="button" class="pkg-browse-pill active" data-pkg-type="all" data-i18n="extensions.all">All</button>
+                <button type="button" class="pkg-browse-pill" data-pkg-type="extension" data-i18n="extensions.extensions">Extensions</button>
+                <button type="button" class="pkg-browse-pill" data-pkg-type="skill" data-i18n="extensions.skills">Skills</button>
+                <button type="button" class="pkg-browse-pill" data-pkg-type="theme" data-i18n="extensions.themes">Themes</button>
+                <button type="button" class="pkg-browse-pill" data-pkg-type="prompt" data-i18n="extensions.prompts">Prompts</button>
               </div>
               <label class="pkg-browse-installed-toggle">
                 <input type="checkbox" id="pkg-browse-installed-only" />
-                <span>Installed only</span>
+                <span data-i18n="extensions.installedOnly">Installed only</span>
               </label>
-              <select id="pkg-browse-sort" class="pkg-browse-sort" aria-label="Sort packages">
-                <option value="downloads">Most downloads</option>
-                <option value="name">Name (A–Z)</option>
-                <option value="updated">Recently updated</option>
+              <select id="pkg-browse-sort" class="pkg-browse-sort" data-i18n-aria-label="extensions.sortPackages" aria-label="Sort packages">
+                <option value="downloads" data-i18n="extensions.mostDownloads">Most downloads</option>
+                <option value="name" data-i18n="extensions.nameAZ">Name (A–Z)</option>
+                <option value="updated" data-i18n="extensions.recentlyUpdated">Recently updated</option>
               </select>
               <span class="pkg-browse-count" id="pkg-browse-count"></span>
             </div>
@@ -332,69 +340,64 @@
       </div>
 
       <div class="settings-tab" data-settings-panel="usage">
-        <div class="settings-header"><h3>Usage</h3></div>
+        <div class="settings-header"><h3 data-i18n="settings.usage">Usage</h3></div>
         <div class="settings-usage-embed">
-          <iframe src="/cost" title="Cost Dashboard" class="settings-usage-iframe" scrolling="yes"></iframe>
+          <iframe src="/cost" data-i18n-title="settings.costDashboard" title="Cost Dashboard" class="settings-usage-iframe" scrolling="yes"></iframe>
         </div>
       </div>
 
       <div class="settings-tab" data-settings-panel="configuration">
-        <div class="settings-header"><h3>Configuration</h3></div>
+        <div class="settings-header"><h3 data-i18n="settings.configuration">Configuration</h3></div>
         <div class="settings-body">
           <div class="settings-section">
-            <div class="settings-section-title">Authentication</div>
+            <div class="settings-section-title" data-i18n="settings.authentication">Authentication</div>
             <p class="settings-help">
-              Keys are stored locally in <code>~/.pi/agent/auth.json</code> (chmod 600).
-              Picot launched from Finder does not read shell environment
-              variables, so set keys here for them to stick across launches.
+              <span data-i18n="settings.auth.helpPre">Keys are stored locally in</span> <code>~/.pi/agent/auth.json</code> <span data-i18n="settings.auth.helpPost">(chmod 600). Picot launched from Finder does not read shell environment variables, so set keys here for them to stick across launches.</span>
             </p>
             <div class="settings-api-keys" id="settings-api-keys">
-              <div class="settings-api-keys-loading">Loading providers…</div>
+              <div class="settings-api-keys-loading" data-i18n="settings.loadingProviders">Loading providers…</div>
             </div>
           </div>
           <div class="settings-section" id="settings-auth-section" style="display:none">
-            <div class="settings-section-title">Protection</div>
+            <div class="settings-section-title" data-i18n="settings.protection">Protection</div>
             <div class="settings-row">
-              <span class="settings-label">Require login</span>
+              <span class="settings-label" data-i18n="settings.requireLogin">Require login</span>
               <button class="settings-toggle" id="toggle-auth"></button>
             </div>
           </div>
 
           <div class="settings-section">
-            <div class="settings-section-title">Agent</div>
+            <div class="settings-section-title" data-i18n="settings.agent">Agent</div>
             <div class="settings-config-meta">
-              <span class="settings-label">Agent config file</span>
+              <span class="settings-label" data-i18n="settings.agentConfigFile">Agent config file</span>
               <span class="settings-static-value" id="inline-config-path"></span>
             </div>
             <textarea class="config-editor-textarea settings-config-textarea" id="inline-config-textarea" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
             <div class="settings-config-actions">
               <div class="config-editor-error settings-save-status hidden" id="inline-config-error"></div>
               <div class="settings-config-button-group">
-                <button class="btn-primary" id="inline-config-save">Save</button>
+                <button class="btn-primary" id="inline-config-save" data-i18n="actions.save">Save</button>
               </div>
             </div>
           </div>
 
           <div class="settings-section">
-            <div class="settings-section-title">LLM providers</div>
+            <div class="settings-section-title" data-i18n="settings.llmProviders">LLM providers</div>
             <p class="settings-help">
-              Edit <code>~/.pi/agent/models.json</code> to add custom providers
-              (Ollama, vLLM, LM Studio, OpenAI-compatible proxies, OpenRouter
-              routing overrides, etc). See the
-              <a href="https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/models.md" id="models-config-docs-link">models.json docs</a>
-              for the full schema. Changes are picked up immediately — no
-              restart needed.
+              <span data-i18n="settings.models.helpPre">Edit</span> <code>~/.pi/agent/models.json</code> <span data-i18n="settings.models.helpPost1">to add custom providers (Ollama, vLLM, LM Studio, OpenAI-compatible proxies, OpenRouter routing overrides, etc). See the</span>
+              <a href="https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/models.md" id="models-config-docs-link" data-i18n="settings.models.docsLink">models.json docs</a>
+              <span data-i18n="settings.models.helpPost2">for the full schema. Changes are picked up immediately — no restart needed.</span>
             </p>
             <div class="settings-config-meta">
-              <span class="settings-label">Providers file</span>
+              <span class="settings-label" data-i18n="settings.providersFile">Providers file</span>
               <span class="settings-static-value" id="inline-models-path"></span>
             </div>
             <textarea class="config-editor-textarea settings-config-textarea" id="inline-models-textarea" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" placeholder='{ "providers": { ... } }'></textarea>
             <div class="settings-config-actions">
               <div class="config-editor-error settings-save-status hidden" id="inline-models-error"></div>
               <div class="settings-config-button-group">
-                <button class="settings-value-btn" id="inline-models-insert-example">Insert example</button>
-                <button class="btn-primary" id="inline-models-save">Save</button>
+                <button class="settings-value-btn" id="inline-models-insert-example" data-i18n="actions.insertExample">Insert example</button>
+                <button class="btn-primary" id="inline-models-save" data-i18n="actions.save">Save</button>
               </div>
             </div>
           </div>

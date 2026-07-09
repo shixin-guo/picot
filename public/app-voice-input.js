@@ -1,6 +1,7 @@
+import { getLocale, onLocaleChange, t } from "./i18n.js";
+
 export function setupVoiceInput({ micBtn, messageInput }) {
   if (!micBtn || !messageInput) return;
-
   let recognition = null;
   let isRecording = false;
 
@@ -9,7 +10,7 @@ export function setupVoiceInput({ micBtn, messageInput }) {
     recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = "en-AU";
+    recognition.lang = getLocale() === "zh" ? "zh-CN" : "en-AU";
 
     let finalTranscript = "";
     let interimTranscript = "";
@@ -49,7 +50,7 @@ export function setupVoiceInput({ micBtn, messageInput }) {
       interimTranscript = "";
       isRecording = true;
       micBtn.classList.add("recording");
-      micBtn.title = "Stop recording";
+      micBtn.title = t("voice.stopRecording");
       recognition.start();
       messageInput.focus();
     }
@@ -57,7 +58,7 @@ export function setupVoiceInput({ micBtn, messageInput }) {
     function stopRecording() {
       isRecording = false;
       micBtn.classList.remove("recording");
-      micBtn.title = "Voice input";
+      micBtn.title = t("voice.voiceInput");
       try {
         recognition.stop();
       } catch {}
@@ -68,4 +69,9 @@ export function setupVoiceInput({ micBtn, messageInput }) {
   } else {
     micBtn.style.display = "none";
   }
+
+  onLocaleChange(() => {
+    if (!micBtn) return;
+    micBtn.title = isRecording ? t("voice.stopRecording") : t("voice.voiceInput");
+  });
 }

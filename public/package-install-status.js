@@ -1,7 +1,9 @@
+import { t } from "./i18n.js";
+
 export function summarizePackageError(err) {
   const raw = String(err?.message || err || "unknown error");
   if (raw.includes("EACCES") || raw.includes("permission denied")) {
-    return "Permission denied in ~/.pi/agent/npm (check owner/permissions).";
+    return t("extensions.permissionDenied");
   }
   return raw;
 }
@@ -17,14 +19,14 @@ export function renderPackageInstallFailure(status, err, operation = "install") 
 
   const title = document.createElement("div");
   title.className = "settings-extension-status-title";
-  title.textContent = isUninstall ? "Uninstall failed" : "Install failed";
+  title.textContent = isUninstall ? t("extensions.uninstallFailed") : t("extensions.installFailed");
   status.appendChild(title);
 
   const npmNote = document.createElement("div");
   npmNote.className = "settings-extension-status-note";
   npmNote.textContent = isUninstall
-    ? "Picot could not remove this extension package. Check the error details, then try again."
-    : "This extension requires npm. Make sure npm is installed and available to Picot, then try again.";
+    ? t("extensions.uninstallFailedNote")
+    : t("extensions.installFailedNote");
   status.appendChild(npmNote);
 
   const detail = document.createElement("div");

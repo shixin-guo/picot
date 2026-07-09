@@ -62,5 +62,18 @@
     "formatter": {
       "enabled": true
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["**/*.test.js"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noDocumentCookie": "off",
+            "noAssignInExpressions": "off"
+          }
+        }
+      }
+    }
+  ]
 }

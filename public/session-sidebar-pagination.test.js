@@ -1,9 +1,62 @@
 import { JSDOM } from "jsdom";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { initI18n } from "./i18n.js";
 import { SessionSidebar } from "./session-sidebar.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+beforeEach(async () => {
+  global.fetch = vi.fn(async (url) => {
+    const u = String(url);
+    if (u.includes("/locales/en.json")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          sidebar: {
+            showMore: "Show more",
+            showLess: "Show less",
+            openProject: "Open Project",
+            loadingSessions: "Loading sessions...",
+            favourites: "Favourites",
+            archived: "Archived",
+            untitled: "Untitled",
+            emptySession: "Empty session",
+            archive: "Archive",
+            unarchive: "Unarchive",
+            archiveSession: "Archive session",
+            unarchiveSession: "Unarchive session",
+            newChat: "New chat in {path}",
+            deleteAllArchived: "Delete all archived sessions",
+            deleteArchivedConfirmOne:
+              "Delete {count} archived session permanently? This cannot be undone.",
+            deleteArchivedConfirmMany:
+              "Delete {count} archived sessions permanently? This cannot be undone.",
+            justNow: "Just now",
+            minutesAgo: "{minutes}m ago",
+            hoursAgo: "{hours}h ago",
+            yesterday: "Yesterday",
+            startingSession: "Starting session…",
+            retry: "Retry",
+            failedToLoadSessions: "Failed to load sessions.",
+            failedToLoadSessionsRuntime: "Failed to load sessions. Pi runtime may be unavailable.",
+            search: "Search...",
+            clearSearch: "Clear search",
+            openFolder: "Open folder as workspace",
+            openFolderAria: "Open folder",
+            refreshSessions: "Refresh sessions",
+            settings: "Settings",
+            updateAvailable: "Update available",
+            update: "Update",
+          },
+        }),
+      };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  });
+  await initI18n();
 });
 
 function createSession(index) {
