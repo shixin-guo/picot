@@ -87,7 +87,7 @@ export function getLocale() {
 // ── Locale fetching & loading ─────────────────────────────────────────
 
 async function fetchLocale(locale) {
-  const res = await fetch(`/locales/${locale}.json`);
+  const res = await fetch(`/locales/${locale}.json`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to load locale ${locale}: ${res.status}`);
   return res.json();
 }

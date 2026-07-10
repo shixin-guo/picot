@@ -4830,14 +4830,31 @@ body.hide-thinking .thinking-block {
   font-size: 12px;
 }
 
-/* Drop zone highlight on input */
-#message-input.file-drop-hover {
+/* Drop zone highlight when dragging a file over the composer */
+.composer-card.file-drop-hover {
   border-color: var(--accent);
   box-shadow:
     0 0 0 3px var(--accent-glow),
     var(--shadow-sm),
     var(--shadow-inset);
   background: var(--bg-glass-hover);
+}
+
+/* Floating ghost preview during custom file drag */
+.file-drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 10000;
+  transform: translate(8px, 8px);
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  opacity: 0.9;
 }
 
 /* ═══════════════════════════════════════════════════════
