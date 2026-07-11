@@ -213,11 +213,13 @@ export class FileBrowser {
     if (event.button !== 0) return;
     const item = this.itemFromEvent(event);
     if (!item || item.dataset.isDirectory === "true") return;
+    event.preventDefault();
 
     const filePath = item.dataset.path;
     const startX = event.clientX;
     const startY = event.clientY;
     let dragging = false;
+    let composerFocused = false;
     let ghost = null;
     const input = this.messageInput;
     const card = input.closest("#composer-card");
@@ -227,6 +229,7 @@ export class FileBrowser {
         if (Math.abs(e.clientX - startX) < 4 && Math.abs(e.clientY - startY) < 4) return;
         dragging = true;
         item.classList.add("dragging");
+        document.body.classList.add("file-dragging");
         ghost = document.createElement("div");
         ghost.className = "file-drag-ghost";
         ghost.textContent = item.dataset.name;
@@ -238,7 +241,12 @@ export class FileBrowser {
       }
       if (card) {
         const el = document.elementFromPoint(e.clientX, e.clientY);
-        card.classList.toggle("file-drop-hover", !!el && (el === card || card.contains(el)));
+        const overComposer = !!el && (el === card || card.contains(el));
+        card.classList.toggle("file-drop-hover", overComposer);
+        if (overComposer && !composerFocused) {
+          composerFocused = true;
+          input.focus();
+        }
       }
     };
 
@@ -246,6 +254,7 @@ export class FileBrowser {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
       item.classList.remove("dragging");
+      document.body.classList.remove("file-dragging");
       if (ghost) ghost.remove();
       if (card) card.classList.remove("file-drop-hover");
 
@@ -256,14 +265,11 @@ export class FileBrowser {
       const overComposer = el === card || card.contains(el);
       if (!overComposer) return;
 
-      // Defer to the next tick: WKWebView's native mouseup handler
-      // runs after this callback and would override a synchronous
-      // focus(). setTimeout(0) lets the native focus cycle complete
-      // first, so our focus() sticks and the textarea repaints.
-      setTimeout(() => {
-        input.focus();
-        this.insertFileMention(filePath);
-      }, 0);
+      // Keep focus inside the trusted mouse gesture. WKWebView may reject
+      // focus requests deferred beyond mouseup, leaving the mention inserted
+      // without an active composer.
+      e.preventDefault();
+      this.insertFileMention(filePath);
     };
 
     document.addEventListener("mousemove", onMove);

@@ -4783,7 +4783,6 @@ body.hide-thinking .thinking-block {
   cursor: pointer;
   transition: background var(--duration) var(--ease);
   user-select: none;
-  -webkit-user-drag: element;
 }
 
 .file-item:hover {
@@ -4798,6 +4797,11 @@ body.hide-thinking .thinking-block {
   opacity: 0.5;
 }
 
+/* A custom drag is not a native DnD operation, so supply its copy cursor. */
+body.file-dragging,
+body.file-dragging * {
+  cursor: copy !important;
+}
 .file-icon {
   font-size: 14px;
   width: 20px;

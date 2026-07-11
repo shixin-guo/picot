@@ -374,6 +374,57 @@ describe("FileBrowser.onItemMouseDown (custom drag)", () => {
     expect(addDocListener).not.toHaveBeenCalled();
     addDocListener.mockRestore();
   });
+
+  test("focuses when a file drag enters the composer before inserting on drop", () => {
+    const container = makeContainer();
+    const messageInput = makeMessageInput();
+    const composerTarget = {};
+    const composerCard = {
+      contains: vi.fn((element) => element === composerTarget),
+      classList: { add: vi.fn(), remove: vi.fn(), toggle: vi.fn() },
+    };
+    messageInput.closest = vi.fn(() => composerCard);
+
+    const browser = new FileBrowser(container, makePathEl(), messageInput);
+    browser.workspaceRoot = "/tmp/proj";
+    const row = {
+      dataset: { path: "/tmp/proj/a.ts", name: "a.ts", isDirectory: "false" },
+      classList: { add: vi.fn(), remove: vi.fn() },
+    };
+    const originalElementFromPoint = document.elementFromPoint;
+    document.elementFromPoint = vi.fn(() => composerTarget);
+    const addDocumentListener = vi.spyOn(document, "addEventListener");
+
+    try {
+      const dragStartEvent = {
+        button: 0,
+        target: { closest: () => row },
+        clientX: 0,
+        clientY: 0,
+        preventDefault: vi.fn(),
+      };
+      browser.onItemMouseDown(dragStartEvent);
+      expect(dragStartEvent.preventDefault).toHaveBeenCalledOnce();
+      const onMove = addDocumentListener.mock.calls.find(([type]) => type === "mousemove")[1];
+      const onUp = addDocumentListener.mock.calls.find(([type]) => type === "mouseup")[1];
+
+      onMove({ clientX: 4, clientY: 0 });
+      expect(messageInput.focus).toHaveBeenCalledOnce();
+      expect(document.body.classList.contains("file-dragging")).toBe(true);
+
+      const dropEvent = { clientX: 4, clientY: 0, preventDefault: vi.fn() };
+      onUp(dropEvent);
+
+      expect(dropEvent.preventDefault).toHaveBeenCalledOnce();
+      expect(messageInput.value).toBe("@a.ts");
+      expect(messageInput.focus).toHaveBeenCalledTimes(2);
+      expect(document.body.classList.contains("file-dragging")).toBe(false);
+    } finally {
+      document.elementFromPoint = originalElementFromPoint;
+      addDocumentListener.mockRestore();
+      document.body.classList.remove("file-dragging");
+    }
+  });
 });
 
 describe("FileBrowser.insertFileMention", () => {
