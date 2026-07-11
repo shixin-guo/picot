@@ -27,7 +27,7 @@ The serialized JSON is percent-encoded as the cookie value and written with `Max
 
 The dedicated `recent-sessions.js` module owns cookie parsing, normalization, and persistence. It treats a missing, malformed, non-array, or non-string value as an empty history. It removes empty and duplicate paths, preserving first occurrence order, and retains at most five values.
 
-Cookie values have a practical size limit. Before writing, the module removes the oldest values until the encoded cookie value is at most 3,800 bytes. If one path alone exceeds that limit, the module omits it rather than attempting an unreliable write. This bound leaves room for the cookie name and attributes under common 4 KiB cookie limits.
+Cookie values have a practical size limit. Before writing, the module omits any path that cannot fit by itself, then removes the oldest remaining values until the encoded cookie value is at most 3,800 bytes. This bound leaves room for the cookie name and attributes under common 4 KiB cookie limits.
 Cookie reads and writes use the existing theme module's `try`/`catch` fallback pattern. A write failure leaves the current in-memory order intact and does not block sidebar rendering.
 
 Cookie updates are synchronous and last-write-wins. Concurrent activity in two workspace windows can lose an intermediate MRU ordering update; the next access rewrites a valid five-entry list. This trade-off is intentional for a small navigation preference and avoids a new host-side persistence subsystem.
