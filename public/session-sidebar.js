@@ -3,6 +3,7 @@
  */
 
 import { onLocaleChange, t } from "./i18n.js";
+import { readRecentSessions, recordRecentSession, writeRecentSessions } from "./recent-sessions.js";
 
 export class SessionSidebar {
   constructor(container, onSessionSelect, onNewChat, options = {}) {
@@ -16,6 +17,7 @@ export class SessionSidebar {
     this.projects = [];
     this.collapsedProjects = new Set();
     this.searchQuery = "";
+    this.recent = readRecentSessions();
     // TODO(rename->picot): localStorage keys kept as `pi-studio-*` for backward compat — migration needed before changing.
     this.favourites = JSON.parse(localStorage.getItem("pi-studio-favourites") || "[]");
     this.archived = JSON.parse(localStorage.getItem("pi-studio-archived") || "[]");
@@ -380,15 +382,16 @@ export class SessionSidebar {
     const re = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
     return escaped.replace(re, "<mark>$1</mark>");
   }
-
   applySearch() {
     if (!this.searchQuery) {
       this.container.querySelectorAll(".session-item").forEach((el) => {
         el.classList.remove("hidden");
       });
-      this.container.querySelectorAll(".project-group, .archived-group").forEach((el) => {
-        el.style.display = "";
-      });
+      this.container
+        .querySelectorAll(".project-group, .archived-group, .recent-group")
+        .forEach((el) => {
+          el.style.display = "";
+        });
       const favSection = this.container.querySelector(".favourites-group");
       if (favSection) favSection.style.display = "";
       // Remove full-text results
@@ -409,6 +412,18 @@ export class SessionSidebar {
       favSection.style.display = hasVisible ? "" : "none";
     }
 
+    // Search RECENT section
+    const recentSection = this.container.querySelector(".recent-group");
+    if (recentSection) {
+      let hasVisible = false;
+      recentSection.querySelectorAll(".session-item").forEach((item) => {
+        const matches = this.sessionItemMatchesSearch(item);
+        item.classList.toggle("hidden", !matches);
+        if (matches) hasVisible = true;
+      });
+      recentSection.style.display = hasVisible ? "" : "none";
+    }
+
     this.container.querySelectorAll(".project-group, .archived-group").forEach((group) => {
       let hasVisible = false;
       const projectMatches = (group.dataset.projectSearchText || "").includes(this.searchQuery);
@@ -427,6 +442,30 @@ export class SessionSidebar {
     return title.includes(this.searchQuery) || projectText.includes(this.searchQuery);
   }
 
+  resolveRecentSessions() {
+    const sessionsByPath = new Map();
+    for (const project of this.projects) {
+      for (const session of project.sessions) {
+        if (!this.isArchived(session.filePath)) {
+          sessionsByPath.set(session.filePath, { session, project });
+        }
+      }
+    }
+
+    const resolved = this.recent.map((filePath) => sessionsByPath.get(filePath)).filter(Boolean);
+    const validPaths = resolved.map(({ session }) => session.filePath);
+    if (JSON.stringify(validPaths) !== JSON.stringify(this.recent)) {
+      this.recent = writeRecentSessions(validPaths);
+    }
+    return resolved;
+  }
+
+  recordRecent(filePath) {
+    const next = recordRecentSession(filePath);
+    const changed = JSON.stringify(next) !== JSON.stringify(this.recent);
+    this.recent = next;
+    return changed;
+  }
   setActive(filePath) {
     this.activeSessionFile = filePath;
     if (filePath && this.unread.has(filePath)) {
@@ -440,6 +479,10 @@ export class SessionSidebar {
         el.classList.remove("unread");
       }
     });
+
+    if (this.recordRecent(filePath) && this.projects.length > 0) {
+      this.render();
+    }
   }
 
   clearActive() {
@@ -694,9 +737,12 @@ export class SessionSidebar {
 
   render() {
     if (this.projects.length === 0) {
+      this.resolveRecentSessions();
       this.renderEmptyState();
       return;
     }
+
+    const recentSessions = this.resolveRecentSessions();
 
     this.container.innerHTML = "";
 
@@ -713,6 +759,24 @@ export class SessionSidebar {
           favSessions.push({ session, project });
         }
       }
+    }
+
+    if (recentSessions.length > 0) {
+      const recentGroup = document.createElement("div");
+      recentGroup.className = "recent-group";
+
+      const header = document.createElement("div");
+      header.className = "project-header recent-header";
+      header.innerHTML = `<span>${this.escapeHtml(t("sidebar.recent"))}</span>`;
+      recentGroup.appendChild(header);
+
+      const sessionsDiv = document.createElement("div");
+      sessionsDiv.className = "project-sessions";
+      for (const { session, project } of recentSessions) {
+        sessionsDiv.appendChild(this.buildSessionItem(session, project));
+      }
+      recentGroup.appendChild(sessionsDiv);
+      this.container.appendChild(recentGroup);
     }
 
     if (favSessions.length > 0) {
