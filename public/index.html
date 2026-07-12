@@ -440,6 +440,29 @@
   </div>
 
   <!-- Scripts -->
+  <!-- Import map: redirects @codemirror/* and pdfjs-dist specifiers to
+       same-origin ESM vendor bundles produced by scripts/build-frontend.js.
+       Vitest ignores this map and resolves from node_modules directly. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "@codemirror/state": "./vendor/codemirror.js",
+        "@codemirror/view": "./vendor/codemirror.js",
+        "@codemirror/commands": "./vendor/codemirror.js",
+        "@codemirror/language": "./vendor/codemirror.js",
+        "@codemirror/search": "./vendor/codemirror.js",
+        "@codemirror/lang-javascript": "./vendor/codemirror.js",
+        "@codemirror/lang-json": "./vendor/codemirror.js",
+        "@codemirror/lang-markdown": "./vendor/codemirror.js",
+        "@codemirror/lang-python": "./vendor/codemirror.js",
+        "@codemirror/lang-yaml": "./vendor/codemirror.js",
+        "@codemirror/lang-css": "./vendor/codemirror.js",
+        "@codemirror/lang-html": "./vendor/codemirror.js",
+        "@codemirror/legacy-modes/mode/shell": "./vendor/codemirror.js",
+        "pdfjs-dist/legacy/build/pdf.mjs": "./vendor/pdf.js"
+      }
+    }
+  </script>
   <script type="module" src="app.js"></script>
 </body>
 </html>

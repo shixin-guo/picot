@@ -5,8 +5,8 @@
   "version": "0.2.3",
   "build": {
     "frontendDist": "../public",
-    "beforeDevCommand": "bun run fetch:pi",
-    "beforeBuildCommand": "bun run fetch:pi && bun run build:extensions"
+    "beforeDevCommand": "bun run fetch:pi && bun run build:frontend",
+    "beforeBuildCommand": "bun run fetch:pi && bun run build:extensions && bun run build:frontend"
   },
   "app": {
     "withGlobalTauri": true,

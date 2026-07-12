@@ -22,3 +22,5 @@ pi-session-*.html
 
 # Superpowers plans
 docs/superpowers/plans
+# Frontend vendor bundles (produced by scripts/build-frontend.js)
+public/vendor/
