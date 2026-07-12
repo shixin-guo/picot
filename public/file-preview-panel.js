@@ -7,7 +7,6 @@
  * Markdown parsing, or CodeMirror configuration.
  */
 
-import { classifyFilePath } from "./file-language.js";
 import { createFileRenderer } from "./file-preview-renderers.js";
 import { FileTabState } from "./file-tab-state.js";
 import { onLocaleChange, t } from "./i18n.js";
@@ -315,8 +314,6 @@ export class FilePreviewPanel {
       const data = await res.json();
       if (sequence !== this.loadSequence) return;
 
-      const _classification = classifyFilePath(tab.filePath);
-
       this.state.updateTab(tab.id, {
         loading: false,
         content: data.content,
@@ -326,7 +323,8 @@ export class FilePreviewPanel {
       });
 
       this._renderTabBar();
-      await this._mountRenderer(tab);
+      const freshTab = this.state.getTab(tab.id);
+      if (freshTab) await this._mountRenderer(freshTab);
     } catch (err) {
       if (sequence !== this.loadSequence) return;
       this.state.updateTab(tab.id, { loading: false, error: err.message });
@@ -362,11 +360,6 @@ export class FilePreviewPanel {
       return;
     }
 
-    // Binary unsupported.
-    if (tab.content === "" && classifyFilePath(tab.filePath).contentType === "text") {
-      // Could be binary — but the classification from the server tells us.
-    }
-
     this.currentRenderer = createFileRenderer({
       filePath: tab.filePath,
       fileName: tab.fileName,
@@ -376,16 +369,13 @@ export class FilePreviewPanel {
       readOnly: tab.mode === "preview",
       wrapLines: this.wrapLines,
       onChange: (newContent) => {
+        const freshTab = this.state.getTab(tab.id);
         this.state.updateTab(tab.id, {
           content: newContent,
-          dirty: newContent !== tab.originalContent,
+          dirty: newContent !== (freshTab?.originalContent ?? tab.originalContent),
         });
         this._renderTabBar();
         this._scheduleAutoSave(tab.id);
-      },
-      onModeChange: (newMode) => {
-        this.state.updateTab(tab.id, { mode: newMode });
-        this._renderTabBar();
       },
       onError: (err) => {
         this.state.updateTab(tab.id, { error: err.message });

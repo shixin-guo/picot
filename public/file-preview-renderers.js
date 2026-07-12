@@ -78,26 +78,35 @@ function createMarkdownRenderer({
 }) {
   let editor = null;
   let cleanupCopy = null;
+  let mountedContainer = null;
   let currentMode = mode;
   let currentContent = content || "";
   let currentWrap = wrapLines;
 
   return {
     mount(container) {
+      mountedContainer = container;
       renderCurrent(container);
     },
-
     update(props) {
+      const modeChanged = props.mode !== undefined && props.mode !== currentMode;
       if (props.mode !== undefined) currentMode = props.mode;
       if (props.content !== undefined) currentContent = props.content;
       if (props.wrapLines !== undefined) currentWrap = props.wrapLines;
-      if (props.readOnly !== undefined) {
-        // readOnly affects whether edit is available.
-      }
 
-      // If mode changed, re-render the whole container.
-      const _container = editor?.view?.dom?.parentNode || null;
-      // Find the container from the editor or previous render.
+      if (modeChanged && mountedContainer) {
+        // Re-render on mode change.
+        if (cleanupCopy) {
+          cleanupCopy();
+          cleanupCopy = null;
+        }
+        if (editor) {
+          currentContent = editor.getValue();
+          editor.destroy();
+          editor = null;
+        }
+        renderCurrent(mountedContainer);
+      }
     },
 
     destroy() {
@@ -109,6 +118,7 @@ function createMarkdownRenderer({
         editor.destroy();
         editor = null;
       }
+      mountedContainer = null;
     },
 
     getValue() {
