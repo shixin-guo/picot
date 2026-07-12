@@ -110,8 +110,8 @@ HTTP+WS server 有两条运行时路径：`Bun.serve`（生产环境，pi 通过
   消息类型时碰它们。
 - **聊天渲染** —— `message-renderer.js`、`tool-card.js`、`markdown.js`、
   `public/vendor/remend.js`（第三方流式 markdown 修复）。
-- **侧栏 / 面板** —— `session-sidebar.js`、`file-browser.js`、
-  `sidebar-search-control.js`、`cost-infobar.js`、`cost.html`、`cost.js`。
+- **侧栏 / 面板** —— `session-sidebar.js`、`recent-sessions.js`、
+  `file-browser.js`、`sidebar-search-control.js`、`cost-infobar.js`、`cost.html`、`cost.js`。
 - **设置 / 更新器** —— `app-settings-editors.js`、
   `app-settings-toggles.js`、`settings-save-status.js`、`app-updater.js`。
 - **工作区管理** —— `workspace-actions.js`、`folder-picker.js`、
@@ -421,6 +421,25 @@ Tauri command handler（`new_session_core`、`switch_session_core`、
   每个 session 的状态在 `session_start` 时发布到全局，在
   `session_shutdown` 时清理。
 
+### 跨端口状态持久化（cookie 模式）
+
+每个 workspace 窗口加载自不同端口的 `http://localhost:<port>`，
+而 `localStorage` 按 origin（端口）隔离。需要跨所有本地 workspace
+窗口一致的浏览器侧状态，用 `Path=/` 的 cookie 持久化 —— `localhost`
+的 cookie 跨端口共享。目前三个消费者：
+
+| Cookie key              | 模块                 | 用途                          |
+| ----------------------- | -------------------- | ----------------------------- |
+| `pi-studio-theme`       | `themes.js`          | 主题选择                      |
+| `picot-language`        | `i18n.js`            | 语言偏好（en / zh / system）  |
+| `picot-recent-sessions` | `recent-sessions.js` | RECENT 会话 MRU 列表（≤5 条） |
+
+RECENT 会话的完整设计见
+[`docs/superpowers/specs/2026-07-11-recent-sessions-design.md`](docs/superpowers/specs/2026-07-11-recent-sessions-design.md)。
+该 cookie 存百分编码的 JSON 数组（session `filePath`），同步读写，
+last-write-wins 语义；并发窗口可能丢失中间 MRU 排序，下一次访问
+重写完整的五条列表。`SessionSidebar.setActive()` 是唯一记录入口。
+
 ### 国际化 (i18n)
 
 首期支持**中英双语**（Picot 的 WebView 都是同一个仓库内的 ES module）；
@@ -436,7 +455,8 @@ Tauri command handler（`new_session_core`、`switch_session_core`、
 - **cookie 而不是 localStorage** 来持久化语言偏好（cookie key：
   `picot-language`）。每个 workspace 是不同端口的 `localhost` ——
   localStorage 按端口隔离，无法跨 workspace 窗口共享；cookie 同源共享，
-  是唯一可行解。
+  是唯一可行解。详见上方 §跨端口状态持久化（theme / language / RECENT
+  共用同一模式）。
 - **顶层 await**：`app.js` 启动时 `await initI18n()`，locale JSON < 15KB，
   阻塞几十毫秒可接受。`initI18n()` 内部捕获所有错误，失败 fallback
   英文，绝不阻塞 app 启动（最差情况显示英文或 key 本身）。

@@ -56,9 +56,11 @@ Unarchiving does not restore an entry. The user must open the session again.
 
 The sidebar renders RECENT before Favourites and project groups when at least one resolved, non-archived recent session exists.
 
-- Header text uses `t("sidebar.recent")`: `Recent` in English and `最近访问` in Chinese.
+- Header text uses `t("sidebar.recent")`: `RECENT` in English and `最近访问` in Chinese.
 - The group uses a dedicated `.recent-group` container and existing sidebar session-item styles.
-- The group has no count, expand/collapse control, or extra actions.
+- The header has a chevron and toggles the session list by click, Enter, or Space. It exposes `role="button"` and `aria-expanded`.
+- The group is expanded by default. Its collapsed state lives only in the current `SessionSidebar` instance: rerenders preserve it, adding a session never expands it, and a page reload restores the expanded default.
+- The group has no count or extra actions.
 - To preserve access order, the sidebar iterates the stored RECENT paths. For each path, it finds the matching `{ session, project }` pair in `this.projects`; unresolved paths are skipped.
 - Each item is built through `buildSessionItem(session, project)` and invokes the existing `onSessionSelect(session, project)` callback.
 
@@ -89,6 +91,7 @@ Frontend tests cover:
 6. Deleted and archived persisted entries do not render after validation.
 7. Active, unread, and streaming classes apply to every duplicate session item.
 8. Search hides nonmatching RECENT items and hides the group when none match.
-9. English and Chinese translations expose `sidebar.recent`.
+9. English and Chinese translations expose the required `sidebar.recent` titles.
+10. RECENT starts expanded, supports pointer and keyboard folding, remains collapsed when a new session is recorded, and resets to expanded with a new sidebar instance.
 
 Run the focused Vitest tests, `bun run check`, and the required i18n safety grep on changed frontend files.
