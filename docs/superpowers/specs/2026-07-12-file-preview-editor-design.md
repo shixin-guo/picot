@@ -1,7 +1,7 @@
 # Picot File Preview and Editor Design
 
 **Date:** 2026-07-12  
-**Status:** Revised after follow-up technical review; awaiting confirmation  
+**Status:** Implemented and verified
 **Scope:** Desktop file preview/editor panel integrated with the existing File tree
 
 ## 1. Goal
@@ -41,6 +41,8 @@ Session sidebar | Chat | splitter | Preview/editor panel | File tree
 
 The existing session sidebar and File tree retain their responsibilities. The middle region owns chat and preview/editor layout.
 
+The workspace header is a shared, non-scrolling toolbar above the chat, preview/editor panel, and File tree. The panel must start below this header; it must never be a top-level sibling that begins at the window's top edge.
+
 ### 3.1 Resizing
 
 - The chat/preview boundary is a draggable splitter.
@@ -59,6 +61,11 @@ The tab row contains, at the far right:
 - Close panel.
 
 Closing the panel preserves open tabs. Closing the last open tab closes the panel automatically.
+
+### 3.3 Header and preview alignment
+
+- The shared header remains visible above the entire workspace while chat, preview/editor, and File tree occupy the content row below it.
+- Markdown preview reserves a 28px left margin. CodeMirror uses the same 28px minimum line-number gutter, so rendered Markdown aligns with source/edit content without rendering line numbers.
 
 ## 4. Module boundaries
 
@@ -306,6 +313,8 @@ Markdown opens in `renderFileMarkdown()` preview mode. The renderer reuses Picot
 
 Edit switches to CodeMirror with line numbers. Preview switches back to rendered Markdown.
 
+Markdown preview retains the alignment margin described in §3.3. It does not render line numbers.
+
 ### 7.3 Images
 
 Images use an `<img>` renderer backed by `/api/files/raw`. Images are read-only. Open in desktop and copy path remain available; content copy and save are unavailable.
@@ -330,16 +339,15 @@ Unknown non-binary files open in read-only CodeMirror without a language extensi
 
 ## 8. Toolbar behavior
 
-The collapsed control is an icon-only `...` button. Hovering or activating it expands the floating toolbar. It remains open while an attached menu or dialog is active.
+The toolbar opens from the panel controls and remains available while a text renderer is active. Actions that require CodeMirror are disabled in Markdown rendered preview, image preview, PDF preview, and binary fallback states.
 
 ### 8.1 Preview toolbar
 
 ```text
 Open in desktop
-Disable line wrap
+Line wrap
 Edit
 Copy file content
-Copy file path
 Save file
 ```
 
@@ -348,16 +356,19 @@ Save file
 ### 8.2 Edit toolbar
 
 ```text
-Auto-save on
+Auto-save
 Open in desktop
-Disable line wrap
-Find in file
+Line wrap
+Find
 Go to line
 Preview
 Copy file content
-Copy file path
 Save file
 ```
+
+- The visible Find label is `Find` in English and `查找` in Chinese.
+- CodeMirror Search/Replace uses localized phrases for Find, Replace, navigation, matching options, replacement, close, and Go to line. Existing editors reconfigure their phrases when the application locale changes.
+- Selecting Go to line replaces its button with a focused numeric input. Enter moves the cursor to a positive, existing line and restores the button. Escape or blur cancels input and restores the button. The toolbar does not use `window.prompt()`.
 
 Auto-save defaults to enabled. It saves about 1.5 seconds after typing stops. Manual Save cancels the pending timer and writes immediately. If auto-save receives HTTP 409, it pauses further auto-save for that tab, keeps the tab dirty, marks the tab as conflicted, and does not open a modal dialog. The conflict action appears in the tab state and toolbar. The next user-initiated tab switch, close, reload, or panel close opens Reload/Overwrite/Cancel. An explicit `Save file` action opens the conflict choice immediately.
 
@@ -394,9 +405,9 @@ Do not persist unsaved full file content, CodeMirror instances, transient select
 
 ## 11. Localization and accessibility
 
-All visible labels use `t()` and are added to both locale files. New keys use `files.preview.*`, `files.editor.*`, `files.tabs.*`, `files.errors.*`, and `files.unsaved.*` namespaces.
+All visible labels use `t()` and are added to both locale files. New keys use `files.preview.*`, `files.editor.*`, `files.tabs.*`, `files.errors.*`, and `files.unsaved.*` namespaces. CodeMirror's internal Search/Replace labels use `EditorState.phrases` and must track the active Picot locale.
 
-Every icon button has a localized `title` and `aria-label`. SVG icons are `aria-hidden`. Saving, loading, saved, conflict, and error states use an accessible live region. File names are inserted with text-safe DOM APIs, not unescaped HTML interpolation.
+Every icon button has a localized `title` and `aria-label`. SVG icons are `aria-hidden`. The inline Go to line input has a localized placeholder and `aria-label`. Saving, loading, saved, conflict, and error states use an accessible live region. File names are inserted with text-safe DOM APIs, not unescaped HTML interpolation.
 
 ## 12. Testing and verification
 
@@ -426,7 +437,10 @@ Add `public/file-preview-renderers.test.js` and `public/code-editor.test.js` cov
 - image and PDF renderer selection;
 - binary rejection;
 - large-file behavior;
-- Markdown sanitization.
+- Markdown sanitization;
+- Markdown preview gutter alignment with the CodeMirror line-number gutter;
+- Chinese CodeMirror Search/Replace phrases;
+- inline Go to line input visibility, Enter navigation, and button restoration.
 
 ### File tree tests
 
@@ -481,7 +495,7 @@ The implementation is complete when:
 7. CodeMirror preview and edit both show line numbers.
 8. Images and PDFs preview in read-only renderers.
 9. Obvious binary files are not rendered as text.
-10. Edit, Save, Auto-save, Find, Go to line, Preview, Copy, and Open in desktop behave as specified.
+10. Edit, Save, Auto-save, Find, localized Search/Replace, inline Go to line, Preview, Copy, and Open in desktop behave as specified.
 11. Dirty tabs are protected by Save/Discard/Cancel.
 12. Enlarge/Collapse and Close panel behave correctly.
 13. Closing the panel does not lose open tabs.
@@ -489,3 +503,5 @@ The implementation is complete when:
 15. Git diff is not implemented, but `kind: "diff"` is supported by the tab/renderer boundary.
 16. English and Chinese localization keys are complete.
 17. Focused tests and `bun run check` pass.
+18. The shared header stays above the chat, preview/editor panel, and File tree; the preview/editor panel begins below it.
+19. Markdown preview left alignment matches the CodeMirror line-number gutter.
