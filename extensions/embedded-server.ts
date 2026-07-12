@@ -46,6 +46,15 @@ import {
   buildEmptyCostDashboardPayload,
   type CostSession,
 } from "./cost-dashboard-data.ts";
+import {
+  classifyFile,
+  readTextFileForPreview,
+  resolveScopedFilePath,
+  resolveWorkspaceRoot,
+  sendJsonError,
+  sendJsonOk,
+  writeTextFileIfUnchanged,
+} from "./file-routes.ts";
 import { buildProjectSearchMatch } from "./session-search";
 
 // `pi` is compiled with `bun build --compile`. Inside that runtime,
@@ -1488,7 +1497,11 @@ export default function (pi: ExtensionAPI) {
       try {
         const filesUrl = new URL(`http://localhost${req.url}`);
         const explicitPath = filesUrl.searchParams.get("path");
-        let dirPath = explicitPath || process.cwd();
+        const scope = (filesUrl.searchParams.get("scope") as "workspace" | "picker") || "workspace";
+        const wsRoot = resolveWorkspaceRoot(latestCtx, process.cwd());
+        let dirPath = explicitPath || wsRoot;
+
+        // For workspace scope without explicit path, use session cwd.
         if (!explicitPath && latestCtx) {
           try {
             const entries = latestCtx.sessionManager.getEntries();
@@ -1496,11 +1509,213 @@ export default function (pi: ExtensionAPI) {
             if (sessionEntry?.cwd) dirPath = sessionEntry.cwd;
           } catch {}
         }
+
+        // Enforce workspace boundary for workspace-scoped requests.
+        if (scope === "workspace") {
+          const resolved = resolveScopedFilePath(dirPath, "workspace", wsRoot);
+          if (!resolved.ok) {
+            sendJsonError(res, 403, "Path is outside workspace", resolved.code);
+            return;
+          }
+        }
+
         serveFileList(res, dirPath);
       } catch (err: unknown) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: errMessage(err) }));
+        sendJsonError(res, 500, errMessage(err));
       }
+      return;
+    }
+
+    // File preview/editor: read text file content
+    if (urlPath === "/api/files/content" || urlPath.startsWith("/api/files/content?")) {
+      if (req.method !== "GET") {
+        res.writeHead(405);
+        res.end();
+        return;
+      }
+      try {
+        const contentUrl = new URL(`http://localhost${req.url}`);
+        const requestedPath = contentUrl.searchParams.get("path");
+        const wsRoot = resolveWorkspaceRoot(latestCtx, process.cwd());
+        const resolved = resolveScopedFilePath(requestedPath, "workspace", wsRoot);
+        if (!resolved.ok) {
+          sendJsonError(res, 403, "Path is outside workspace", resolved.code);
+          return;
+        }
+
+        if (!fs.existsSync(resolved.path)) {
+          sendJsonError(res, 404, "File not found");
+          return;
+        }
+
+        const stat = fs.statSync(resolved.path);
+        if (!stat.isFile()) {
+          sendJsonError(res, 400, "Not a file");
+          return;
+        }
+
+        // Read a small prefix for binary classification.
+        const fd = fs.openSync(resolved.path, "r");
+        const prefixBuf = Buffer.alloc(512);
+        const bytesRead = fs.readSync(fd, prefixBuf, 0, 512, 0);
+        fs.closeSync(fd);
+
+        const classification = classifyFile(resolved.path, prefixBuf.subarray(0, bytesRead));
+
+        if (classification.kind === "binary") {
+          sendJsonOk(res, {
+            path: resolved.path,
+            content: "",
+            size: stat.size,
+            mtimeMs: stat.mtimeMs,
+            mimeType: classification.mimeType,
+            isBinary: true,
+            truncated: false,
+          });
+          return;
+        }
+
+        if (classification.kind === "image" || classification.kind === "pdf") {
+          // Non-text files are loaded via /api/files/raw instead.
+          sendJsonOk(res, {
+            path: resolved.path,
+            content: "",
+            size: stat.size,
+            mtimeMs: stat.mtimeMs,
+            mimeType: classification.mimeType,
+            isBinary: false,
+            truncated: false,
+          });
+          return;
+        }
+
+        const result = readTextFileForPreview(resolved.path);
+        sendJsonOk(res, {
+          path: resolved.path,
+          content: result.content,
+          size: result.size,
+          mtimeMs: result.mtimeMs,
+          mimeType: result.mimeType,
+          isBinary: result.isBinary,
+          truncated: result.truncated,
+        });
+      } catch (err: unknown) {
+        sendJsonError(res, 500, errMessage(err));
+      }
+      return;
+    }
+
+    // File preview/editor: serve raw binary (images, PDFs)
+    if (urlPath === "/api/files/raw" || urlPath.startsWith("/api/files/raw?")) {
+      if (req.method !== "GET") {
+        res.writeHead(405);
+        res.end();
+        return;
+      }
+      try {
+        const rawUrl = new URL(`http://localhost${req.url}`);
+        const requestedPath = rawUrl.searchParams.get("path");
+        const wsRoot = resolveWorkspaceRoot(latestCtx, process.cwd());
+        const resolved = resolveScopedFilePath(requestedPath, "workspace", wsRoot);
+        if (!resolved.ok) {
+          sendJsonError(res, 403, "Path is outside workspace", resolved.code);
+          return;
+        }
+
+        if (!fs.existsSync(resolved.path)) {
+          sendJsonError(res, 404, "File not found");
+          return;
+        }
+
+        const stat = fs.statSync(resolved.path);
+        if (!stat.isFile()) {
+          sendJsonError(res, 400, "Not a file");
+          return;
+        }
+
+        // Read prefix for MIME classification.
+        const fd = fs.openSync(resolved.path, "r");
+        const prefixBuf = Buffer.alloc(512);
+        const bytesRead = fs.readSync(fd, prefixBuf, 0, 512, 0);
+        fs.closeSync(fd);
+
+        const classification = classifyFile(resolved.path, prefixBuf.subarray(0, bytesRead));
+
+        // Only serve images and PDFs via raw endpoint.
+        if (classification.kind !== "image" && classification.kind !== "pdf") {
+          sendJsonError(res, 400, "File type not supported for raw preview");
+          return;
+        }
+
+        const stream = fs.createReadStream(resolved.path);
+        res.writeHead(200, {
+          "Content-Type": classification.mimeType,
+          "Content-Length": stat.size.toString(),
+        });
+        stream.on("error", (err: unknown) => {
+          if (!res.headersSent) {
+            sendJsonError(res, 500, errMessage(err));
+          }
+        });
+        stream.pipe(res);
+      } catch (err: unknown) {
+        sendJsonError(res, 500, errMessage(err));
+      }
+      return;
+    }
+
+    // File preview/editor: write text file content
+    if (urlPath === "/api/files/content" && req.method === "PUT") {
+      let body = "";
+      req.on("data", (chunk: Buffer) => {
+        body += chunk.toString();
+      });
+      req.on("end", () => {
+        try {
+          const payload = JSON.parse(body) as {
+            path?: string;
+            content?: string;
+            expectedMtimeMs?: number;
+          };
+          const requestedPath = payload.path;
+          const content = payload.content;
+
+          if (typeof requestedPath !== "string" || typeof content !== "string") {
+            sendJsonError(res, 400, "path and content are required");
+            return;
+          }
+
+          const wsRoot = resolveWorkspaceRoot(latestCtx, process.cwd());
+          const resolved = resolveScopedFilePath(requestedPath, "workspace", wsRoot);
+          if (!resolved.ok) {
+            sendJsonError(res, 403, "Path is outside workspace", resolved.code);
+            return;
+          }
+
+          const result = writeTextFileIfUnchanged(
+            resolved.path,
+            content,
+            payload.expectedMtimeMs ?? 0,
+          );
+
+          if (!result.success) {
+            if (result.code === "conflict") {
+              sendJsonError(res, 409, "File was modified externally", "conflict");
+            } else {
+              sendJsonError(res, 400, "Invalid file for writing", result.code);
+            }
+            return;
+          }
+
+          sendJsonOk(res, {
+            path: resolved.path,
+            size: result.size,
+            mtimeMs: result.mtimeMs,
+          });
+        } catch (err: unknown) {
+          sendJsonError(res, 500, errMessage(err));
+        }
+      });
       return;
     }
 
