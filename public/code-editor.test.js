@@ -1,6 +1,14 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { EditorState } from "@codemirror/state";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createCodeEditor } from "./code-editor.js";
+import { initI18n, setLocale } from "./i18n.js";
+
+const locales = {
+  en: JSON.parse(readFileSync(join(process.cwd(), "public/locales/en.json"), "utf8")),
+  zh: JSON.parse(readFileSync(join(process.cwd(), "public/locales/zh.json"), "utf8")),
+};
 
 describe("createCodeEditor", () => {
   let container;
@@ -155,5 +163,28 @@ describe("createCodeEditor", () => {
     });
     expect(() => editor.openSearch()).not.toThrow();
     editor.destroy();
+  });
+
+  test("localizes the CodeMirror search panel in Chinese", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url) => {
+        const locale = String(url).match(/\/locales\/(en|zh)\.json/)?.[1];
+        return { ok: Boolean(locale), json: async () => locales[locale] };
+      }),
+    );
+    await initI18n();
+    await setLocale("zh");
+
+    const editor = createCodeEditor({ container, value: "test\n", readOnly: false });
+    editor.openSearch();
+
+    expect(container.querySelector('input[name="search"]').placeholder).toBe("查找");
+    expect(container.querySelector('input[name="replace"]').placeholder).toBe("替换");
+    expect(container.querySelector('button[name="next"]').textContent).toBe("下一个");
+
+    editor.destroy();
+    await setLocale("en");
+    vi.unstubAllGlobals();
   });
 });

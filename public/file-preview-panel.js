@@ -60,6 +60,7 @@ export class FilePreviewPanel {
     this.enlarged = false;
     this.panelRatio = DEFAULT_PANEL_RATIO;
     this.toolbarOpen = false;
+    this.goToLineInputOpen = false;
     this.transientStatus = "";
     this.cleanupListeners = [];
     this.activeDialogCancel = null;
@@ -692,6 +693,7 @@ export class FilePreviewPanel {
       reload: document.getElementById("file-preview-reload"),
       search: document.getElementById("file-preview-search"),
       goToLine: document.getElementById("file-preview-go-to-line"),
+      goToLineInput: document.getElementById("file-preview-go-to-line-input"),
       copy: document.getElementById("file-preview-copy"),
       openDesktop: document.getElementById("file-preview-open"),
       wrap: document.getElementById("file-preview-wrap"),
@@ -719,11 +721,22 @@ export class FilePreviewPanel {
       if (tab) void this._reloadTab(tab.id);
     });
     this._listen(this.controls.search, "click", () => this.currentRenderer?.openSearch?.());
-    this._listen(this.controls.goToLine, "click", () => {
-      const raw = window.prompt?.(t("files.preview.goToLinePrompt"));
-      const lineNumber = Number.parseInt(raw || "", 10);
-      if (Number.isInteger(lineNumber)) this.currentRenderer?.goToLine?.(lineNumber);
+    this._listen(this.controls.goToLine, "click", () => this._showGoToLineInput());
+    this._listen(this.controls.goToLineInput, "keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this._hideGoToLineInput();
+        return;
+      }
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      const raw = event.target.value.trim();
+      if (/^[1-9]\d*$/.test(raw)) {
+        this.currentRenderer?.goToLine?.(Number(raw));
+      }
+      this._hideGoToLineInput();
     });
+    this._listen(this.controls.goToLineInput, "blur", () => this._hideGoToLineInput());
     this._listen(this.controls.copy, "click", () => void this._copyActiveContent());
     this._listen(this.controls.openDesktop, "click", () => {
       const tab = this.state.getActiveTab();
@@ -755,6 +768,20 @@ export class FilePreviewPanel {
     this.cleanupListeners.push(() => target.removeEventListener(eventName, listener));
   }
 
+  _showGoToLineInput() {
+    if (!this.controls?.goToLineInput || this.controls.goToLine?.disabled) return;
+    this.goToLineInputOpen = true;
+    this._renderToolbar();
+    this.controls.goToLineInput.value = "";
+    this.controls.goToLineInput.focus();
+  }
+
+  _hideGoToLineInput() {
+    if (!this.goToLineInputOpen) return;
+    this.goToLineInputOpen = false;
+    this._renderToolbar();
+  }
+
   async _copyActiveContent() {
     this._captureActiveRenderer();
     const tab = this.state.getActiveTab();
@@ -781,7 +808,12 @@ export class FilePreviewPanel {
     const tab = this.state.getActiveTab();
     const editable = this._isEditable(tab);
     const hasText = typeof tab?.content === "string" && !tab?.isBinary;
-    const hasEditor = hasText && classifyFilePath(tab.filePath).contentType !== "image";
+    const contentType = tab ? classifyFilePath(tab.filePath).contentType : "";
+    const hasEditor =
+      hasText &&
+      contentType !== "image" &&
+      contentType !== "pdf" &&
+      (contentType !== "markdown" || tab.mode === "edit");
 
     if (controls.preview) {
       controls.preview.disabled = !hasText;
@@ -796,7 +828,14 @@ export class FilePreviewPanel {
     if (controls.save) controls.save.disabled = !tab?.dirty || !editable || tab.saving;
     if (controls.reload) controls.reload.disabled = !tab || tab.loading;
     if (controls.search) controls.search.disabled = !hasEditor;
-    if (controls.goToLine) controls.goToLine.disabled = !hasEditor;
+    if (controls.goToLine) {
+      controls.goToLine.disabled = !hasEditor;
+      controls.goToLine.classList.toggle("hidden", hasEditor && this.goToLineInputOpen);
+    }
+    if (controls.goToLineInput) {
+      controls.goToLineInput.disabled = !hasEditor;
+      controls.goToLineInput.classList.toggle("hidden", !hasEditor || !this.goToLineInputOpen);
+    }
     if (controls.copy) controls.copy.disabled = !hasText;
     if (controls.openDesktop) controls.openDesktop.disabled = !tab;
     if (controls.wrap) controls.wrap.checked = this.wrapLines;

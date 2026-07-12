@@ -15,6 +15,32 @@ import { closeSearchPanel, openSearchPanel, search, searchKeymap } from "@codemi
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { languageExtensionForPath } from "./file-language.js";
+import { getLocale, onLocaleChange } from "./i18n.js";
+
+const SEARCH_PHRASES = {
+  zh: {
+    Find: "查找",
+    Replace: "替换",
+    next: "下一个",
+    previous: "上一个",
+    all: "全部",
+    "match case": "区分大小写",
+    regexp: "正则表达式",
+    "by word": "全词匹配",
+    replace: "替换",
+    "replace all": "全部替换",
+    close: "关闭",
+    "current match": "当前匹配项",
+    "replaced match on line $": "已替换第 $ 行的匹配项",
+    "replaced $ matches": "已替换 $ 个匹配项",
+    "Go to line": "跳转到行",
+    go: "跳转",
+  },
+};
+
+function searchPhrasesForLocale(locale) {
+  return SEARCH_PHRASES[locale] || {};
+}
 
 export function createCodeEditor({
   container,
@@ -32,7 +58,7 @@ export function createCodeEditor({
   const readOnlyCompartment = new Compartment();
   const wrapCompartment = new Compartment();
   const languageCompartment = new Compartment();
-
+  const searchPhrasesCompartment = new Compartment();
   const languageExt = languageExtensionForPath(filePath || "");
   const extensions = [
     lineNumbers(),
@@ -42,6 +68,7 @@ export function createCodeEditor({
     keymap.of(searchKeymap),
     editableCompartment.of(EditorView.editable.of(!readOnly)),
     readOnlyCompartment.of(EditorState.readOnly.of(readOnly)),
+    searchPhrasesCompartment.of(EditorState.phrases.of(searchPhrasesForLocale(getLocale()))),
     wrapCompartment.of(wrapLines ? EditorView.lineWrapping : []),
     languageCompartment.of(languageExt ? [languageExt] : []),
     EditorView.updateListener.of((update) => {
@@ -57,6 +84,14 @@ export function createCodeEditor({
       extensions,
     }),
     parent: container,
+  });
+
+  const unsubscribeLocale = onLocaleChange((locale) => {
+    view.dispatch({
+      effects: searchPhrasesCompartment.reconfigure(
+        EditorState.phrases.of(searchPhrasesForLocale(locale)),
+      ),
+    });
   });
 
   if (typeof onViewReady === "function") {
@@ -123,6 +158,7 @@ export function createCodeEditor({
     },
 
     destroy() {
+      unsubscribeLocale();
       if (typeof onViewDestroy === "function") {
         onViewDestroy();
       }

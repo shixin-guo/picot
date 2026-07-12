@@ -390,6 +390,7 @@ const fileSidebarToggle = document.getElementById("file-sidebar-toggle");
 const fileSidebarClose = document.getElementById("file-sidebar-close");
 const fileSidebarUp = document.getElementById("file-sidebar-up");
 const fileList = document.getElementById("file-list");
+const fileSidebarPath = document.getElementById("file-sidebar-path");
 const fileBrowser = new FileBrowser(fileList, fileSidebarPath, messageInput, {
   onFileSelect: (filePath, metadata) => {
     void filePreviewPanel.openFile(filePath, metadata);

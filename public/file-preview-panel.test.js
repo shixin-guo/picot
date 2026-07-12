@@ -91,15 +91,22 @@ beforeEach(async () => {
     "file-preview-mode-edit",
     "file-preview-save",
     "file-preview-reload",
+    "file-preview-search",
+    "file-preview-go-to-line",
     "file-preview-copy",
   ]) {
     const button = document.createElement("button");
     button.id = id;
     document.body.appendChild(button);
   }
+  const goToLineInput = document.createElement("input");
+  goToLineInput.id = "file-preview-go-to-line-input";
+  goToLineInput.className = "hidden";
+  document.body.appendChild(goToLineInput);
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   document.body.innerHTML = "";
 });
 
@@ -133,6 +140,30 @@ describe("FilePreviewPanel", () => {
     await p.openFile("/test/workspace/README.md");
     expect(panel.classList.contains("collapsed")).toBe(false);
     expect(tabBar.children.length).toBe(1);
+    p.destroy();
+  });
+
+  test("uses the inline line input to navigate and then restores the button", () => {
+    const p = createPanel();
+    const goToLine = document.getElementById("file-preview-go-to-line");
+    const input = document.getElementById("file-preview-go-to-line-input");
+    const renderer = { destroy: vi.fn(), goToLine: vi.fn(() => true) };
+    const tab = p.state.openFile("/test/workspace/example.js");
+    p.state.updateTab(tab.id, { content: "line one\nline two\n" });
+    p.currentRenderer = renderer;
+    goToLine.disabled = false;
+    vi.spyOn(window, "prompt").mockReturnValue(null);
+
+    goToLine.click();
+
+    expect(input.classList.contains("hidden")).toBe(false);
+
+    input.value = "2";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+    expect(renderer.goToLine).toHaveBeenCalledWith(2);
+    expect(input.classList.contains("hidden")).toBe(true);
+    expect(goToLine.classList.contains("hidden")).toBe(false);
     p.destroy();
   });
 

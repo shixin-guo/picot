@@ -101,7 +101,7 @@
       "enableLineWrap": "Enable line wrap",
       "edit": "Edit",
       "preview": "Preview",
-      "find": "Find in file",
+      "find": "Find",
       "goToLine": "Go to line",
       "goToLinePrompt": "Line number",
       "copyContent": "Copy file content",

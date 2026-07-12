@@ -101,7 +101,7 @@
       "enableLineWrap": "开启自动换行",
       "edit": "编辑",
       "preview": "预览",
-      "find": "在文件中查找",
+      "find": "查找",
       "goToLine": "跳转到行",
       "goToLinePrompt": "行号",
       "copyContent": "复制文件内容",

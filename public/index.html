@@ -97,8 +97,8 @@
     <!-- Sidebar overlay for mobile -->
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-    <!-- Main Chat Area -->
-    <div class="main">
+    <!-- Workspace -->
+    <div class="workspace">
       <!-- Header -->
       <div class="header">
         <div class="header-left">
@@ -138,6 +138,9 @@
           </button>
         </div>
       </div>
+      <div class="workspace-content">
+        <!-- Main Chat Area -->
+        <div class="main">
 
       <!-- Messages Container -->
       <div class="messages" id="messages">
@@ -240,8 +243,9 @@
         </fieldset>
         <button type="button" id="file-preview-save" title="Save" data-i18n-title="files.preview.save" aria-label="Save" data-i18n-aria-label="files.preview.save" data-i18n="files.preview.save">Save</button>
         <button type="button" id="file-preview-reload" title="Reload from disk" data-i18n-title="files.preview.conflictReload" aria-label="Reload from disk" data-i18n-aria-label="files.preview.conflictReload" data-i18n="files.preview.conflictReload">Reload</button>
-        <button type="button" id="file-preview-search" title="Search" data-i18n-title="files.preview.find" aria-label="Search" data-i18n-aria-label="files.preview.find" data-i18n="files.preview.find">Search</button>
+        <button type="button" id="file-preview-search" title="Find" data-i18n-title="files.preview.find" aria-label="Find" data-i18n-aria-label="files.preview.find" data-i18n="files.preview.find">Find</button>
         <button type="button" id="file-preview-go-to-line" title="Go to line" data-i18n-title="files.preview.goToLine" aria-label="Go to line" data-i18n-aria-label="files.preview.goToLine" data-i18n="files.preview.goToLine">Line</button>
+        <input type="text" class="file-preview-go-to-line-input hidden" id="file-preview-go-to-line-input" inputmode="numeric" autocomplete="off" placeholder="Line number" data-i18n-ph="files.preview.goToLinePrompt" aria-label="Line number" data-i18n-aria-label="files.preview.goToLinePrompt">
         <button type="button" id="file-preview-copy" title="Copy all" data-i18n-title="files.preview.copyContent" aria-label="Copy all" data-i18n-aria-label="files.preview.copyContent" data-i18n="files.preview.copyContent">Copy</button>
         <label class="file-preview-toolbar-check"><input type="checkbox" id="file-preview-wrap"><span data-i18n="files.preview.lineWrap">Wrap</span></label>
         <label class="file-preview-toolbar-check"><input type="checkbox" id="file-preview-autosave"><span data-i18n="files.preview.autoSave">Auto-save</span></label>
@@ -264,6 +268,8 @@
       </div>
       <div class="file-sidebar-path" id="file-sidebar-path" title=""></div>
       <div class="file-list" id="file-list"></div>
+    </div>
+      </div>
     </div>
   </div>
 

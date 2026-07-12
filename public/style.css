@@ -57,6 +57,21 @@ body {
   position: relative;
 }
 
+.workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace-content {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
 /* ═══════════════════════════════════════════════════════
    Sidebar — smoked glass panel
    ═══════════════════════════════════════════════════════ */
@@ -1023,10 +1038,8 @@ body {
   border-bottom: 1px solid var(--border);
   min-height: 36px;
   -webkit-app-region: drag;
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
+  position: relative;
+  flex-shrink: 0;
   z-index: 10;
 }
 
@@ -5560,6 +5573,7 @@ html.macos-overlay .settings-content {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  --file-preview-line-number-gutter: 28px;
   background: var(--bg-frosted);
   backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
   -webkit-backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
@@ -5756,6 +5770,23 @@ body.file-preview-resizing {
   cursor: pointer;
 }
 
+.file-preview-go-to-line-input {
+  width: 72px;
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+  background: var(--bg-glass);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 11px;
+}
+
+.file-preview-go-to-line-input:focus {
+  border-color: var(--accent);
+}
+
 .file-preview-toolbar button:hover:not(:disabled),
 .file-preview-mode button.active {
   border-color: var(--border-hover);
@@ -5897,15 +5928,20 @@ body.file-preview-resizing {
   font-size: 13px;
 }
 
+.file-code-editor .cm-lineNumbers {
+  min-width: var(--file-preview-line-number-gutter);
+}
+
 .file-code-editor .cm-scroller {
   font-family: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
 }
 
 /* Markdown preview */
 .file-markdown-preview {
-  padding: 16px;
-  overflow: auto;
   height: 100%;
+  margin-left: var(--file-preview-line-number-gutter);
+  overflow: auto;
+  padding: 16px;
   font-size: 14px;
   line-height: 1.6;
 }
