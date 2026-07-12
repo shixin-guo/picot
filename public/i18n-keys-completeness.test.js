@@ -56,6 +56,11 @@ describe("locale key parity", () => {
     expect(extra, `zh.json has extra keys not in en.json: ${extra.join(", ")}`).toEqual([]);
   });
 
+  it("uses the required RECENT section titles", () => {
+    expect(en.sidebar.recent).toBe("RECENT");
+    expect(zh.sidebar.recent).toBe("最近访问");
+  });
+
   it("every locale value is a non-empty string or nested plain object", () => {
     const checkValues = (obj, path = "") => {
       for (const [k, v] of Object.entries(obj)) {

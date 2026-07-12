@@ -63,6 +63,32 @@ describe("recent-session cookie persistence", () => {
     expect(readRecentSessions(doc)).toEqual(kept);
   });
 
+  test("does not evict a valid entry when a newly recorded path is oversized", () => {
+    const doc = documentAt(3001);
+    const current = [
+      "/work/a.jsonl",
+      "/work/b.jsonl",
+      "/work/c.jsonl",
+      "/work/d.jsonl",
+      "/work/e.jsonl",
+    ];
+    writeRecentSessions(current, doc);
+
+    const oversized = `/work/${"x".repeat(4000)}.jsonl`;
+    expect(recordRecentSession(oversized, doc)).toEqual(current);
+    expect(readRecentSessions(doc)).toEqual(current);
+  });
+
+  test("removes only the oldest suffix when combined encoded paths exceed the limit", () => {
+    const doc = documentAt(3001);
+    const longPath = (label) => `/${label}/${"x".repeat(1000)}.jsonl`;
+    const newest = [longPath("first"), longPath("second"), longPath("third")];
+    const paths = [...newest, longPath("fourth"), "/oldest.jsonl"];
+
+    expect(writeRecentSessions(paths, doc)).toEqual(newest);
+    expect(readRecentSessions(doc)).toEqual(newest);
+  });
+
   test("normalizes non-array, non-string, empty, and duplicate values", () => {
     const doc = documentAt(3001);
     doc.cookie = `picot-recent-sessions=${encodeURIComponent(JSON.stringify({ value: "bad" }))}; Path=/`;

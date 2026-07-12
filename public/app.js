@@ -25,9 +25,9 @@ import { resolveNewSessionLiveFile } from "./new-session-refresh.js";
 import { getOnboardingState } from "./onboarding-state.js";
 import { renderPackageInstallFailure } from "./package-install-status.js";
 import {
+  applyForegroundMirrorSession,
   findPortForSession,
   getWorkspacePathForPort,
-  isForegroundMirrorSync,
 } from "./session-routing.js";
 import { SessionSidebar } from "./session-sidebar.js";
 import {
@@ -2443,7 +2443,18 @@ function handleMirrorSync(data) {
   // process's session/port, causing the user's next message to be sent into
   // that previous session instead of the one they're now viewing.
   const syncPort = typeof data.port === "number" ? data.port : null;
-  if (!isForegroundMirrorSync(syncPort, foregroundPort)) {
+  const appliedForegroundSession = applyForegroundMirrorSession({
+    syncPort,
+    foregroundPort,
+    sessionFile: data.sessionFile,
+    setMirrorActiveSessionFile: (filePath) => {
+      mirrorActiveSessionFile = filePath;
+    },
+    setSidebarActive: (filePath) => {
+      sidebar.setActive(filePath);
+    },
+  });
+  if (!appliedForegroundSession) {
     logSessionRoute("mirrorSync:ignored-background", {
       syncPort,
       foregroundPort,
@@ -2461,9 +2472,7 @@ function handleMirrorSync(data) {
   console.log("[Mirror] Received state snapshot:", data.entries?.length, "entries");
   isMirrorMode = true;
 
-  // Track the active session
-  mirrorActiveSessionFile = data.sessionFile || null;
-  if (data.sessionFile) sidebar.setActive(data.sessionFile);
+  // Track the foreground session route.
   if (data.sessionFile) portSessionMap.set(foregroundPort, data.sessionFile);
   const syncWorkspacePath = workspacePathFromId(data.workspaceId);
   if (syncWorkspacePath) {

@@ -18,6 +18,7 @@ export class SessionSidebar {
     this.collapsedProjects = new Set();
     this.searchQuery = "";
     this.recent = readRecentSessions();
+    this.recentCollapsed = false;
     // TODO(rename->picot): localStorage keys kept as `pi-studio-*` for backward compat — migration needed before changing.
     this.favourites = JSON.parse(localStorage.getItem("pi-studio-favourites") || "[]");
     this.archived = JSON.parse(localStorage.getItem("pi-studio-archived") || "[]");
@@ -766,15 +767,35 @@ export class SessionSidebar {
       recentGroup.className = "recent-group";
 
       const header = document.createElement("div");
-      header.className = "project-header recent-header";
-      header.innerHTML = `<span>${this.escapeHtml(t("sidebar.recent"))}</span>`;
+      header.className = `project-header recent-header${this.recentCollapsed ? " collapsed" : ""}`;
+      header.setAttribute("role", "button");
+      header.tabIndex = 0;
+      header.setAttribute("aria-expanded", String(!this.recentCollapsed));
+      header.innerHTML = `
+        <span class="chevron">▼</span>
+        <span>${this.escapeHtml(t("sidebar.recent"))}</span>
+      `;
       recentGroup.appendChild(header);
 
       const sessionsDiv = document.createElement("div");
-      sessionsDiv.className = "project-sessions";
+      sessionsDiv.className = `project-sessions${this.recentCollapsed ? " collapsed" : ""}`;
       for (const { session, project } of recentSessions) {
         sessionsDiv.appendChild(this.buildSessionItem(session, project));
       }
+
+      const toggleRecent = () => {
+        this.recentCollapsed = !this.recentCollapsed;
+        header.classList.toggle("collapsed", this.recentCollapsed);
+        header.setAttribute("aria-expanded", String(!this.recentCollapsed));
+        sessionsDiv.classList.toggle("collapsed", this.recentCollapsed);
+      };
+      header.addEventListener("click", toggleRecent);
+      header.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        toggleRecent();
+      });
+
       recentGroup.appendChild(sessionsDiv);
       this.container.appendChild(recentGroup);
     }

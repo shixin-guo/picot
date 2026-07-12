@@ -56,13 +56,17 @@ function encodedValueLength(paths) {
 }
 
 function boundForCookie(paths) {
-  const bounded = [];
-  for (const path of normalizeRecentSessions(paths)) {
-    if (encodedValueLength([path]) > MAX_ENCODED_VALUE_LENGTH) continue;
-
-    const candidate = [...bounded, path];
-    if (encodedValueLength(candidate) > MAX_ENCODED_VALUE_LENGTH) continue;
-    bounded.push(path);
+  const individuallyFitting = Array.isArray(paths)
+    ? paths.filter(
+        (path) =>
+          typeof path === "string" &&
+          path.length > 0 &&
+          encodedValueLength([path]) <= MAX_ENCODED_VALUE_LENGTH,
+      )
+    : [];
+  const bounded = normalizeRecentSessions(individuallyFitting);
+  while (bounded.length > 0 && encodedValueLength(bounded) > MAX_ENCODED_VALUE_LENGTH) {
+    bounded.pop();
   }
   return bounded;
 }

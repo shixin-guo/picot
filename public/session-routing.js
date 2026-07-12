@@ -19,3 +19,18 @@ export function isForegroundMirrorSync(syncPort, foregroundPort) {
     syncPort !== foregroundPort
   );
 }
+
+export function applyForegroundMirrorSession({
+  syncPort,
+  foregroundPort,
+  sessionFile,
+  setMirrorActiveSessionFile,
+  setSidebarActive,
+}) {
+  if (!isForegroundMirrorSync(syncPort, foregroundPort)) return false;
+
+  const activeSessionFile = sessionFile || null;
+  setMirrorActiveSessionFile(activeSessionFile);
+  if (activeSessionFile) setSidebarActive(activeSessionFile);
+  return true;
+}
