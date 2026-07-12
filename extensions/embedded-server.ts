@@ -1667,10 +1667,20 @@ export default function (pi: ExtensionAPI) {
     // File preview/editor: write text file content
     if (urlPath === "/api/files/content" && req.method === "PUT") {
       let body = "";
+      const MAX_PUT_BODY = 2 * 1024 * 1024; // 2 MiB — same as text read limit
+      let bodyTooLarge = false;
       req.on("data", (chunk: Buffer) => {
         body += chunk.toString();
+        if (body.length > MAX_PUT_BODY) {
+          bodyTooLarge = true;
+          req.destroy();
+        }
       });
       req.on("end", () => {
+        if (bodyTooLarge) {
+          sendJsonError(res, 413, "Request body too large");
+          return;
+        }
         try {
           const payload = JSON.parse(body) as {
             path?: string;

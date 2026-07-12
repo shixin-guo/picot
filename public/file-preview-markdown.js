@@ -159,6 +159,11 @@ function sanitizeNode(node) {
         child.setAttribute("disabled", "");
       }
 
+      // Ensure external links have rel="noopener noreferrer" to prevent tabnabbing.
+      if (tagName === "a" && child.hasAttribute("href")) {
+        child.setAttribute("rel", "noopener noreferrer");
+      }
+
       // Recurse into children.
       sanitizeNode(child);
     }
