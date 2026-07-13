@@ -70,7 +70,7 @@ export function setupSettingsEditors({
     toggle.className = "api-provider-toggle";
     toggle.setAttribute("aria-label", `Toggle ${p.displayName || p.provider} models`);
     toggle.setAttribute("aria-expanded", "false");
-    toggle.textContent = "⌄";
+    toggle.textContent = "▼";
 
     const info = document.createElement("div");
     info.className = "api-key-row-info";

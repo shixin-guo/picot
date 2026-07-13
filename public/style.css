@@ -2263,11 +2263,13 @@ body {
   width: 20px;
   padding: 0;
   color: var(--text-dim);
-  font-size: 18px;
+  font-size: 8px;
   line-height: 1;
   background: transparent;
   border: 0;
   cursor: pointer;
+  opacity: 0.4;
+  transition: transform var(--duration) var(--ease);
 }
 
 .api-provider-toggle[aria-expanded="false"] {

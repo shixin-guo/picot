@@ -167,6 +167,7 @@ describe("settings API key model refresh", () => {
 
     await loadApiKeysPanel();
 
+    expect(document.querySelector(".api-provider-toggle").textContent).toBe("▼");
     expect(document.querySelector(".api-key-row-summary").textContent).toBe(
       "1 enabled · 1 healthy · 0 issues",
     );
