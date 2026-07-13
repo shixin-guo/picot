@@ -48,7 +48,7 @@ Then click **Done**:
 
 ## What it does
 
-Picot gives you a full visual interface for Pi. Open any project folder, start chatting with the agent, browse sessions and files — no terminal required. Multiple projects run in parallel, each in its own window with its own isolated agent process.
+Picot gives you a full visual interface for Pi. Open any project folder, start chatting with the agent, browse sessions, preview and edit workspace files — no terminal required. Multiple projects run in parallel, each in its own window with its own isolated agent process. The interface is available in English and Chinese.
 
 ---
 
@@ -78,6 +78,7 @@ Picot gives you a full visual interface for Pi. Open any project folder, start c
 - Full-text search across all session history with highlighted snippets
 - Sessions sorted by creation time; live session marked with a green dot
 - Inline session rename, favourites, tags, and filtering
+- **RECENT** — a cross-workspace, most-recently-used list keeps the last five visited sessions at the top of the sidebar
 
 ### 🗃️ Projects & Workspace
 
@@ -127,17 +128,21 @@ Picot gives you a full visual interface for Pi. Open any project folder, start c
 - Frosted-glass header and input bar (`backdrop-filter: blur`)
 - Native macOS title bar overlay integration
 - **Window dragging** from the header area — feels like a native app
+- **Language** — switch the live interface between English, Simplified Chinese, or the system preference
 
 ### 🎤 Voice Input
 
 - Mic button in the input area using Web Speech API (on-device dictation)
 - Live transcription into the textarea; pulses red while recording
 
-### 🗄️ File Browser
+### 🗄️ File Browser, Preview & Editor
 
-- Right sidebar with lazy-loaded file tree
-- Navigate directories, open files natively
-- Drag files onto the input to insert their path
+- Right sidebar with a lazy-loaded workspace file tree
+- Click a file to open it in a resizable, tabbed preview panel; tabs are restored separately for each workspace
+- Preview Markdown, images, PDF documents, and source files; Markdown is sanitized before rendering
+- Edit supported text files in the built-in CodeMirror editor with syntax highlighting, line wrapping, search, go-to-line, auto-save, and external-change conflict protection
+- Double-click to open a file in its native desktop application
+- Drag a file from the tree onto the chat input to insert a workspace-relative `@path` reference
 
 ### ⚙️ Settings & Control
 <p align="center">
