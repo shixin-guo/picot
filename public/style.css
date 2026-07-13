@@ -2287,26 +2287,10 @@ body {
   color: var(--text-primary);
 }
 
-.api-key-row-status {
-  color: var(--text-dim);
-  padding: 2px 7px;
-  font-size: 10px;
-  background: var(--bg-glass-strong, var(--bg-glass));
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  white-space: nowrap;
-}
-
 .api-key-row-summary {
   color: var(--text-dim);
   font-size: 11px;
   white-space: nowrap;
-}
-
-.api-key-row-status.configured {
-  color: var(--accent-text, var(--accent, #4caf50));
-  background: var(--accent-subtle);
-  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
 }
 
 .api-key-row-actions {

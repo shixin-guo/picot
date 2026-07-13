@@ -43,7 +43,7 @@ export function setupSettingsEditors({
       apiKeysContainer.innerHTML = '<div class="settings-api-keys-empty">No providers known.</div>';
       return;
     }
-    for (const p of providers) {
+    for (const p of [...providers].sort((a, b) => Number(b.configured) - Number(a.configured))) {
       apiKeysContainer.appendChild(buildApiKeyRow(p));
     }
   }
@@ -77,11 +77,7 @@ export function setupSettingsEditors({
     const name = document.createElement("div");
     name.className = "api-key-row-name";
     name.textContent = p.displayName || p.provider;
-    const status = document.createElement("div");
-    status.className = `api-key-row-status${p.configured ? " configured" : ""}`;
-    status.textContent = describeAuthStatus(p);
     info.appendChild(name);
-    info.appendChild(status);
 
     const actions = document.createElement("div");
     actions.className = "api-key-row-actions";
@@ -331,22 +327,6 @@ export function setupSettingsEditors({
       for (const result of resp.data.results) applyHealthResult(result);
     } else {
       await loadApiKeysPanel();
-    }
-  }
-
-  function describeAuthStatus(p) {
-    if (!p.configured) return "Not configured";
-    switch (p.source) {
-      case "stored":
-        return "Configured (auth.json)";
-      case "environment":
-        return `From environment (${p.label || "env var"})`;
-      case "runtime":
-        return "Runtime override";
-      case "fallback":
-        return "Custom provider";
-      default:
-        return "Configured";
     }
   }
 

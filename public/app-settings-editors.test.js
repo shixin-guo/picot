@@ -181,6 +181,51 @@ describe("settings API key model refresh", () => {
     expect(document.querySelector(".api-model-list").hidden).toBe(true);
   });
 
+  test("puts configured providers first without showing authentication source text", async () => {
+    const rpcCommand = vi.fn(async (command) => {
+      if (command.type === "list_model_catalog") {
+        return {
+          success: true,
+          data: {
+            providers: [
+              {
+                provider: "openai",
+                displayName: "OpenAI",
+                configured: false,
+                models: [],
+              },
+              {
+                provider: "anthropic",
+                displayName: "Anthropic",
+                configured: true,
+                source: "stored",
+                models: [],
+              },
+            ],
+          },
+        };
+      }
+      throw new Error(`Unexpected command: ${command.type}`);
+    });
+
+    const { loadApiKeysPanel } = setupSettingsEditors({
+      rpcCommand,
+      closeSettings: vi.fn(),
+      onModelConfigurationChanged: vi.fn(),
+      clearSettingsSaveMessage: vi.fn(),
+      setSettingsSaveButtonSaving: vi.fn(),
+      showSettingsSaveError: vi.fn(),
+      showSettingsSaveSuccess: vi.fn(),
+    });
+
+    await loadApiKeysPanel();
+
+    const providers = document.querySelectorAll(".api-key-row");
+    expect(providers[0].dataset.provider).toBe("anthropic");
+    expect(providers[1].dataset.provider).toBe("openai");
+    expect(document.querySelector(".api-key-row-status")).toBeNull();
+  });
+
   test("does not render health controls when a provider has no keyed models", async () => {
     const rpcCommand = vi.fn(async (command) => {
       if (command.type === "list_model_catalog") {
