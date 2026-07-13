@@ -31,6 +31,7 @@ import {
   showSettingsSaveSuccess,
 } from "./settings-save-status.js";
 import { setupSidebarSearchControl } from "./sidebar-search-control.js";
+import { setupSkillSlashCommand } from "./skill-slash-command.js";
 import { StateManager } from "./state.js";
 import { ensureSuperAgentSession } from "./super-agent-bootstrap.js";
 import { getRunningSuperAgentPorts, isSuperAgentSession } from "./super-agent-session.js";
@@ -335,6 +336,19 @@ const sendBtn = document.getElementById("send-btn");
 const abortBtn = document.getElementById("abort-btn");
 const statusIndicator = document.getElementById("status-indicator");
 const statusText = document.getElementById("status-text");
+const skillSlashMenu = document.getElementById("skill-slash-menu");
+
+setupSkillSlashCommand({
+  input: messageInput,
+  container: skillSlashMenu,
+  loadSkills: async () => {
+    const response = await rpcCommand({ type: "list_skills" }, null, true);
+    if (!response?.success) {
+      throw new Error(response?.error || "Failed to load skills");
+    }
+    return response.data?.skills || [];
+  },
+});
 
 function insertTaskPrompt(task) {
   if (!task) return;
@@ -1774,21 +1788,21 @@ function closeCommandPalette() {
 commandBtn.addEventListener("click", openCommandPalette);
 commandPaletteOverlay.addEventListener("click", closeCommandPalette);
 
-async function rpcCommand(cmd, statusMsg) {
+async function rpcCommand(cmd, statusMsg, silent = false) {
   try {
-    if (statusMsg) statusText.textContent = statusMsg;
+    if (statusMsg && !silent) statusText.textContent = statusMsg;
     const resp = await fetch("/api/rpc", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(cmd),
     });
     const data = await resp.json();
-    if (data.success) {
+    if (data.success && !silent) {
       statusText.textContent = "Done";
       setTimeout(() => {
         statusText.textContent = "Connected";
       }, 2000);
-    } else {
+    } else if (!data.success && !silent) {
       statusText.textContent = data.error || "Failed";
       setTimeout(() => {
         statusText.textContent = "Connected";
@@ -1796,10 +1810,12 @@ async function rpcCommand(cmd, statusMsg) {
     }
     return data;
   } catch (_e) {
-    statusText.textContent = "Error";
-    setTimeout(() => {
-      statusText.textContent = "Connected";
-    }, 3000);
+    if (!silent) {
+      statusText.textContent = "Error";
+      setTimeout(() => {
+        statusText.textContent = "Connected";
+      }, 3000);
+    }
   }
 }
 

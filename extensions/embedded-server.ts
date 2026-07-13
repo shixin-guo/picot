@@ -611,6 +611,41 @@ interface RpcCommand {
   [key: string]: unknown;
 }
 
+type SlashCommandLike = {
+  name?: string;
+  description?: string;
+  source?: string;
+  sourceInfo?: {
+    scope?: string;
+  };
+};
+
+export type SkillCommand = {
+  command: string;
+  name: string;
+  description: string;
+  scope: "personal" | "project" | "temporary";
+};
+
+export function normalizeSkillCommands(commands: SlashCommandLike[]): SkillCommand[] {
+  return commands
+    .filter(
+      (command): command is SlashCommandLike & { name: string } =>
+        command.source === "skill" && typeof command.name === "string" && command.name.length > 0,
+    )
+    .map((command) => ({
+      command: `/${command.name}`,
+      name: command.name.replace(/^skill:/, ""),
+      description: typeof command.description === "string" ? command.description.trim() : "",
+      scope:
+        command.sourceInfo?.scope === "project"
+          ? "project"
+          : command.sourceInfo?.scope === "temporary"
+            ? "temporary"
+            : "personal",
+    }));
+}
+
 type UnifiedWS = {
   readyState: number;
   send: (data: string) => unknown;
@@ -1332,6 +1367,13 @@ export default function (pi: ExtensionAPI) {
 
     try {
       switch (command.type) {
+        case "list_skills": {
+          const a = requireApi("list_skills");
+          if (!a) break;
+          sendTo(ws, success("list_skills", { skills: normalizeSkillCommands(a.getCommands()) }));
+          break;
+        }
+
         // ─── Prompting ───
         case "prompt": {
           const a = requireApi("prompt");

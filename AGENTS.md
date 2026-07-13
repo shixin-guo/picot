@@ -59,6 +59,16 @@ Tauri IPC commands (invoked via `window.tauriNative` in `public/tauri-bridge.js`
 
 Conventions for any coding agent working in this directory.
 
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in GitHub Issues via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+This repo uses the single-context domain docs layout: root `CONTEXT.md` plus ADRs under `docs/adr/`. See `docs/agents/domain.md`.
+
 ## Package manager
 
 Use **Bun** exclusively. Never run `npm install` or `npm ci` — this would create a stray `package-lock.json` that drifts from `bun.lock` and confuses CI (`bun install --frozen-lockfile`).

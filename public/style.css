@@ -1717,7 +1717,7 @@ body {
 }
 
 .settings-content {
-  padding: 24px;
+  padding: 12px;
   height: 100%;
   min-height: 0;
   overflow-y: auto;
@@ -4078,6 +4078,92 @@ body.hide-thinking .thinking-block {
   background: var(--bg-glass-hover);
 }
 
+.skill-slash-menu {
+  position: absolute;
+  z-index: 40;
+  right: 0;
+  bottom: calc(100% + 10px);
+  left: 0;
+  max-height: min(52vh, 520px);
+  padding: 8px;
+  overflow-y: auto;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-solid) 94%, transparent);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(calc(var(--blur) * 1.5));
+  -webkit-backdrop-filter: blur(calc(var(--blur) * 1.5));
+}
+
+.skill-slash-heading {
+  padding: 7px 10px 9px;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.skill-slash-option {
+  display: grid;
+  grid-template-columns: 24px max-content minmax(0, 1fr) max-content;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.skill-slash-option.selected {
+  background: var(--bg-glass-hover);
+}
+
+.skill-slash-icon {
+  display: flex;
+  color: var(--text-secondary);
+}
+
+.skill-slash-icon svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+.skill-slash-name {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.skill-slash-description {
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-slash-scope {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.skill-slash-empty {
+  padding: 18px 10px;
+  color: var(--text-dim);
+  font-size: 14px;
+  text-align: center;
+}
+
 /* Streaming — flowing iridescent border (rotating conic gradient ring + soft glow) */
 @property --composer-glow-angle {
   syntax: "<angle>";
@@ -5556,7 +5642,7 @@ html.macos-overlay .settings-nav {
 }
 
 html.macos-overlay .settings-content {
-  padding-top: calc(24px + 28px);
+  padding-top: calc(12px + 28px);
 }
 
 /* ── LAN QR Code Modal ──────────────────────────────────────────────────── */
