@@ -256,12 +256,19 @@ build_windows() {
     # Zip only the runtime artifacts. The release dir also contains cargo
     # intermediates (build/, deps/, incremental/, examples/, *.d) which
     # are not needed at runtime and bloat the zip by ~250 MB.
+    # Start from a clean archive: `zip -r` updates an existing zip in place
+    # and `-x` only skips *adding* files — it does not remove entries already
+    # baked into a stale zip. Delete first so repeated builds are idempotent
+    # and no stray .DS_Store from a prior run survives.
+    rm -f "$PROJECT_ROOT/$zip_name"
     (cd "$release_dir" && zip -r "$PROJECT_ROOT/$zip_name" \
         Picot.exe \
         WebView2Loader.dll \
         pi \
         extensions \
-        public)
+        public \
+        -x '*.DS_Store' \
+        -x '**/.DS_Store')
 
     log_info "Windows build completed."
     log_info "  Zip: $PROJECT_ROOT/$zip_name"
