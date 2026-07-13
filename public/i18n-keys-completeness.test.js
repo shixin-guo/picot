@@ -208,14 +208,7 @@ describe("JS t() literal key references", () => {
       for (;;) {
         match = innerHtmlTemplateRegex.exec(content);
         if (!match) break;
-        const segment = content.slice(match.index, match.index + 300);
-        if (
-          !segment.includes("escapeHtml(t(") &&
-          !segment.includes("this.escapeHtml(t(") &&
-          !segment.includes("this._escape(t(")
-        ) {
-          violations.push(`${file}: raw \${t()} in innerHTML template without escapeHtml`);
-        }
+        violations.push(`${file}: raw \${t()} in innerHTML template without escapeHtml`);
       }
 
       // Check for .innerHTML = ...t(...

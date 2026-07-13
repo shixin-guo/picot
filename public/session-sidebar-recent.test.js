@@ -186,6 +186,22 @@ describe("SessionSidebar RECENT group", () => {
     expect(document.querySelector(".recent-group").style.display).toBe("");
   });
 
+  test("preserves the active search filter after a selection rerenders RECENT", () => {
+    setupDom();
+    writeRecentSessions(["/sessions/alpha.jsonl"]);
+    const sidebar = new SessionSidebar(document.getElementById("sessions"), vi.fn(), vi.fn());
+    sidebar.projects = createProjects();
+    sidebar.render();
+    sidebar.setSearchQuery("alpha");
+
+    sidebar.setActive("/sessions/beta.jsonl");
+
+    const betaItem = document.querySelector(
+      '.recent-group .session-item[data-file-path="/sessions/beta.jsonl"]',
+    );
+    expect(betaItem.classList.contains("hidden")).toBe(true);
+  });
+
   test("does not render RECENT when all saved paths are invalid", () => {
     setupDom();
     writeRecentSessions(["/sessions/missing.jsonl"]);

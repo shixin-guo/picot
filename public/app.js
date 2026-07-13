@@ -1425,7 +1425,7 @@ function renderQueuedMessages() {
     el.innerHTML = `
       <span class="queued-msg-label">${escapeHtml(t("queue.queued"))}</span>
       <span class="queued-msg-text">${escapeHtml(cmd.message)}</span>
-      <button class="queued-msg-cancel" title="${t("queue.cancelTitle")}">×</button>
+      <button class="queued-msg-cancel" title="${escapeHtml(t("queue.cancelTitle"))}">×</button>
     `;
     el.querySelector(".queued-msg-cancel").addEventListener("click", () => {
       messageQueue.splice(i, 1);

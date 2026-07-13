@@ -60,7 +60,9 @@ export class FileTabState {
         saveError: null,
         errorDetail: null,
       }));
-    this.activeTabId = rootState.activeTabId || (this.tabs.length > 0 ? this.tabs[0].id : null);
+    this.activeTabId = this.tabs.some((tab) => tab.id === rootState.activeTabId)
+      ? rootState.activeTabId
+      : (this.tabs[0]?.id ?? null);
   }
 
   /**

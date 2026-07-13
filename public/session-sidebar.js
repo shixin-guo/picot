@@ -516,7 +516,7 @@ export class SessionSidebar {
     for (const item of items) {
       const row = document.createElement("div");
       row.className = "context-menu-item";
-      row.innerHTML = `<span class="context-menu-icon">${item.icon}</span>${item.label}`;
+      row.innerHTML = `<span class="context-menu-icon">${item.icon}</span>${this.escapeHtml(item.label)}`;
       row.addEventListener("click", (ev) => {
         ev.stopPropagation();
         this.closeContextMenu();

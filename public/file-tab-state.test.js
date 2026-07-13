@@ -157,6 +157,23 @@ describe("FileTabState", () => {
       expect(state2.getActiveTab()?.filePath).toBe("/workspace/project/a.js");
     });
 
+    test("falls back to the first tab when persisted activeTabId is stale", () => {
+      storage.setItem(
+        "picot-file-tabs",
+        JSON.stringify({
+          byRoot: {
+            "/workspace/project": {
+              tabs: [{ id: "file:/workspace/project/a.js", filePath: "/workspace/project/a.js" }],
+              activeTabId: "file:/workspace/project/deleted.js",
+            },
+          },
+        }),
+      );
+      const state = new FileTabState({ storage });
+      state.load("/workspace/project");
+      expect(state.getActiveTab()?.filePath).toBe("/workspace/project/a.js");
+    });
+
     test("isolates tabs between different workspaces", () => {
       const state1 = new FileTabState({ storage });
       state1.load("/workspace/projectA");
