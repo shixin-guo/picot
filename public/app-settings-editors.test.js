@@ -180,6 +180,10 @@ describe("settings API key model refresh", () => {
     document.querySelector(".api-provider-toggle").click();
 
     expect(document.querySelector(".api-model-list").hidden).toBe(true);
+
+    document.querySelector(".api-key-row-name").click();
+
+    expect(document.querySelector(".api-model-list").hidden).toBe(false);
   });
 
   test("puts configured providers first without showing authentication source text", async () => {
@@ -375,6 +379,7 @@ describe("settings API key model refresh", () => {
           },
         };
       }
+      if (command.type === "set_model_visibility") return { success: true };
       throw new Error(`Unexpected command: ${command.type}`);
     });
 
@@ -389,13 +394,25 @@ describe("settings API key model refresh", () => {
     });
 
     await loadApiKeysPanel();
+    expect(document.querySelector(".api-model-disable-unhealthy").disabled).toBe(true);
     document.querySelector(".api-model-health-check").click();
     await Promise.resolve();
 
     expect(document.querySelector(".api-model-health-dot.unhealthy")).not.toBeNull();
+    expect(document.querySelector(".api-model-disable-unhealthy").disabled).toBe(false);
     expect(document.querySelector(".api-model-health-status").textContent).toContain(
       "model overloaded",
     );
+
+    document.querySelector(".api-model-disable-unhealthy").click();
+    await vi.waitFor(() => {
+      expect(rpcCommand).toHaveBeenCalledWith({
+        type: "set_model_visibility",
+        provider: "anthropic",
+        modelId: "claude-sonnet-5",
+        visible: false,
+      });
+    });
   });
 
   test("keeps the provider card mounted when a health check fails", async () => {

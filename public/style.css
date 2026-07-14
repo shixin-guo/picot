@@ -2283,6 +2283,10 @@ body {
   min-width: 0;
 }
 
+.api-provider-title-toggle {
+  cursor: pointer;
+}
+
 .api-key-row-name {
   font-size: 13px;
   font-weight: 600;

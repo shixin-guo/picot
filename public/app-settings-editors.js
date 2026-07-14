@@ -120,9 +120,21 @@ export function setupSettingsEditors({
     row.appendChild(header);
     if (modelList) {
       toggle.setAttribute("aria-expanded", "true");
-      toggle.addEventListener("click", () => {
+      const toggleModelList = () => {
         modelList.hidden = !modelList.hidden;
         toggle.setAttribute("aria-expanded", String(!modelList.hidden));
+      };
+      toggle.addEventListener("click", toggleModelList);
+      info.classList.add("api-provider-title-toggle");
+      info.tabIndex = 0;
+      info.setAttribute("role", "button");
+      info.setAttribute("aria-label", `Toggle ${p.displayName || p.provider} models`);
+      info.addEventListener("click", toggleModelList);
+      info.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggleModelList();
+        }
       });
       row.appendChild(modelList);
     } else {
@@ -151,7 +163,7 @@ export function setupSettingsEditors({
     disableUnhealthy.textContent = "Disable unhealthy models";
     disableUnhealthy.disabled = visibleUnhealthyModels.length === 0;
     disableUnhealthy.addEventListener("click", () =>
-      disableUnhealthyModels(p.provider, visibleUnhealthyModels),
+      disableUnhealthyModels(p.provider, getVisibleUnhealthyModels(p.provider)),
     );
     bulkActions.appendChild(disableUnhealthy);
     wrap.appendChild(bulkActions);
@@ -166,6 +178,28 @@ export function setupSettingsEditors({
       wrap.appendChild(buildModelRow(model));
     }
     return wrap;
+  }
+
+  function getVisibleUnhealthyModels(provider) {
+    return [
+      ...apiKeysContainer.querySelectorAll(
+        `.api-model-row[data-provider="${escapeSelectorValue(provider)}"]`,
+      ),
+    ]
+      .filter(
+        (row) =>
+          row.querySelector(".api-model-visibility-toggle")?.checked &&
+          row.querySelector(".api-model-health-dot")?.classList.contains("unhealthy"),
+      )
+      .map((row) => ({ id: row.dataset.modelId }));
+  }
+
+  function refreshDisableUnhealthyButton(provider) {
+    const providerRow = apiKeysContainer.querySelector(
+      `.api-key-row[data-provider="${escapeSelectorValue(provider)}"]`,
+    );
+    const button = providerRow?.querySelector(".api-model-disable-unhealthy");
+    if (button) button.disabled = getVisibleUnhealthyModels(provider).length === 0;
   }
 
   async function disableUnhealthyModels(provider, models) {
@@ -285,6 +319,7 @@ export function setupSettingsEditors({
       dot.title = "Checking health";
     }
     if (status) status.textContent = "Checking health...";
+    refreshDisableUnhealthyButton(row.dataset.provider);
   }
 
   function setModelRowHealthError(row, message) {
@@ -297,6 +332,7 @@ export function setupSettingsEditors({
       dot.title = text;
     }
     if (status) status.textContent = text;
+    refreshDisableUnhealthyButton(row.dataset.provider);
   }
 
   function applyHealthResult(result) {
@@ -316,6 +352,7 @@ export function setupSettingsEditors({
       dot.title = describeModelHealth(health);
     }
     if (status) status.textContent = describeModelHealth(health);
+    refreshDisableUnhealthyButton(result.provider);
   }
 
   async function checkModelHealth(provider, modelId, row) {
