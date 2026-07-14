@@ -3,7 +3,9 @@
  */
 
 import { onLocaleChange, t } from "./i18n.js";
+import { createPinnedItemsStore } from "./pinned-items.js";
 import { readRecentSessions, recordRecentSession, writeRecentSessions } from "./recent-sessions.js";
+import { mergeWorkspaceProjects } from "./workspace-projects.js";
 
 export class SessionSidebar {
   constructor(container, onSessionSelect, onNewChat, options = {}) {
@@ -24,6 +26,9 @@ export class SessionSidebar {
     this.archived = JSON.parse(localStorage.getItem("pi-studio-archived") || "[]");
     this.archivedCollapsed = localStorage.getItem("pi-studio-archived-collapsed") !== "false";
     this.unread = new Set(JSON.parse(localStorage.getItem("pi-studio-unread") || "[]"));
+    this.pinStore = options.pinStore || createPinnedItemsStore();
+    this.unsubscribePinStore = this.pinStore.subscribe?.(() => this.render()) || null;
+    this.pinStore.migrateLegacyFavourites?.({ excludedSessions: this.archived });
     this.streamingFiles = new Set();
     this.projectVisibleSessionCounts = new Map();
     this.contextMenu = null;
@@ -244,7 +249,20 @@ export class SessionSidebar {
         const res = await fetch("/api/sessions");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        const projects = data.projects || [];
+        let projects = Array.isArray(data.projects) ? data.projects : [];
+        try {
+          const instancesRes = await fetch("/api/instances");
+          if (instancesRes.ok) {
+            const instancesData = await instancesRes.json();
+            projects = mergeWorkspaceProjects(
+              projects,
+              instancesData.instances || [],
+              this.projects,
+            ).projects;
+          }
+        } catch {
+          // Session history remains usable when the instance registry is unavailable.
+        }
         if (seq < this.loadCommitted) return this.projects;
         this.loadCommitted = seq;
         this.projects = projects;
@@ -735,6 +753,84 @@ export class SessionSidebar {
 
     return toggleRow;
   }
+  renderPinnedSection() {
+    const state = this.pinStore?.getRenderableState?.() || { workspaces: [], sessions: [] };
+    const workspacePins = Array.isArray(state.workspaces) ? state.workspaces : [];
+    const sessionPins = new Set(Array.isArray(state.sessions) ? state.sessions : []);
+    const groups = [];
+    for (const pin of workspacePins) {
+      const project = this.projects.find(
+        (candidate) =>
+          candidate.workspaceId === pin.id ||
+          candidate.path === pin.path ||
+          candidate.normalizedPath === pin.path,
+      );
+      if (!project) {
+        groups.push({ pin, project: null, sessions: [] });
+        continue;
+      }
+      groups.push({
+        pin,
+        project,
+        sessions: project.sessions.filter((session) => !this.isArchived(session.filePath)),
+      });
+    }
+    const pinnedSessionRows = [];
+    for (const filePath of sessionPins) {
+      for (const project of this.projects) {
+        const session = project.sessions.find((candidate) => candidate.filePath === filePath);
+        if (
+          session &&
+          !this.isArchived(filePath) &&
+          !groups.some((group) => group.sessions.some((row) => row.filePath === filePath))
+        ) {
+          pinnedSessionRows.push({ session, project });
+        }
+      }
+    }
+    if (groups.length === 0 && pinnedSessionRows.length === 0) return;
+    const section = document.createElement("div");
+    section.className = "pinned-group sidebar-section-pinned";
+    const header = document.createElement("div");
+    header.className = "project-header pinned-header";
+    header.textContent = t("sidebar.pinned");
+    section.appendChild(header);
+    const body = document.createElement("div");
+    body.className = "project-sessions pinned-sessions";
+    for (const { pin, project, sessions } of groups) {
+      const group = document.createElement("div");
+      group.className = "pinned-workspace-group";
+      group.dataset.workspaceId = pin.id || "";
+      const title = document.createElement("div");
+      title.className = "pinned-workspace-title";
+      title.textContent =
+        project?.path?.split("/").filter(Boolean).at(-1) ||
+        pin.path ||
+        pin.id ||
+        t("sidebar.unavailable");
+      group.appendChild(title);
+      if (project) {
+        for (const row of sessions) group.appendChild(this.buildSessionItem(row, project));
+      } else {
+        const unavailable = document.createElement("div");
+        unavailable.className = "pinned-unavailable";
+        unavailable.textContent = t("sidebar.unavailable");
+        const unpin = document.createElement("button");
+        unpin.type = "button";
+        unpin.textContent = t("sidebar.unpinWorkspace");
+        unpin.addEventListener("click", () => {
+          this.pinStore.unpinWorkspace(pin.id);
+          this.render();
+        });
+        group.append(unavailable, unpin);
+      }
+      body.appendChild(group);
+    }
+    for (const row of pinnedSessionRows)
+      body.appendChild(this.buildSessionItem(row.session, row.project));
+    section.appendChild(body);
+    this.container.appendChild(section);
+  }
 
   render() {
     if (this.projects.length === 0) {
@@ -799,6 +895,7 @@ export class SessionSidebar {
       recentGroup.appendChild(sessionsDiv);
       this.container.appendChild(recentGroup);
     }
+    this.renderPinnedSection();
 
     if (favSessions.length > 0) {
       const favGroup = document.createElement("div");

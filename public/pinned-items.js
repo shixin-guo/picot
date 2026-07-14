@@ -1,3 +1,5 @@
+// ABOUTME: Persists ordered workspace and session Pins across localhost ports.
+// ABOUTME: Owns capacity checks, legacy Favourites migration, and change detection.
 /**
  * Pinned Items - v1 cookie store for workspace/session Pins.
  *
@@ -479,4 +481,167 @@ export function resetPinnedItemsSync() {
   lastCompared = null;
   if (activeSync?.cleanup) activeSync.cleanup();
   activeSync = null;
+}
+
+export function createPinnedItemsStore(options = {}) {
+  const documentRef = options.documentRef ?? options.document ?? defaultDocument();
+  const windowRef =
+    options.windowRef ?? options.window ?? documentRef?.defaultView ?? defaultWindow();
+  const storageRef =
+    options.storageRef ??
+    options.storage ??
+    documentRef?.defaultView?.localStorage ??
+    (typeof localStorage !== "undefined" ? localStorage : null);
+  const setIntervalRef = options.setIntervalRef || windowRef?.setInterval?.bind(windowRef);
+  const clearIntervalRef = options.clearIntervalRef || windowRef?.clearInterval?.bind(windowRef);
+  let destroyed = false;
+  let legacyPending = [];
+  const listeners = new Set();
+  let state = readPinnedItems(documentRef);
+  const snapshot = () => ({
+    workspaces: state.workspaces.map((item) => ({ ...item })),
+    sessions: [...state.sessions],
+  });
+  const emit = (next) => {
+    const before = JSON.stringify(state);
+    state = next;
+    if (before === JSON.stringify(next)) return false;
+    for (const listener of listeners) {
+      try {
+        listener(snapshot());
+      } catch {}
+    }
+    return true;
+  };
+  const mutate = (operation) => {
+    if (destroyed) return { ok: false, error: "write", state: snapshot(), changed: false };
+    try {
+      const current = readPinnedItems(documentRef);
+      const next = operation(current);
+      const written = writePinnedItems(next, documentRef);
+      const changed = emit(written);
+      return { ok: true, changed, state: snapshot() };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof PinnedCapacityError ? "capacity" : "write",
+        state: snapshot(),
+        changed: false,
+      };
+    }
+  };
+  const refreshFromCookie = () => {
+    const next = readPinnedItems(documentRef);
+    emit(next);
+    return snapshot();
+  };
+  const onFocus = refreshFromCookie;
+  const onVisibility = () => {
+    if (documentRef?.visibilityState === "visible") refreshFromCookie();
+  };
+  windowRef?.addEventListener?.("focus", onFocus);
+  windowRef?.addEventListener?.("visibilitychange", onVisibility);
+  const timer = setIntervalRef?.(() => {
+    if (documentRef?.visibilityState !== "hidden") refreshFromCookie();
+  }, 1000);
+  return {
+    getState: snapshot,
+    getRenderableState: () => ({
+      ...snapshot(),
+      sessions: [
+        ...state.sessions,
+        ...legacyPending.filter((path) => !state.sessions.includes(path)),
+      ],
+    }),
+    hasMigrationError: () => legacyPending.length > 0,
+    isWorkspacePinned: (id) => state.workspaces.some((item) => item.id === id),
+    isSessionPinned: (filePath) => state.sessions.includes(filePath),
+    refresh: () => {
+      const before = JSON.stringify(state);
+      const next = readPinnedItems(documentRef);
+      const changed = before !== JSON.stringify(next);
+      if (changed) emit(next);
+      return changed;
+    },
+    pinWorkspace: (idOrRecord, path) => {
+      const id = typeof idOrRecord === "object" ? idOrRecord?.id : idOrRecord;
+      const workspacePath = typeof idOrRecord === "object" ? idOrRecord?.path : path;
+      if (
+        typeof id !== "string" ||
+        !WORKSPACE_ID_PATTERN.test(id) ||
+        typeof workspacePath !== "string" ||
+        !workspacePath
+      )
+        return { ok: false, error: "invalid", state: snapshot() };
+      return mutate((current) => ({
+        workspaces: [
+          { id, path: workspacePath },
+          ...current.workspaces.filter((item) => item.id !== id),
+        ],
+        sessions: current.sessions,
+      }));
+    },
+    unpinWorkspace: (id) =>
+      mutate((current) => ({
+        workspaces: current.workspaces.filter((item) => item.id !== id),
+        sessions: current.sessions,
+      })),
+    pinSession: (filePath) => {
+      if (typeof filePath !== "string" || !filePath)
+        return { ok: false, error: "invalid", state: snapshot() };
+      return mutate((current) => ({
+        workspaces: current.workspaces,
+        sessions: [filePath, ...current.sessions.filter((item) => item !== filePath)],
+      }));
+    },
+    unpinSession: (filePath) =>
+      mutate((current) => ({
+        workspaces: current.workspaces,
+        sessions: current.sessions.filter((item) => item !== filePath),
+      })),
+    reconcileWorkspace: ({ fromId, toId, path }) =>
+      mutate((current) => {
+        const index = current.workspaces.findIndex((item) => item.id === fromId);
+        if (index < 0) return current;
+        const workspaces = current.workspaces.slice();
+        workspaces[index] = { id: toId, path: path || workspaces[index].path };
+        return { workspaces, sessions: current.sessions };
+      }),
+    replaceWorkspaceId: (fromId, toId) =>
+      mutate((current) => {
+        const index = current.workspaces.findIndex((item) => item.id === fromId);
+        if (index < 0) return current;
+        const workspaces = current.workspaces.slice();
+        workspaces[index] = { ...workspaces[index], id: toId };
+        return { workspaces, sessions: current.sessions };
+      }),
+    migrateLegacyFavourites: ({ excludedSessions = [] } = {}) => {
+      const result = migrateFavourites({ documentRef, storageRef });
+      legacyPending = (result.pendingLegacySessions || []).filter(
+        (path) => !excludedSessions.includes(path),
+      );
+      if (result.capacityError) return { ok: false, error: "capacity", state: snapshot() };
+      refreshFromCookie();
+      return { ok: true, state: snapshot() };
+    },
+    retryMigration: () => {
+      const result = migrateFavourites({ documentRef, storageRef });
+      legacyPending = result.pendingLegacySessions || [];
+      refreshFromCookie();
+      return result;
+    },
+    refreshFromCookie,
+    subscribe: (listener) => {
+      if (typeof listener !== "function") return () => {};
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    destroy: () => {
+      destroyed = true;
+      if (timer != null) clearIntervalRef?.(timer);
+      windowRef?.removeEventListener?.("focus", onFocus);
+      windowRef?.removeEventListener?.("visibilitychange", onVisibility);
+      listeners.clear();
+    },
+  };
 }
