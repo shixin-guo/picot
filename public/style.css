@@ -610,7 +610,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  max-height: 2400px;
+  overflow: hidden;
+  opacity: 1;
   padding-left: 6px;
+  transition:
+    max-height 0.2s var(--ease),
+    opacity 0.16s var(--ease);
 }
 
 .project-sessions-toggle-row {
@@ -636,7 +642,9 @@ body {
 }
 
 .project-sessions.collapsed {
-  display: none;
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* Session items */
@@ -2331,11 +2339,21 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0;
+  max-height: 2400px;
+  overflow: hidden;
+  opacity: 1;
   border-top: 1px solid var(--border);
+  transition:
+    max-height 0.2s var(--ease),
+    opacity 0.16s var(--ease),
+    border-color 0.2s var(--ease);
 }
 
-.api-model-list[hidden] {
-  display: none;
+.api-model-list.collapsed {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  border-top-color: transparent;
 }
 
 .api-model-list-actions {

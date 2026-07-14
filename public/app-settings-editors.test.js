@@ -179,11 +179,11 @@ describe("settings API key model refresh", () => {
 
     document.querySelector(".api-provider-toggle").click();
 
-    expect(document.querySelector(".api-model-list").hidden).toBe(true);
+    expect(document.querySelector(".api-model-list").classList.contains("collapsed")).toBe(true);
 
     document.querySelector(".api-key-row-header").click();
 
-    expect(document.querySelector(".api-model-list").hidden).toBe(false);
+    expect(document.querySelector(".api-model-list").classList.contains("collapsed")).toBe(false);
   });
 
   test("puts configured providers first without showing authentication source text", async () => {

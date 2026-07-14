@@ -121,8 +121,8 @@ export function setupSettingsEditors({
     if (modelList) {
       toggle.setAttribute("aria-expanded", "true");
       const toggleModelList = () => {
-        modelList.hidden = !modelList.hidden;
-        toggle.setAttribute("aria-expanded", String(!modelList.hidden));
+        modelList.classList.toggle("collapsed");
+        toggle.setAttribute("aria-expanded", String(!modelList.classList.contains("collapsed")));
       };
       header.addEventListener("click", (event) => {
         if (event.target.closest?.(".api-key-row-actions")) return;

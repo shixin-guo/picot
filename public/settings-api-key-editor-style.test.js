@@ -13,10 +13,19 @@ describe("settings API key editor style", () => {
     expect(rule).not.toContain("#fff");
   });
 
-  test("hides collapsed provider model lists despite their flex layout", () => {
-    const rule = css.match(/\.api-model-list\[hidden\]\s*\{(?<body>[^}]+)\}/)?.groups?.body;
+  test("animates collapsed provider model lists despite their flex layout", () => {
+    const rule = css.match(/\.api-model-list\.collapsed\s*\{(?<body>[^}]+)\}/)?.groups?.body;
 
     expect(rule).toBeTruthy();
-    expect(rule).toContain("display: none");
+    expect(rule).toContain("max-height: 0");
+    expect(rule).toContain("opacity: 0");
+  });
+
+  test("animates collapsed project session lists", () => {
+    const rule = css.match(/\.project-sessions\.collapsed\s*\{(?<body>[^}]+)\}/)?.groups?.body;
+
+    expect(rule).toBeTruthy();
+    expect(rule).toContain("max-height: 0");
+    expect(rule).toContain("opacity: 0");
   });
 });
