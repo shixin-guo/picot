@@ -124,12 +124,14 @@ export function setupSettingsEditors({
         modelList.hidden = !modelList.hidden;
         toggle.setAttribute("aria-expanded", String(!modelList.hidden));
       };
-      toggle.addEventListener("click", toggleModelList);
+      header.addEventListener("click", (event) => {
+        if (event.target.closest?.(".api-key-row-actions")) return;
+        toggleModelList();
+      });
       info.classList.add("api-provider-title-toggle");
       info.tabIndex = 0;
       info.setAttribute("role", "button");
       info.setAttribute("aria-label", `Toggle ${p.displayName || p.provider} models`);
-      info.addEventListener("click", toggleModelList);
       info.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();

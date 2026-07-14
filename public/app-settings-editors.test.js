@@ -181,7 +181,7 @@ describe("settings API key model refresh", () => {
 
     expect(document.querySelector(".api-model-list").hidden).toBe(true);
 
-    document.querySelector(".api-key-row-name").click();
+    document.querySelector(".api-key-row-header").click();
 
     expect(document.querySelector(".api-model-list").hidden).toBe(false);
   });
