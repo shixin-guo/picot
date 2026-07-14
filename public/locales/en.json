@@ -319,7 +319,16 @@
     "retry": "Retry",
     "messageMatches": "Message matches",
     "matchCount": "{count} matches",
-    "deleteArchivedAriaLabel": "Delete archived sessions"
+    "deleteArchivedAriaLabel": "Delete archived sessions",
+    "pinWorkspace": "Pin workspace",
+    "unpinWorkspace": "Unpin workspace",
+    "sessionCountTotal": "{count} sessions",
+    "repository": "Repository",
+    "kind": "Type",
+    "branch": "Branch",
+    "worktree": "Worktree",
+    "detachedAt": "Detached at {sha}",
+    "workspaceMetadataError": "Git metadata unavailable"
   },
   "updater": {
     "update": "Update",
@@ -491,6 +500,12 @@
     "notAvailable": "N/A",
     "untitled": "Untitled",
     "daysShort": "{count}d"
+  },
+  "chatNavigation": {
+    "imageMessage": "[image]",
+    "waiting": "Waiting for response…",
+    "generating": "Generating response…",
+    "noVisibleResponse": "No visible response"
   },
   "misc": {
     "new": "New",

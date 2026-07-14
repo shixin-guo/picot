@@ -250,9 +250,12 @@ HTTP+WS server 有两条运行时路径：`Bun.serve`（生产环境，pi 通过
   `dialogs.js`、`package-install-status.js`。
 - **主题 / 视觉** —— `themes.js`、`style.css`、`style-theme.css`、
   `cost.css`、`layout-insets.js`。
-- **辅助** —— `history-scroll-anchor.js`、`app-voice-input.js`、
+- **辅助 / 导航** —— `history-scroll-anchor.js`、
+  `chat-history-navigation.js`、`app-voice-input.js`、
   `app-context-viz.js`、`onboarding-state.js`、`new-session-refresh.js`、
-  `bootstrap.html`（错误兜底窗口）。
+  `bootstrap.html`（错误兜底窗口）。`chat-history-navigation.js` 是
+  聊天历史导航器（左侧 tick rail + 预览卡片），详见下方
+  §聊天历史导航。
 
 测试以 `*.test.js` 形式贴在对应模块旁（jsdom + vitest）。
 
@@ -728,7 +731,7 @@ spec §4.10 有完整组件 → 切换范围矩阵。
 
 点分嵌套，第一级为模块名：`sidebar.*`、`composer.*`、`settings.*`、
 `files.*`、`status.*`、`errors.*`、`actions.*`、`messages.*`、
-`tools.*`、`onboarding.*`、`bootstrap.*`。`actions.*` 存按钮文本
+`tools.*`、`onboarding.*`、`bootstrap.*`、`chatNavigation.*`。`actions.*` 存按钮文本
 （Save、Cancel、Remove、Retry），`status.*` 存状态文本（Saving、
 Saved、Connecting、Connected 等），`errors.*` 只存错误消息（不放
 按钮文本）。嵌套不超过 3 层。`en.json` 是 source of truth，
@@ -761,6 +764,78 @@ renderError(message);
 `cost.js` 的 `onLocaleChange` 也覆盖该页面被独立打开时的本地切换；主题嵌入
 同步仍由 `cost.js` 单独处理。
 
+### 聊天历史导航 (Chat History Navigator)
+
+聊天历史导航器是一个纯前端的 pointer-only overlay，让用户在一个长会话
+里按 user turn 快速跳转。完整交互设计见
+[`docs/superpowers/specs/2026-07-14-chat-history-navigation-design.md`](docs/superpowers/specs/2026-07-14-chat-history-navigation-design.md)。
+本节描述它的模块边界、数据流、生命周期、安全和验证约束。
+
+**模块边界与所有权**
+
+- `public/chat-history-navigation.js` 拥有：turn 索引、rail 和 preview DOM、
+  tick 布局与放大、active-turn 滚动追踪、点击导航、流式摘要更新和生命
+  周期清理。它导出一个工厂函数（带 fallback），通过
+  `addUserTurn` / `beginAssistantMessage` / `updateAssistantMessage` /
+  `completeAssistantMessage` / `invalidateLayout` / `reset` / `destroy`
+  七个方法暴露公共 API。
+- `public/app.js` 是编排器：它创建导航器，转发现有的聊天生命周期事件
+  （用户消息渲染、流式开始 / 更新 / 完成、布局失效、会话切换）。**严禁**
+  在 `app.js` 内放 tick 计算、preview 渲染或 turn 索引逻辑。
+- `message-renderer.js` 暴露窄回调或返回值，提供已渲染的 DOM 元素和
+  可见源文本（user 渲染返回 `HTMLElement`）。它不拥有导航器 UI。
+- 样式在 `public/style.css` 的 `Chat History Navigator` 段落，使用现有
+  design token（`--text-ghost` / `--text-secondary` / `--border-bright` /
+  `--bg-frosted` / `--blur-heavy` / `--radius-md` / `--ease` / `--duration`
+  等），不引入新 token。
+
+**数据流**
+
+渲染管道直接供给 turn 数据。导航器**不得**通过抓取已渲染的 Markdown
+恢复源内容 —— 直接数据保留了可见响应文本与隐藏 thinking / tool 内容
+之间的边界。一个 turn 从一条可渲染的 user message 开始，在下一条
+可渲染 user message 之前结束。该区间内每条 assistant message 的可见
+文本被拼接（中间空一行）；tool call 和 tool result 可以出现在 assistant
+message 之间，但永远不会拆分一个 turn。
+
+导航器只存储 prompt 的前 2,000 个 Unicode code point 和 response 的前
+4,000 个。聊天渲染器保留完整源文本；这些有界副本足够两到三行预览，
+并防止导航器在内存中复制无界的会话。
+
+**生命周期**
+
+- 用户提交 prompt 时，导航器以 `waiting` 状态添加一个 turn。
+- assistant 生成开始时，状态变为 `streaming`；可见文本 delta 更新
+  `assistantText`，thinking 和 tool 事件不更新。
+- 生成结束（finalization）时，状态变为 `complete`。
+- 历史会话渲染从传给聊天渲染器的 session entries 构建完整的 turn 索引。
+- 切换会话、新建会话、清空渲染器或加载历史失败时，先清空旧索引再显示
+  新内容（`reset()`）。这会取消所有 pending animation frame、observer
+  和 preview 状态。
+
+**安全：预览文本始终惰性**
+
+预览把 user prompt 和 assistant response 当作**不可信文本**。它创建
+text node 或赋值 `textContent`，**绝不**用 `innerHTML` 插入任何一个值。
+HTML-like payload 和事件处理器字符串在预览中始终是惰性文本。测试用
+HTML-like 和 event-handler payload 强制这条边界。这与 i18n 的
+`t()` 返回纯文本约束一致（见 AGENTS.md §Localization）。
+
+**验证约束**
+
+- 缺失或畸形的 message 内容产生空摘要，不抛异常。
+- 一条没有可见 assistant 文本的完成 turn 保留其状态标签（本地化的
+  no-visible-response 文本）。
+- 缺失的目标元素在导航前移除 stale turn。
+- 导航器故障不得阻塞聊天渲染或滚动。
+- 少于两个 user turn 时导航器隐藏；触摸优先和移动布局（`hover: none`
+  或 `pointer: coarse` 或 `max-width: 768px`）下也隐藏。
+- rail 是 `aria-hidden` 的 pointer-only 增强，不在 Tab 序列中；键盘和
+  辅助技术用户通过现有的可滚动聊天面板获得等价的历史浏览路径。
+- `chatNavigation.*` i18n key 共四个：`imageMessage`（图片消息）、
+  `waiting`（等待回复）、`generating`（生成中）、`noVisibleResponse`
+  （无可见响应），en / zh 必须对等。
+
 ---
 
 ## 如何读这个仓库
@@ -782,6 +857,9 @@ renderError(message);
 - 要加一个**新的 UI 面板**，照着 `public/cost-infobar.js` /
   `public/session-sidebar.js` 的模式来：一个 `public/foo.js` 文件加
   旁边的测试，再从 `app.js` import。
+- 要改**聊天历史导航器**，从 `public/chat-history-navigation.js` 开始
+  （模块边界、数据流和生命周期见 §聊天历史导航）；样式在 `style.css`
+  的 `Chat History Navigator` 段落，i18n key 在 `chatNavigation.*`。
 - 要**升级内嵌 pi**，改 `scripts/pi-version.json`，跑 `bun run fetch:pi`，
   smoke-test `./src-tauri/resources/pi/pi --version` 和 `bun run dev`，
   只提交 version pin。

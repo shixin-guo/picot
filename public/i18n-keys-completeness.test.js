@@ -160,6 +160,7 @@ describe("JS t() literal key references", () => {
     "onboarding-state.js",
     "cost.js",
     "cost-infobar.js",
+    "chat-history-navigation.js",
   ];
 
   it("every literal t(\"...\") / t('...') key exists in en.json", () => {

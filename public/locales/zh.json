@@ -319,7 +319,16 @@
     "retry": "重试",
     "messageMatches": "消息匹配",
     "matchCount": "{count} 个匹配",
-    "deleteArchivedAriaLabel": "删除已归档会话"
+    "deleteArchivedAriaLabel": "删除已归档会话",
+    "pinWorkspace": "固定工作区",
+    "unpinWorkspace": "取消固定工作区",
+    "sessionCountTotal": "{count} 个会话",
+    "repository": "仓库",
+    "kind": "类型",
+    "branch": "分支",
+    "worktree": "工作树",
+    "detachedAt": "分离于 {sha}",
+    "workspaceMetadataError": "Git 元数据不可用"
   },
   "updater": {
     "update": "更新",
@@ -491,6 +500,12 @@
     "notAvailable": "无",
     "untitled": "未命名",
     "daysShort": "{count} 天"
+  },
+  "chatNavigation": {
+    "imageMessage": "[图片]",
+    "waiting": "等待回复…",
+    "generating": "正在生成回复…",
+    "noVisibleResponse": "无可见回复"
   },
   "misc": {
     "new": "新",

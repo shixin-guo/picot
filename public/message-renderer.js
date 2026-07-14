@@ -1,3 +1,5 @@
+// ABOUTME: Renders user and assistant chat messages for the Picot WebView.
+// ABOUTME: Preserves renderer behavior while exposing user elements for navigation.
 /**
  * Message Renderer - Renders chat messages with markdown support
  */
@@ -141,9 +143,9 @@ export class MessageRenderer {
       <div class="message-content">${imagesHtml}${renderUserMarkdown(message.content)}</div>
       <button class="message-copy-btn" aria-label="${this.escapeHtml(t("messages.copyMessage"))}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
     `;
-    this._setupCopyBtn(div);
     this.container.appendChild(div);
     if (!isHistory) this.scrollToBottom();
+    return div;
   }
 
   renderAssistantMessage(message, isStreaming = false, isHistory = false) {

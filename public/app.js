@@ -7,6 +7,7 @@ import { setupSettingsEditors } from "./app-settings-editors.js";
 import { setupSettingsToggles } from "./app-settings-toggles.js";
 import { createAppUpdater } from "./app-updater.js";
 import { setupVoiceInput } from "./app-voice-input.js";
+import { createChatHistoryNavigation } from "./chat-history-navigation.js";
 import { DialogHandler } from "./dialogs.js";
 import { FileBrowser } from "./file-browser.js";
 import { FilePreviewPanel } from "./file-preview-panel.js";
@@ -170,9 +171,20 @@ const transport = initTransport({ wsClient, env: window });
 const nativeAvailable = () => !mobileClientMode && transport.capabilities.native;
 const canUseSessionControl = () => transport.capabilities.native;
 const state = new StateManager();
-const messageRenderer = new MessageRenderer(document.getElementById("messages"));
-const toolCardRenderer = new ToolCardRenderer(document.getElementById("messages"));
+const messagesElement = document.getElementById("messages");
+const chatHistoryNavigation = createChatHistoryNavigation({
+  host: document.querySelector(".main"),
+  messages: messagesElement,
+});
+const messageRenderer = new MessageRenderer(messagesElement);
+const toolCardRenderer = new ToolCardRenderer(messagesElement);
 const dialogHandler = new DialogHandler(document.getElementById("dialog-container"), wsClient);
+
+function clearConversationRenderers() {
+  messageRenderer.clear();
+  toolCardRenderer.clear();
+  chatHistoryNavigation.reset();
+}
 
 // Session sidebar
 const sidebar = new SessionSidebar(
@@ -964,6 +976,7 @@ function handleAgentEnd(event = null) {
   state.setStreaming(false);
   showTypingIndicator(false);
   currentStreamingElement = null;
+  chatHistoryNavigation.completeAssistantMessage();
   currentStreamingText = "";
   updateUI();
 
@@ -1006,14 +1019,12 @@ function handleMessageStart(message) {
     currentStreamingText = "";
     currentStreamingThinking = "";
     currentStreamingElement = messageRenderer.renderAssistantMessage({ content: "" }, true);
+    chatHistoryNavigation.beginAssistantMessage();
   } else if (message.role === "user") {
-    // In mirror mode, user messages from TUI appear via events
-    // Only render if we didn't just send this message ourselves
     if (!lastSentMessage || getMessageText(message) !== lastSentMessage) {
       const content = getMessageText(message);
-      if (content) {
-        messageRenderer.renderUserMessage({ content });
-      }
+      const images = getMessageImages(message);
+      if (content || images.length > 0) renderNavigableUserMessage({ content, images });
     }
     lastSentMessage = null;
   }
@@ -1028,6 +1039,26 @@ function getMessageText(message) {
       .join("\n");
   }
   return "";
+}
+
+function getMessageImages(message) {
+  if (!Array.isArray(message?.content)) return [];
+  return message.content
+    .filter((block) => block?.type === "image")
+    .map((block) => ({
+      data: block.source?.data || block.data || "",
+      mimeType: block.source?.media_type || block.media_type || "image/png",
+    }));
+}
+
+function renderNavigableUserMessage({ content, images, isHistory = false }) {
+  const element = messageRenderer.renderUserMessage({ content: content || "", images }, isHistory);
+  chatHistoryNavigation.addUserTurn({
+    element,
+    text: content || "",
+    hasImage: Array.isArray(images) && images.length > 0,
+  });
+  return element;
 }
 
 function getAssistantText(message) {
@@ -1079,6 +1110,7 @@ function handleMessageUpdate(event) {
     if (currentStreamingElement) {
       messageRenderer.updateStreamingMessage(currentStreamingElement, currentStreamingText);
     }
+    chatHistoryNavigation.updateAssistantMessage(currentStreamingText);
   }
 }
 
@@ -1120,6 +1152,7 @@ function handleMessageEnd(message) {
     updateTokenUsage();
     showNewMessageBadge();
   }
+  chatHistoryNavigation.completeAssistantMessage();
 }
 
 function handleToolExecutionStart(event) {
@@ -1401,7 +1434,7 @@ function sendMessage() {
   }
 
   lastSentMessage = message;
-  messageRenderer.renderUserMessage({ content: message, images: cmd.images });
+  renderNavigableUserMessage({ content: message, images: cmd.images });
   if (!hasAnySessionsLoaded()) {
     pendingNewSessionRefresh = true;
   }
@@ -1448,7 +1481,7 @@ function flushQueue() {
     }
 
     const cmd = messageQueue.shift();
-    messageRenderer.renderUserMessage({ content: cmd.message, images: cmd.images });
+    renderNavigableUserMessage({ content: cmd.message, images: cmd.images });
     renderQueuedMessages();
     trackPromptDelivery(wsClient.send(cmd), cmd.message);
     refreshSidebarAfterUserPrompt();
@@ -2004,8 +2037,7 @@ async function resetUiForNewSession() {
     liveInstances.find((i) => i?.port === foregroundPort)?.sessionFile ||
     null;
   state.reset();
-  messageRenderer.clear();
-  toolCardRenderer.clear();
+  clearConversationRenderers();
   renderWorkspaceWelcome();
   sidebar.clearActive();
   mirrorActiveSessionFile = null;
@@ -2317,8 +2349,7 @@ async function handleSessionSelectImpl(session, project) {
 }
 
 async function renderSelectedSessionHistory(session, project) {
-  messageRenderer.clear();
-  toolCardRenderer.clear();
+  clearConversationRenderers();
   if (!session || !project) {
     renderWorkspaceWelcome();
     return;
@@ -2351,7 +2382,7 @@ async function renderSelectedSessionHistory(session, project) {
       ok: res.ok,
     });
     const data = await res.json();
-    messageRenderer.clear();
+    clearConversationRenderers();
     logSessionRoute("history:render", {
       selectedSession: session.filePath,
       entries: data.entries?.length || 0,
@@ -2369,8 +2400,7 @@ async function renderSelectedSessionHistory(session, project) {
 async function switchSession(sessionFile, session = null, project = null) {
   try {
     state.reset();
-    messageRenderer.clear();
-    toolCardRenderer.clear();
+    clearConversationRenderers();
 
     if (sessionFile && session) {
       messageRenderer.renderSystemMessage(t("status.loadingSession"));
@@ -2386,7 +2416,7 @@ async function switchSession(sessionFile, session = null, project = null) {
           const data = await res.json();
           console.log("[App] History entries:", data.entries?.length || 0);
 
-          messageRenderer.clear();
+          clearConversationRenderers();
           renderSessionHistory(data.entries || [], { searchQuery: sidebar.searchQuery });
         } catch (e) {
           console.error("[App] History fetch error:", e);
@@ -2542,7 +2572,7 @@ function handleMirrorSync(data) {
   }
 
   // Clear and render message history
-  messageRenderer.clear();
+  clearConversationRenderers();
   sessionTotalCost = 0;
   lastInputTokens = 0;
 
@@ -2648,12 +2678,14 @@ function renderSessionHistory(entries, { searchQuery = "" } = {}) {
         : [];
       if (content || images.length > 0) {
         userCount++;
-        messageRenderer.renderUserMessage(
-          { content: content || "", images: images.length > 0 ? images : undefined },
-          true,
-        );
+        renderNavigableUserMessage({
+          content: content || "",
+          images: images.length > 0 ? images : undefined,
+          isHistory: true,
+        });
       }
     } else if (msg.role === "assistant") {
+      chatHistoryNavigation.beginAssistantMessage();
       const textBlocks = (msg.content || []).filter((b) => b.type === "text");
       const thinkingBlocks = (msg.content || []).filter((b) => b.type === "thinking");
       const toolCalls = (msg.content || []).filter((b) => b.type === "toolCall");
@@ -2667,6 +2699,8 @@ function renderSessionHistory(entries, { searchQuery = "" } = {}) {
       }
 
       const text = textBlocks.map((b) => b.text).join("\n");
+      if (text) chatHistoryNavigation.updateAssistantMessage(text);
+      chatHistoryNavigation.completeAssistantMessage();
 
       if (text || thinkingBlocks.length > 0) {
         assistantCount++;
@@ -2712,6 +2746,7 @@ function renderSessionHistory(entries, { searchQuery = "" } = {}) {
       );
     }
   }
+  chatHistoryNavigation.completeAssistantMessage();
 
   console.log(
     `[History] Done: ${userCount} users, ${assistantCount} assistants, ${toolCardCount} tools, ${toolResultCount} results`,

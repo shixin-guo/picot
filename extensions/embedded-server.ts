@@ -58,6 +58,7 @@ import {
   writeTextFileIfUnchanged,
 } from "./file-routes.ts";
 import { buildProjectSearchMatch } from "./session-search";
+import { inspectWorkspaceGit, resolveWorkspaceInfoPath } from "./workspace-info.ts";
 
 // `pi` is compiled with `bun build --compile`. Inside that runtime,
 // `http.createServer(...).on("upgrade", ...)` accepts the upgrade event
@@ -247,9 +248,16 @@ function getRunningInstances(): Array<{
   pid: number;
   sessionFile: string;
   cwd: string;
+  startedAt?: string;
 }> {
   if (!fs.existsSync(INSTANCES_DIR)) return [];
-  const instances: Array<{ port: number; pid: number; sessionFile: string; cwd: string }> = [];
+  const instances: Array<{
+    port: number;
+    pid: number;
+    sessionFile: string;
+    cwd: string;
+    startedAt?: string;
+  }> = [];
   for (const file of fs.readdirSync(INSTANCES_DIR)) {
     if (!file.endsWith(".json")) continue;
     try {
@@ -349,6 +357,16 @@ type SessionFileCacheEntry<T> = {
   value: T;
 };
 
+// Shape of a project entry in the `/api/sessions` response. The sessions
+// array is intentionally loosely typed because each entry is a spread of
+// the parsed JSONL header (arbitrary keys from pi's session format).
+type SessionProject = {
+  path: string;
+  dirName: string;
+  // biome-ignore lint/suspicious/noExplicitAny: session-list entries are spreads of parsed JSONL headers
+  sessions: any[];
+};
+
 // A unified handle to whichever underlying server is currently bound.
 // Only one of `nodeServer` / `bunServer` is non-null at any time; the
 // other fields (port / close) abstract over the differences so the rest
@@ -443,6 +461,11 @@ type EmbeddedServerGlobal = {
   // launcher / sidebar warmup latency for users with many sessions.
   sessionHeaderCache: Map<string, SessionFileCacheEntry<unknown>>;
   sessionMetricsCache: Map<string, SessionFileCacheEntry<unknown>>;
+  // Snapshot of the most recent successful `/api/sessions` project list.
+  // Kept across extension reloads so `/api/workspace-info` can resolve
+  // `history:<dirName>` IDs even when the frontend hasn't re-fetched
+  // `/api/sessions` yet (or that fetch failed).
+  lastSessionProjects: SessionProject[];
 };
 
 const EMBEDDED_GLOBAL_KEY = "__piStudioEmbeddedServer__";
@@ -489,9 +512,9 @@ function getOrCreateGlobalState(): EmbeddedServerGlobal {
       buildStateSnapshot: null,
       getLatestCtx: null,
       getApi: null,
-      modelRegistry: null,
       sessionHeaderCache: new Map<string, SessionFileCacheEntry<unknown>>(),
       sessionMetricsCache: new Map<string, SessionFileCacheEntry<unknown>>(),
+      lastSessionProjects: [],
     } as EmbeddedServerGlobal;
   }
   return g[EMBEDDED_GLOBAL_KEY] as EmbeddedServerGlobal;
@@ -1453,6 +1476,36 @@ export default function (pi: ExtensionAPI) {
       serveSessionsList(res);
       return;
     }
+    if (urlPath === "/api/workspace-info" && req.method === "GET") {
+      const requestUrl = new URL(`http://localhost${req.url || urlPath}`);
+      const workspaceId = requestUrl.searchParams.get("workspaceId") || "";
+      const workspacePath = resolveWorkspaceInfoPath(
+        workspaceId,
+        globalState.lastSessionProjects,
+        getRunningInstances(),
+      );
+      if (!workspacePath) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Unknown workspace" }));
+        return;
+      }
+      try {
+        const info = await inspectWorkspaceGit(workspacePath);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(info));
+      } catch (error) {
+        const aborted = String(error).includes("aborted");
+        res.writeHead(aborted ? 408 : 500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: aborted
+              ? "Workspace metadata request timed out"
+              : "Workspace metadata unavailable",
+          }),
+        );
+      }
+      return;
+    }
 
     if (urlPath.startsWith("/api/cost-dashboard") && req.method === "GET") {
       serveCostDashboard(req, res);
@@ -2278,6 +2331,7 @@ export default function (pi: ExtensionAPI) {
           : bSession?.ctime || 0;
         return bTime - aTime;
       });
+      globalState.lastSessionProjects = projects;
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ projects }));

@@ -6005,3 +6005,185 @@ body.file-preview-resizing {
     opacity: 1;
   }
 }
+
+/* ═══════════════════════════════════════════════════════
+   Chat History Navigator — persistent tick rail + preview
+   Pointer-only overlay; hidden on touch/mobile and <2 turns.
+   ═══════════════════════════════════════════════════════ */
+
+/* Root: appended into .main (position: relative). Never
+   reserves layout width — pure overlay. */
+.chat-nav {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  pointer-events: none; /* children opt back in */
+}
+
+/* Hidden until at least two user turns exist. */
+.chat-nav.hidden {
+  display: none;
+}
+
+/* ── Rail ── */
+.chat-nav-rail {
+  position: relative;
+  height: clamp(160px, 42vh, 360px);
+  /* Wide pointer hit area without covering message text. */
+  width: 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 4px 0;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* ── Tick marks ──
+   JS sets an inline --mag (0…1) per tick within the 6-tick
+   neighborhood and toggles .nearest on the closest. CSS drives
+   progressive size, color, and opacity from --mag. */
+.chat-nav-tick {
+  --mag: 0;
+  width: calc(3px + var(--mag) * 2px);
+  height: calc(8px + var(--mag) * 14px);
+  background: color-mix(in srgb, var(--text-ghost), var(--text-secondary) calc(var(--mag) * 100%));
+  border-radius: var(--radius-pill);
+  transition:
+    width var(--duration) var(--ease),
+    height var(--duration) var(--ease),
+    background var(--duration) var(--ease),
+    opacity var(--duration) var(--ease);
+  flex-shrink: 0;
+  opacity: calc(0.7 + var(--mag) * 0.3);
+}
+
+/* Current viewport turn — stronger color regardless of --mag. */
+.chat-nav-tick.active {
+  background: var(--text-secondary);
+  opacity: 1;
+}
+
+/* Nearest tick — JS toggles this class; it also forces --mag to 1
+   so the strongest treatment holds even without an inline value. */
+.chat-nav-tick.nearest {
+  --mag: 1;
+}
+
+/* ── Preview card ── */
+.chat-nav-preview {
+  position: absolute;
+  left: 32px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: clamp(280px, 30vw, 380px);
+  max-width: calc(100vw - 60px);
+  background: var(--bg-frosted);
+  backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
+  -webkit-backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg), var(--shadow-inset);
+  padding: 12px 14px;
+  pointer-events: auto;
+  /* Card fades in; reduced-motion media query strips the transition. */
+  animation: chatNavPreviewIn var(--duration) var(--ease);
+  z-index: 6;
+}
+
+@keyframes chatNavPreviewIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+/* User prompt summary — stronger text treatment, 2-line clamp. */
+.chat-nav-preview-prompt {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: pointer;
+  /* Prompt portion is a navigation control. */
+}
+
+/* Assistant response summary — secondary text, 3-line clamp. */
+.chat-nav-preview-response {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-top: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* Response portion is NOT a navigation control. */
+}
+
+/* Status modifier: JS adds .status to the response element when it
+   shows a localized waiting / generating / no-visible-response label
+   instead of actual response text. Inherits layout from
+   .chat-nav-preview-response; overrides to a dimmed italic treatment. */
+.chat-nav-preview-response.status {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+/* ── Navigation highlight (applied to target user message) ── */
+.chat-nav-target {
+  animation: chatNavHighlight 1.2s var(--ease);
+  border-radius: var(--radius-lg);
+}
+
+@keyframes chatNavHighlight {
+  0% {
+    background: var(--accent-subtle);
+    box-shadow: 0 0 0 0 var(--accent-subtle);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* ── Reduced motion: same states, no transitions/animations ── */
+@media (prefers-reduced-motion: reduce) {
+  .chat-nav-tick {
+    transition: none;
+  }
+
+  .chat-nav-preview {
+    animation: none;
+  }
+
+  .chat-nav-target {
+    animation: none;
+    background: var(--accent-subtle);
+    transition: background 0.4s var(--ease);
+  }
+
+  /* Smooth scrolling is disabled at the .messages container level
+     by the global reduced-motion rule, but we reinforce it: the
+     navigator JS must use instant scrolling. */
+}
+
+/* ── Touch-first and mobile: navigator is hidden ── */
+@media (hover: none), (pointer: coarse), (max-width: 768px) {
+  .chat-nav {
+    display: none;
+  }
+}
