@@ -602,6 +602,15 @@ unavailable。旧 `pi-studio-favourites` 仅在当前 origin 尽力迁移。
 名称。type、branch 与 detached HEAD 仍可由 API 返回，但当前卡片不显示它们；
 卡片和所有 workspace 文本均以 `textContent` 构建。
 
+**跨边界与视觉验证不变量：** `embedded-server.ts` 的 HTTP 路由必须同时兼容
+Node HTTP 生命周期和 Bun Fetch adapter；adapter 路径以 `AbortSignal` 为标准，
+不得假设 `IncomingMessage` 的 EventEmitter 方法存在。替换 sidebar DOM 的共享状态
+更新必须明确保持或关闭当前 overlay、focus、请求和折叠/滚动状态；同一 logical
+workspace 的替换不得意外关闭 quick-info。原型图定义可见 UI 时，它是实现契约：
+design spec 要列出可见/省略字段、图标、分隔线和截断，测试要覆盖 DOM 契约，并以
+真实浏览器截图验收。具体的强制检查清单见
+[`docs/engineering-lessons.md`](docs/engineering-lessons.md)。
+
 ### 文件浏览、预览与编辑
 
 文件工作区由右侧的 `FileBrowser` 和中央可调整尺寸的

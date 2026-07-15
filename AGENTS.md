@@ -133,6 +133,15 @@ feature-specific invariants, module indexes, and design links in
 `ARCHITECTURE.md`, then update that document whenever the implementation
 materially changes.
 
+## Cross-boundary and prototype verification
+
+Before changing a browser/server adapter, a popup/overlay, or shared-state
+rerender behavior, read and apply
+[`docs/engineering-lessons.md`](docs/engineering-lessons.md). Its applicable
+rules are mandatory release criteria; do not treat a visual prototype as
+non-binding inspiration or assume a Node HTTP object when the production path
+uses Bun's Fetch adapter.
+
 ## Bumping the embedded pi version
 
 1. Edit `scripts/pi-version.json` → `version`.
