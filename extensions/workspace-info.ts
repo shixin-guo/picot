@@ -21,6 +21,45 @@ export type GitCommandRunner = (
   args: string[],
   options: { cwd: string; env: NodeJS.ProcessEnv; maxBuffer: number; signal: AbortSignal },
 ) => Promise<{ stdout: string }>;
+type AbortSource = {
+  signal?: AbortSignal;
+  once?: (event: string, listener: () => void) => unknown;
+  removeListener?: (event: string, listener: () => void) => unknown;
+};
+
+/**
+ * Propagates request cancellation to a workspace Git operation across both
+ * Node's EventEmitter HTTP server and Bun's Fetch-based request adapter.
+ */
+export function observeWorkspaceInfoAbort(
+  controller: AbortController,
+  request: AbortSource,
+  response: AbortSource,
+) {
+  const abort = () => controller.abort();
+  const cleanups: Array<() => void> = [];
+
+  if (request.signal?.aborted) {
+    abort();
+  } else if (request.signal) {
+    request.signal.addEventListener("abort", abort, { once: true });
+    cleanups.push(() => request.signal?.removeEventListener("abort", abort));
+  }
+  for (const [source, event] of [
+    [request, "aborted"],
+    [response, "close"],
+  ] as const) {
+    if (typeof source.once !== "function") continue;
+    source.once(event, abort);
+    if (typeof source.removeListener === "function") {
+      cleanups.push(() => source.removeListener?.(event, abort));
+    }
+  }
+
+  return () => {
+    for (const cleanup of cleanups) cleanup();
+  };
+}
 
 function normalizePath(value: string) {
   if (!isAbsolute(value)) return "";

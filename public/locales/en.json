@@ -336,6 +336,7 @@
     "quickInfo": {
       "cardLabel": "Workspace details for {folder}",
       "totalSessions": "Total sessions",
+      "threads": "{count} threads",
       "path": "Path",
       "loadingGit": "Loading Git metadata…",
       "repository": "Repository",

@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
   inspectWorkspaceGit,
+  observeWorkspaceInfoAbort,
   parseRepositoryName,
   resolveWorkspaceInfoPath,
 } from "./workspace-info.ts";
@@ -52,5 +53,26 @@ describe("workspace info", () => {
       kind: "repository",
       branch: "main",
     });
+  });
+  it("observes Fetch request cancellation without Node event methods", () => {
+    const request = new AbortController();
+    const operation = new AbortController();
+    const cleanup = observeWorkspaceInfoAbort(operation, { signal: request.signal }, {});
+
+    request.abort();
+
+    expect(operation.signal.aborted).toBe(true);
+    cleanup();
+  });
+
+  it("aborts immediately when a Fetch request is already cancelled", () => {
+    const request = new AbortController();
+    request.abort();
+    const operation = new AbortController();
+
+    const cleanup = observeWorkspaceInfoAbort(operation, { signal: request.signal }, {});
+
+    expect(operation.signal.aborted).toBe(true);
+    cleanup();
   });
 });

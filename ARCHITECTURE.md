@@ -597,6 +597,11 @@ unavailable。旧 `pi-studio-favourites` 仅在当前 origin 尽力迁移。
 `GIT_TERMINAL_PROMPT=0`。Git 输出和所有 Pin 文本均是不可信数据，前端只能
 用 `textContent` 渲染。
 
+`WorkspaceQuickInfo` 的卡片遵循紧凑原型：folder name + Pin/Unpin，含归档
+会话的 thread 总数，完整路径，以及有 Git remote 时在分隔线后的 repository
+名称。type、branch 与 detached HEAD 仍可由 API 返回，但当前卡片不显示它们；
+卡片和所有 workspace 文本均以 `textContent` 构建。
+
 ### 文件浏览、预览与编辑
 
 文件工作区由右侧的 `FileBrowser` 和中央可调整尺寸的

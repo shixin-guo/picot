@@ -216,26 +216,28 @@ The first row contains the folder icon and folder name, with the Pin/Unpin icon
 button aligned at the far right as shown in the prototype. The button exposes a
 localized accessible name and `aria-pressed` state.
 
-The card immediately shows data already present in the sidebar:
+The card uses the prototype's compact visual structure:
 
-- workspace folder name;
-- total session count, including Archived sessions; and
-- full workspace path.
+1. folder icon, folder name, and Pin/Unpin control;
+2. conversation icon with the localized total-thread count, including Archived
+   sessions;
+3. folder icon with the full workspace path; and
+4. after a separator, a Git-branch icon with the remote repository name when
+   Git metadata provides one.
+
+The card never shows visible field labels, repository type, current branch, or
+detached HEAD state. The metadata endpoint may still return those fields for
+server-side classification and future explicit product requirements, but the
+first version's compact card renders only the repository name. This exactly
+matches the approved prototype.
 
 Each `PROJECTS` workspace-header count remains the non-archived count. Quick info
-labels its count as total so the two values cannot be mistaken for the same
-metric.
+labels its count as total through the localized count text so the two values
+cannot be mistaken for the same metric.
 
-It then loads Git metadata on demand:
-
-- remote repository as `owner/repository` when a supported remote exists;
-- repository-root folder name when no remote exists;
-- `Repository` or `Worktree` type; and
-- current branch.
-
-For a non-Git workspace, the card omits Git rows and retains the folder, count,
-path, and Pin control. A Git error degrades in the same way and never disables
-Pinning.
+For a non-Git workspace, the card omits the Git row and retains the folder,
+count, path, and Pin control. A Git error degrades in the same way and never
+disables Pinning.
 
 The frontend caches positive and negative Git results by workspace path for 30
 seconds. A request sequence or abort mechanism prevents a response for an old

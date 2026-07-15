@@ -28,7 +28,8 @@ export class SessionSidebar {
     this.unread = new Set(JSON.parse(localStorage.getItem("pi-studio-unread") || "[]"));
     this.pinStore = options.pinStore || createPinnedItemsStore();
     this.quickInfo = options.quickInfo || new WorkspaceQuickInfo({ pinStore: this.pinStore });
-    this.unsubscribePinStore = this.pinStore.subscribe?.(() => this.render()) || null;
+    this.unsubscribePinStore =
+      this.pinStore.subscribe?.(() => this.render({ preserveQuickInfo: true })) || null;
     this.pinStore.migrateLegacyFavourites?.({ excludedSessions: this.archived });
     this.streamingFiles = new Set();
     this.projectVisibleSessionCounts = new Map();
@@ -814,11 +815,11 @@ export class SessionSidebar {
     this.container.appendChild(section);
   }
 
-  render() {
+  render({ preserveQuickInfo = false } = {}) {
     const recentSessions = this.resolveRecentSessions();
 
     this.container.innerHTML = "";
-    this.quickInfo.clearHeaders();
+    this.quickInfo.clearHeaders({ preserveCard: preserveQuickInfo });
     this.quickInfo.setWorkspaces(this.projects);
 
     const archivedSessions = [];

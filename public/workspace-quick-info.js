@@ -129,6 +129,17 @@ export class WorkspaceQuickInfo {
     if (workspace.workspaceId) {
       this._workspaces.set(workspace.workspaceId, workspace);
     }
+
+    if (
+      this._cardVisible &&
+      this._currentWorkspace &&
+      workspaceCacheKey(this._currentWorkspace) === workspaceCacheKey(workspace)
+    ) {
+      this._currentHeader = headerEl;
+      this._currentWorkspace = workspace;
+      this._updatePinState();
+      this._clampCard();
+    }
   }
 
   /** Unbind a single header and close the card if it was the active target. */
@@ -142,15 +153,15 @@ export class WorkspaceQuickInfo {
     if (this._currentHeader === headerEl) this._hideCard();
   }
 
-  /** Unbind all headers (call before a full sidebar re-render). */
-  clearHeaders() {
+  /** Unbind all headers before a sidebar rerender. */
+  clearHeaders({ preserveCard = false } = {}) {
     for (const [el, entry] of this._headers) {
       for (const [type, fn] of Object.entries(entry.handlers)) {
         el.removeEventListener(type, fn);
       }
     }
     this._headers.clear();
-    this._hideCard();
+    if (!preserveCard) this._hideCard();
   }
 
   /**
@@ -243,12 +254,10 @@ export class WorkspaceQuickInfo {
     const content = document.createElement("div");
     content.className = "wqi-content";
 
-    const countRow = this._createLabeledRow("wqi-count-row", "wqi-count");
-    this._countLabelEl = countRow.label;
+    const countRow = this._createIconRow("wqi-count-row", "wqi-count-icon", "wqi-count");
     this._countEl = countRow.value;
 
-    const pathRow = this._createLabeledRow("wqi-path-row", "wqi-path");
-    this._pathLabelEl = pathRow.label;
+    const pathRow = this._createIconRow("wqi-path-row", "wqi-path-icon", "wqi-path");
     this._pathEl = pathRow.value;
 
     // Git region
@@ -258,26 +267,14 @@ export class WorkspaceQuickInfo {
     this._gitLoadingEl = document.createElement("div");
     this._gitLoadingEl.className = "wqi-git-loading";
     this._gitLoadingEl.hidden = true;
+    this._gitLoadingEl.setAttribute("aria-live", "polite");
 
-    const repoRow = this._createLabeledRow("wqi-repo-row", "wqi-repo");
+    const repoRow = this._createIconRow("wqi-repo-row", "wqi-repo-icon", "wqi-repo");
     repoRow.row.hidden = true;
-    this._repoLabelEl = repoRow.label;
     this._repoEl = repoRow.value;
 
-    const typeRow = this._createLabeledRow("wqi-type-row", "wqi-type");
-    typeRow.row.hidden = true;
-    this._typeLabelEl = typeRow.label;
-    this._typeEl = typeRow.value;
-
-    const branchRow = this._createLabeledRow("wqi-branch-row", "wqi-branch");
-    branchRow.row.hidden = true;
-    this._branchLabelEl = branchRow.label;
-    this._branchEl = branchRow.value;
-
-    gitRegion.append(this._gitLoadingEl, repoRow.row, typeRow.row, branchRow.row);
+    gitRegion.append(this._gitLoadingEl, repoRow.row);
     this._repoRow = repoRow.row;
-    this._typeRow = typeRow.row;
-    this._branchRow = branchRow.row;
 
     // Error indicator (pin capacity, etc.)
     this._errorEl = document.createElement("div");
@@ -291,15 +288,16 @@ export class WorkspaceQuickInfo {
     this._container?.appendChild(card);
   }
 
-  _createLabeledRow(rowClass, valueClass) {
+  _createIconRow(rowClass, iconClass, valueClass) {
     const row = document.createElement("div");
     row.className = `wqi-row ${rowClass}`;
-    const label = document.createElement("span");
-    label.className = "wqi-row-label";
+    const icon = document.createElement("span");
+    icon.className = iconClass;
+    icon.setAttribute("aria-hidden", "true");
     const value = document.createElement("span");
     value.className = `wqi-row-value ${valueClass}`;
-    row.append(label, value);
-    return { row, label, value };
+    row.append(icon, value);
+    return { row, value };
   }
 
   _attachCardListeners() {
@@ -366,8 +364,6 @@ export class WorkspaceQuickInfo {
     this._pathEl.textContent = "";
     this._gitLoadingEl.hidden = true;
     this._repoRow.hidden = true;
-    this._typeRow.hidden = true;
-    this._branchRow.hidden = true;
     this._clearError();
   }
 
@@ -407,10 +403,7 @@ export class WorkspaceQuickInfo {
     this._folderEl.textContent = folder || "";
 
     const count = totalSessionCount(workspace);
-    this._countLabelEl.textContent = t("sidebar.quickInfo.totalSessions");
-    this._countEl.textContent = String(count);
-
-    this._pathLabelEl.textContent = t("sidebar.quickInfo.path");
+    this._countEl.textContent = t("sidebar.quickInfo.threads", { count });
     this._pathEl.textContent = workspace.path || "";
 
     this._cardEl.setAttribute(
@@ -418,12 +411,11 @@ export class WorkspaceQuickInfo {
       t("sidebar.quickInfo.cardLabel", { folder: folder || "" }),
     );
 
-    // Reset git region to loading state.
+    // Git metadata is intentionally unobtrusive while loading so the card
+    // retains its compact prototype layout.
     this._gitLoadingEl.textContent = t("sidebar.quickInfo.loadingGit");
-    this._gitLoadingEl.hidden = false;
+    this._gitLoadingEl.hidden = true;
     this._repoRow.hidden = true;
-    this._typeRow.hidden = true;
-    this._branchRow.hidden = true;
   }
 
   async _loadGitMetadata(workspace) {
@@ -495,35 +487,11 @@ export class WorkspaceQuickInfo {
   _applyGitResult(result) {
     this._gitLoadingEl.hidden = true;
 
-    if (result.kind === "git" && result.data) {
-      const { data } = result;
-
-      if (data.repository) {
-        this._repoLabelEl.textContent = t("sidebar.quickInfo.repository");
-        this._repoEl.textContent = data.repository; // inert text
-        this._repoRow.hidden = false;
-      }
-
-      this._typeLabelEl.textContent = t("sidebar.quickInfo.type");
-      this._typeEl.textContent =
-        data.kind === "worktree"
-          ? t("sidebar.quickInfo.worktree")
-          : t("sidebar.quickInfo.repository");
-      this._typeRow.hidden = false;
-
-      if (data.branch) {
-        this._branchLabelEl.textContent = t("sidebar.quickInfo.branch");
-        this._branchEl.textContent = data.branch; // inert text
-        this._branchRow.hidden = false;
-      } else if (data.detachedAt) {
-        this._branchLabelEl.textContent = t("sidebar.quickInfo.branch");
-        this._branchEl.textContent = t("sidebar.quickInfo.detachedAt", {
-          sha: data.detachedAt,
-        });
-        this._branchRow.hidden = false;
-      }
+    if (result.kind === "git" && result.data?.repository) {
+      this._repoEl.textContent = result.data.repository; // inert text
+      this._repoRow.hidden = false;
     }
-    // 'negative' and 'failure' → Git rows stay hidden (non-Git degradation).
+    // 'negative' and 'failure' leave the repository row hidden.
   }
 
   _clearError() {

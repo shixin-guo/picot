@@ -58,7 +58,11 @@ import {
   writeTextFileIfUnchanged,
 } from "./file-routes.ts";
 import { buildProjectSearchMatch } from "./session-search";
-import { inspectWorkspaceGit, resolveWorkspaceInfoPath } from "./workspace-info.ts";
+import {
+  inspectWorkspaceGit,
+  observeWorkspaceInfoAbort,
+  resolveWorkspaceInfoPath,
+} from "./workspace-info.ts";
 
 // `pi` is compiled with `bun build --compile`. Inside that runtime,
 // `http.createServer(...).on("upgrade", ...)` accepts the upgrade event
@@ -1490,9 +1494,11 @@ export default function (pi: ExtensionAPI) {
         return;
       }
       const abortController = new AbortController();
-      const abortRequest = () => abortController.abort();
-      req.once("aborted", abortRequest);
-      res.once("close", abortRequest);
+      const removeAbortListeners = observeWorkspaceInfoAbort(
+        abortController,
+        req as unknown as { signal?: AbortSignal },
+        res as unknown as { signal?: AbortSignal },
+      );
       try {
         const info = await inspectWorkspaceGit(workspacePath, {
           signal: abortController.signal,
@@ -1510,8 +1516,7 @@ export default function (pi: ExtensionAPI) {
           }),
         );
       } finally {
-        req.removeListener("aborted", abortRequest);
-        res.removeListener("close", abortRequest);
+        removeAbortListeners();
       }
       return;
     }
@@ -3317,6 +3322,7 @@ export default function (pi: ExtensionAPI) {
         url: url.pathname + url.search,
         method: req.method,
         headers,
+        signal: req.signal,
         // Only `data`/`end` are consumed by our POST handlers — see
         // /api/rpc, /api/agent-config (PUT), etc.
         on(event: string, fn: (chunk?: unknown) => void) {

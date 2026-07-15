@@ -336,6 +336,7 @@
     "quickInfo": {
       "cardLabel": "{folder} 的工作区详情",
       "totalSessions": "会话总数",
+      "threads": "{count} 个对话",
       "path": "路径",
       "loadingGit": "正在加载 Git 元数据…",
       "repository": "仓库",

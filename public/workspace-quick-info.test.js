@@ -146,6 +146,7 @@ beforeEach(async () => {
             unpinWorkspace: "Unpin workspace",
             quickInfo: {
               totalSessions: "Total sessions",
+              threads: "{count} threads",
               path: "Path",
               loadingGit: "Loading Git information…",
               repository: "Repository",
@@ -173,15 +174,18 @@ afterEach(() => {
 // ── 1. Static data shown immediately ─────────────────────────────────
 
 describe("static workspace data", () => {
-  test("shows folder name, total session count, and path immediately on open", () => {
+  test("shows the compact prototype rows immediately on open", () => {
     const { qi, headerEl } = makeHarness();
     headerEl.dispatchEvent(new FocusEvent("focusin"));
 
     const card = document.querySelector(".workspace-quick-info");
     expect(card.style.display).not.toBe("none");
     expect(card.querySelector(".wqi-folder-name").textContent).toBe("alpha");
-    expect(card.querySelector(".wqi-count").textContent).toBe("2");
+    expect(card.querySelector(".wqi-count").textContent).toBe("2 threads");
     expect(card.querySelector(".wqi-path").textContent).toBe("/work/alpha");
+    expect(card.querySelector(".wqi-count-icon")).not.toBeNull();
+    expect(card.querySelector(".wqi-path-icon")).not.toBeNull();
+    expect(card.querySelector(".wqi-row-label")).toBeNull();
   });
 
   test("total session count includes archived sessions", () => {
@@ -195,7 +199,7 @@ describe("static workspace data", () => {
     const { qi, headerEl } = makeHarness({ workspace: ws });
     headerEl.dispatchEvent(new FocusEvent("focusin"));
 
-    expect(document.querySelector(".wqi-count").textContent).toBe("3");
+    expect(document.querySelector(".wqi-count").textContent).toBe("3 threads");
   });
 
   test("derives folder name from last path segment when folderName missing", () => {
@@ -204,6 +208,22 @@ describe("static workspace data", () => {
     headerEl.dispatchEvent(new FocusEvent("focusin"));
 
     expect(document.querySelector(".wqi-folder-name").textContent).toBe("beta");
+  });
+
+  test("keeps an open card across a Pin-triggered sidebar rerender", () => {
+    const { qi, headerEl, workspace } = makeHarness();
+    headerEl.dispatchEvent(new FocusEvent("focusin"));
+
+    const replacementHeader = document.createElement("div");
+    replacementHeader.getBoundingClientRect = headerEl.getBoundingClientRect;
+    qi.clearHeaders({ preserveCard: true });
+    qi.setWorkspaces([workspace]);
+    qi.bindHeader(replacementHeader, workspace);
+
+    const card = document.querySelector(".workspace-quick-info");
+    expect(card.style.display).not.toBe("none");
+    expect(card.querySelector(".wqi-path").textContent).toBe("/work/alpha");
+    expect(qi._currentHeader).toBe(replacementHeader);
   });
 });
 
@@ -227,7 +247,7 @@ describe("inert text rendering", () => {
     expect(pathEl.querySelector("img")).toBeNull();
   });
 
-  test("Git metadata with HTML metacharacters is inert", async () => {
+  test("repository metadata with HTML metacharacters is inert", async () => {
     const ws = makeWorkspace();
     const fetchImpl = vi.fn(async () => ({
       ok: true,
@@ -247,10 +267,11 @@ describe("inert text rendering", () => {
     });
 
     const repoEl = document.querySelector(".wqi-repo");
-    const branchEl = document.querySelector(".wqi-branch");
     expect(repoEl.querySelector("b")).toBeNull();
-    expect(branchEl.innerHTML).toContain("&lt;script&gt;");
-    expect(branchEl.querySelector("script")).toBeNull();
+    expect(repoEl.innerHTML).toContain("&lt;b&gt;");
+    expect(repoEl.querySelector("script")).toBeNull();
+    expect(document.querySelector(".wqi-type")).toBeNull();
+    expect(document.querySelector(".wqi-branch")).toBeNull();
   });
 
   test("error text is inert", () => {
@@ -418,7 +439,7 @@ describe("Git metadata", () => {
     expect(url).toContain(encodeURIComponent("history:my/repo"));
   });
 
-  test("shows repository, type, branch for a Git repo", async () => {
+  test("shows only the repository in the compact Git row", async () => {
     const fetchImpl = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -436,11 +457,12 @@ describe("Git metadata", () => {
     await vi.waitFor(() => {
       expect(document.querySelector(".wqi-repo").textContent).toBe("owner/repo");
     });
-    expect(document.querySelector(".wqi-type").textContent).toBe("Worktree");
-    expect(document.querySelector(".wqi-branch").textContent).toBe("feature/sidebar");
+    expect(document.querySelector(".wqi-repo-icon")).not.toBeNull();
+    expect(document.querySelector(".wqi-type")).toBeNull();
+    expect(document.querySelector(".wqi-branch")).toBeNull();
   });
 
-  test("detached HEAD shows sha instead of branch", async () => {
+  test("detached HEAD keeps the compact repository-only card", async () => {
     const fetchImpl = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -456,8 +478,9 @@ describe("Git metadata", () => {
     headerEl.dispatchEvent(new FocusEvent("focusin"));
 
     await vi.waitFor(() => {
-      expect(document.querySelector(".wqi-branch").textContent).toBe("Detached at abc1234");
+      expect(document.querySelector(".wqi-repo").textContent).toBe("o/r");
     });
+    expect(document.querySelector(".wqi-branch")).toBeNull();
   });
 
   test("non-Git workspace omits Git rows", async () => {
@@ -473,8 +496,8 @@ describe("Git metadata", () => {
       expect(document.querySelector(".wqi-git-loading").hidden).toBe(true);
     });
     expect(document.querySelector(".wqi-repo-row").hidden).toBe(true);
-    expect(document.querySelector(".wqi-type-row").hidden).toBe(true);
-    expect(document.querySelector(".wqi-branch-row").hidden).toBe(true);
+    expect(document.querySelector(".wqi-type-row")).toBeNull();
+    expect(document.querySelector(".wqi-branch-row")).toBeNull();
   });
 
   test("30s positive cache avoids refetch on re-open", async () => {
@@ -509,7 +532,7 @@ describe("Git metadata", () => {
     }));
     const { qi, headerEl } = makeHarness({ fetchImpl });
     headerEl.dispatchEvent(new FocusEvent("focusin"));
-    await vi.waitFor(() => expect(document.querySelector(".wqi-git-loading").hidden).toBe(true));
+    await vi.waitFor(() => expect(qi._cache.size).toBe(1));
 
     headerEl.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     headerEl.dispatchEvent(new FocusEvent("focusin"));
