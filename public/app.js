@@ -32,6 +32,7 @@ import {
   deferFileBrowserWorkspace,
   findPortForSession,
   getWorkspacePathForPort,
+  isExpectedMirrorSession,
 } from "./session-routing.js";
 import { SessionSidebar } from "./session-sidebar.js";
 import {
@@ -282,6 +283,11 @@ let sessionsLoaded = false;
 // corrupt that state, so a second call queues behind the first.
 let sessionSelectChain = Promise.resolve();
 let deferredMirrorSync = null;
+// A selection may render its saved JSONL before its pi process has completed a
+// switch. Ignore the old process's same-port snapshot until it confirms the
+// selected session, otherwise it clobbers the restored history (and its
+// multi-turn navigator) with stale entries.
+let pendingMirrorSessionFile = null;
 let lastRenderedWelcomeWorkspacePath = null;
 // Maps port -> sessionFile for each pi process we're tracking
 const portSessionMap = new Map();
@@ -2267,6 +2273,7 @@ async function handleSessionSelectImpl(session, project) {
 
   // Native host: switch session via control command to the current pi instance
   if (nativeAvailable() && session.filePath) {
+    pendingMirrorSessionFile = session.filePath;
     const wasStreaming = state.isStreaming;
     clearMessageQueue();
     state.reset();
@@ -2347,6 +2354,7 @@ async function handleSessionSelectImpl(session, project) {
       await transport.switchSession(session.filePath, foregroundPort);
       wsClient.send({ type: "mirror_sync_request" });
     } catch (e) {
+      if (pendingMirrorSessionFile === session.filePath) pendingMirrorSessionFile = null;
       messageRenderer.renderError(t("errors.failedToSwitchSession", { error: e }));
     }
     if (isMobile()) {
@@ -2519,6 +2527,7 @@ function handleMirrorSync(data) {
     syncPort,
     foregroundPort,
     sessionFile: data.sessionFile,
+    expectedSessionFile: pendingMirrorSessionFile,
     setMirrorActiveSessionFile: (filePath) => {
       mirrorActiveSessionFile = filePath;
     },
@@ -2539,6 +2548,13 @@ function handleMirrorSync(data) {
       updateMirrorLiveIndicator();
     }
     return;
+  }
+
+  if (
+    pendingMirrorSessionFile &&
+    isExpectedMirrorSession(pendingMirrorSessionFile, data.sessionFile)
+  ) {
+    pendingMirrorSessionFile = null;
   }
 
   console.log("[Mirror] Received state snapshot:", data.entries?.length, "entries");

@@ -20,14 +20,28 @@ export function isForegroundMirrorSync(syncPort, foregroundPort) {
   );
 }
 
+export function isExpectedMirrorSession(expectedSessionFile, receivedSessionFile) {
+  return (
+    typeof expectedSessionFile !== "string" ||
+    !expectedSessionFile ||
+    expectedSessionFile === receivedSessionFile
+  );
+}
+
 export function applyForegroundMirrorSession({
   syncPort,
   foregroundPort,
   sessionFile,
+  expectedSessionFile = null,
   setMirrorActiveSessionFile,
   setSidebarActive,
 }) {
-  if (!isForegroundMirrorSync(syncPort, foregroundPort)) return false;
+  if (
+    !isForegroundMirrorSync(syncPort, foregroundPort) ||
+    !isExpectedMirrorSession(expectedSessionFile, sessionFile)
+  ) {
+    return false;
+  }
 
   const activeSessionFile = sessionFile || null;
   setMirrorActiveSessionFile(activeSessionFile);

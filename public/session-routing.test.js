@@ -65,6 +65,38 @@ test("does not apply a background mirror session", () => {
   expect(sidebarSessionFile).toBe("/tmp/current.jsonl");
 });
 
+test("rejects a same-port mirror snapshot until it confirms the selected session", () => {
+  expect(
+    sessionRouting.isExpectedMirrorSession("/history/selected.jsonl", "/history/previous.jsonl"),
+  ).toBe(false);
+  expect(
+    sessionRouting.isExpectedMirrorSession("/history/selected.jsonl", "/history/selected.jsonl"),
+  ).toBe(true);
+  expect(sessionRouting.isExpectedMirrorSession(null, "/history/previous.jsonl")).toBe(true);
+});
+
+test("does not replace active-session owners with a stale same-port snapshot", () => {
+  let mirrorSessionFile = "/history/selected.jsonl";
+  let sidebarSessionFile = "/history/selected.jsonl";
+
+  const applied = sessionRouting.applyForegroundMirrorSession({
+    syncPort: 3001,
+    foregroundPort: 3001,
+    expectedSessionFile: "/history/selected.jsonl",
+    sessionFile: "/history/previous.jsonl",
+    setMirrorActiveSessionFile: (filePath) => {
+      mirrorSessionFile = filePath;
+    },
+    setSidebarActive: (filePath) => {
+      sidebarSessionFile = filePath;
+    },
+  });
+
+  expect(applied).toBe(false);
+  expect(mirrorSessionFile).toBe("/history/selected.jsonl");
+  expect(sidebarSessionFile).toBe("/history/selected.jsonl");
+});
+
 test("defers a cross-workspace file tree load until the selected session is confirmed", () => {
   const pending = sessionRouting.deferFileBrowserWorkspace(
     "/history/new.jsonl",

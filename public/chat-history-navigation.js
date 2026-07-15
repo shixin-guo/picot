@@ -129,6 +129,7 @@ export class ChatHistoryNavigator {
     this._activeIndex = -1;
     this._hoverIndex = -1;
     this._previewTurn = null;
+    this._previewPointerY = null;
     this._lastMagnify = { center: -1, indices: [] };
 
     this._layoutFrame = 0;
@@ -458,7 +459,7 @@ export class ChatHistoryNavigator {
       }
       this._hoverIndex = nearest;
       this._applyMagnification(nearest);
-      this._showPreview(nearest);
+      this._showPreview(nearest, event.clientY);
     });
   }
 
@@ -504,11 +505,12 @@ export class ChatHistoryNavigator {
 
   // ── Preview ─────────────────────────────────────────────────────────
 
-  _showPreview(index) {
+  _showPreview(index, pointerY = null) {
     const turn = this.turns[index];
     if (!turn) return;
     this._cancelClose();
     this._previewTurn = turn;
+    if (Number.isFinite(pointerY)) this._previewPointerY = pointerY;
     this.preview.style.display = "";
     this._populatePreview(turn);
     this._clampPreview();
@@ -556,18 +558,21 @@ export class ChatHistoryNavigator {
     const vh = this._measureViewport ? this._measureViewport().height : window.innerHeight;
     const cardRect = this.preview.getBoundingClientRect();
     const rootRect = this.root.getBoundingClientRect();
-    // Keep card inside viewport vertically and to the right of the rail.
-    let top = rootRect.top;
-    if (top + cardRect.height > vh) {
-      top = Math.max(0, vh - cardRect.height);
-    }
-    if (top < 0) top = 0;
-    this.preview.style.top = `${Math.round(top)}px`;
-    // Card sits right of rail; ensure it does not cross the right edge.
     const railRect = this.rail.getBoundingClientRect();
-    const left = railRect.right + 8;
-    const maxLeft = Math.max(0, vw - cardRect.width - 8);
-    this.preview.style.left = `${Math.round(Math.min(left, maxLeft))}px`;
+    const margin = 8;
+
+    // Preview coordinates are relative to the transformed root, whereas the
+    // pointer and viewport are page coordinates. Convert only after clamping
+    // in page space so the card stays beside the hovered tick.
+    const pointerY = this._previewPointerY ?? railRect.top + railRect.height / 2;
+    const maxTop = Math.max(margin, vh - cardRect.height - margin);
+    const visualTop = Math.min(Math.max(margin, pointerY - cardRect.height / 2), maxTop);
+    this.preview.style.top = `${Math.round(visualTop + cardRect.height / 2 - rootRect.top)}px`;
+
+    const desiredLeft = railRect.right + margin;
+    const maxLeft = Math.max(margin, vw - cardRect.width - margin);
+    const visualLeft = Math.min(Math.max(margin, desiredLeft), maxLeft);
+    this.preview.style.left = `${Math.round(visualLeft - rootRect.left)}px`;
   }
 
   _hidePreview(immediate = false) {
@@ -593,6 +598,7 @@ export class ChatHistoryNavigator {
   _closeNow() {
     this._closeTimer = 0;
     this._previewTurn = null;
+    this._previewPointerY = null;
     this.preview.style.display = "none";
     this.previewPrompt.textContent = "";
     this.previewResponse.textContent = "";

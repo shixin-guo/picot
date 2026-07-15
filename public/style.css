@@ -6068,10 +6068,10 @@ body.file-preview-resizing {
    reserves layout width — pure overlay. */
 .chat-nav {
   position: absolute;
-  left: 0;
+  left: 8px;
   top: 50%;
+  z-index: 11;
   transform: translateY(-50%);
-  z-index: 5;
   pointer-events: none; /* children opt back in */
 }
 
@@ -6083,16 +6083,16 @@ body.file-preview-resizing {
 /* ── Rail ── */
 .chat-nav-rail {
   position: relative;
+  width: 32px;
   height: clamp(160px, 42vh, 360px);
   /* Wide pointer hit area without covering message text. */
-  width: 28px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   align-items: flex-start;
-  padding: 4px 0;
-  pointer-events: auto;
+  justify-content: space-between;
+  padding: 4px 0 4px 4px;
   cursor: pointer;
+  pointer-events: auto;
 }
 
 /* ── Tick marks ──
@@ -6101,9 +6101,13 @@ body.file-preview-resizing {
    progressive size, color, and opacity from --mag. */
 .chat-nav-tick {
   --mag: 0;
-  width: calc(3px + var(--mag) * 2px);
-  height: calc(8px + var(--mag) * 14px);
-  background: color-mix(in srgb, var(--text-ghost), var(--text-secondary) calc(var(--mag) * 100%));
+  width: calc(4px + var(--mag) * 2px);
+  height: calc(10px + var(--mag) * 12px);
+  background: color-mix(
+    in srgb,
+    var(--text-ghost),
+    var(--text-secondary) calc(42% + var(--mag) * 58%)
+  );
   border-radius: var(--radius-pill);
   transition:
     width var(--duration) var(--ease),
@@ -6111,7 +6115,7 @@ body.file-preview-resizing {
     background var(--duration) var(--ease),
     opacity var(--duration) var(--ease);
   flex-shrink: 0;
-  opacity: calc(0.7 + var(--mag) * 0.3);
+  opacity: calc(0.8 + var(--mag) * 0.2);
 }
 
 /* Current viewport turn — stronger color regardless of --mag. */

@@ -548,6 +548,31 @@ describe("preview behavior", () => {
     expect(lastCall[1]).toBe(120);
   });
 
+  test("positions preview beside the hovered pointer rather than the rail center", () => {
+    const { nav, flushRafs } = makeHarness({
+      measureViewport: () => ({ width: 400, height: 300 }),
+    });
+    for (let i = 0; i < 2; i++) nav.addUserTurn({ id: `u${i}`, text: `t${i}` });
+    flushRafs();
+    Object.defineProperty(nav.root, "getBoundingClientRect", {
+      value: () => ({ top: 100, height: 200, bottom: 300, left: 40, right: 72, width: 32 }),
+      configurable: true,
+    });
+    Object.defineProperty(nav.preview, "getBoundingClientRect", {
+      value: () => ({ top: 0, height: 100, bottom: 100, left: 0, right: 200, width: 200 }),
+      configurable: true,
+    });
+    Object.defineProperty(nav.rail, "getBoundingClientRect", {
+      value: () => ({ top: 100, height: 200, bottom: 300, left: 40, right: 72, width: 32 }),
+      configurable: true,
+    });
+
+    nav._showPreview(0, 220);
+
+    expect(nav.preview.style.top).toBe("120px");
+    expect(nav.preview.style.left).toBe("40px");
+  });
+
   test("viewport clamping keeps preview within window", () => {
     const { nav, flushRafs } = makeHarness({
       measureViewport: () => ({ width: 400, height: 300 }),
@@ -568,10 +593,10 @@ describe("preview behavior", () => {
     });
     nav._showPreview(0);
     nav._clampPreview();
-    // top + cardHeight(100) must be <= vh(300) => top <= 200
     const top = parseInt(nav.preview.style.top, 10);
-    expect(top).toBeLessThanOrEqual(200);
-    expect(top).toBeGreaterThanOrEqual(0);
+    const visualTop = 250 + top - 50;
+    expect(visualTop).toBeLessThanOrEqual(200);
+    expect(visualTop).toBeGreaterThanOrEqual(0);
   });
 });
 
