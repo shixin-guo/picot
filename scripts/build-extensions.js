@@ -34,7 +34,11 @@ const SRC_DIR = path.join(ROOT, "extensions");
 const OUT_DIR = path.join(SRC_DIR, "dist");
 
 // [inputPath, outputName] — outputName defaults to inputPath with .ts→.mjs
-const ENTRIES = [["embedded-server.ts"], ["pi-chat-src/extension-entry.ts", "pi-chat.mjs"]];
+const ENTRIES = [
+  ["embedded-server.ts"],
+  ["picot-bridge.ts"],
+  ["pi-chat-src/extension-entry.ts", "pi-chat.mjs"],
+];
 
 const EXTERNAL = [
   "@earendil-works/pi-coding-agent",

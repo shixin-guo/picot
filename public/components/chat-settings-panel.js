@@ -1,7 +1,7 @@
 /**
  * <chat-settings-panel> Web Component
  *
- * The "Chat" tab inside Settings. The normal Telegram setup flow only asks
+ * The "Agent Inbox" tab inside Settings. The normal Telegram setup flow only asks
  * for a bot token; Picot validates the bot, waits for the user's first DM, and
  * writes the full internal ~/.pi/agent/chat/config.json automatically.
  */
@@ -12,6 +12,17 @@ class ChatSettingsPanel extends HTMLElement {
     this._initialized = true;
     this.innerHTML = `
       <div class="settings-body">
+        <div class="settings-section">
+          <div class="settings-section-title">Agent Inbox</div>
+          <div class="settings-row" id="setting-super-agent">
+            <span class="settings-label settings-label-stack">
+              <span class="settings-label-main">Agent Inbox</span>
+              <span class="settings-label-sub">Start automatically</span>
+            </span>
+            <button class="settings-toggle" id="toggle-super-agent"></button>
+          </div>
+        </div>
+
         <div class="settings-section">
           <div class="settings-section-title">Telegram</div>
           <p class="settings-help">
@@ -283,7 +294,6 @@ class ChatSettingsPanel extends HTMLElement {
         <div class="chat-account-card">
           <div class="chat-account-header">
             <span class="chat-account-name">${esc(botName)}</span>
-            <span class="chat-account-service">telegram</span>
           </div>
           <div class="chat-account-detail">Authorized DM: ${esc(authorizedUser)}</div>
           <div class="chat-account-detail">Internal ID: <code>${esc(id)}</code></div>

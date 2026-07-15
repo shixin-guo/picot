@@ -1,7 +1,7 @@
 /**
  * <super-agent-runtime> Web Component
  *
- * Replaces the SuperAgentRuntime class + initRuntimeCollapse in super-agent-panel.js.
+ * Replaces the SuperAgentRuntime class + initRuntimeCollapse in super-agent/panel.js.
  * Renders its own HTML, polls /api/super-agent/tasks every 3s.
  *
  * Usage:
@@ -11,13 +11,13 @@
  * The host page should listen: el.addEventListener('sa-dispatch', e => ...)
  */
 
-import { setupResizablePanel } from "../resizable-panel.js";
 import {
   ACTIVE_TASK_STATUSES,
   markTaskFinished,
   markTaskForDispatch,
   normalizeSuperAgentTasks,
-} from "../super-agent-task-state.js";
+} from "../super-agent/task-state.js";
+import { setupResizablePanel } from "../ui/resizable-panel.js";
 
 class SuperAgentRuntime extends HTMLElement {
   connectedCallback() {

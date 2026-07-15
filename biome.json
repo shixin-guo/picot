@@ -11,6 +11,7 @@
       "!.cache",
       "!.claude",
       "!.pi",
+      "!.worktrees",
       "!node_modules",
       "!public/vendor"
     ]

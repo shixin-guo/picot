@@ -7,6 +7,8 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use crate::native_pi_manager::NativeLaunchSpec;
+
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -322,6 +324,58 @@ impl PiManager {
             workspace_dedicated: Arc::new(Mutex::new(HashMap::new())),
             static_dir,
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn native_launch_spec(
+        &self,
+        cwd: &str,
+        session_path: Option<&str>,
+    ) -> Result<NativeLaunchSpec, String> {
+        let binary = self.resolve_bundled_pi()?;
+        let mut candidates = Vec::new();
+        if let Some(resources) = self.static_dir.parent() {
+            candidates.push(resources.join("extensions").join("picot-bridge.mjs"));
+        }
+        if cfg!(debug_assertions) {
+            candidates.push(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("..")
+                    .join("extensions")
+                    .join("dist")
+                    .join("picot-bridge.mjs"),
+            );
+            candidates.push(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("..")
+                    .join("extensions")
+                    .join("picot-bridge.ts"),
+            );
+        }
+        let bridge = candidates
+            .iter()
+            .find(|candidate| candidate.is_file())
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "Could not find picot-bridge extension. Tried:\n{}",
+                    candidates
+                        .iter()
+                        .map(|path| format!("  - {}", path.display()))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
+            })?;
+        Ok(NativeLaunchSpec {
+            binary,
+            cwd: PathBuf::from(cwd),
+            session_path: session_path.map(PathBuf::from),
+            extensions: vec![PathBuf::from(sanitize_extension_path_for_pi(
+                &strip_verbatim_prefix(&bridge.to_string_lossy()),
+            ))],
+            pi_version: locked_pi_version().to_owned(),
+            path_env: build_augmented_path(),
+        })
     }
 
     /// Locate the embedded pi binary shipped inside the Tauri bundle.

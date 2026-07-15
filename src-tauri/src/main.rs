@@ -1,17 +1,31 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod broker_ws;
+mod host_data;
+mod host_router;
+mod host_server;
+mod metadata_store;
+mod native_pi_manager;
 mod pi_manager;
+mod pi_rpc_bridge;
+mod remote_auth;
+mod runtime_coordinator;
+mod settings_store;
 
 use broker_ws::BrokerWs;
+use host_server::HostServer;
+use metadata_store::MetadataStore;
+use native_pi_manager::NativePiManager;
 use pi_manager::{
     locked_pi_version, wait_for_endpoint, wait_for_health as wait_for_pi_health, PiManager,
 };
+use remote_auth::RemoteAuth;
+use runtime_coordinator::RuntimeTarget;
 use serde_json::Value;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::image::Image;
 use tauri::{AppHandle, Manager, State, TitleBarStyle, WebviewUrl, WebviewWindowBuilder};
@@ -20,6 +34,7 @@ use tauri_plugin_dialog::MessageDialogKind;
 
 type PiManagerState = Arc<PiManager>;
 type BrokerWsState = Arc<BrokerWs>;
+type NativePiManagerState = NativePiManager;
 
 // ─── Tauri Commands ───────────────────────────────────────────────────────────
 
@@ -248,7 +263,12 @@ fn list_installed_apps_core() -> Vec<AppTarget> {
     let candidates: [(&str, &str, &[&str], &str); 6] = [
         ("vscode", "VS Code", &["Visual Studio Code", "Code"], "code"),
         ("cursor", "Cursor", &["Cursor"], "cursor"),
-        ("webstorm", "WebStorm", &["WebStorm", "WebStorm EAP"], "webstorm"),
+        (
+            "webstorm",
+            "WebStorm",
+            &["WebStorm", "WebStorm EAP"],
+            "webstorm",
+        ),
         ("zed", "Zed", &["Zed"], "zed"),
         ("terminal", "Terminal", &["Terminal", "iTerm", "Warp"], ""),
         ("ghostty", "Ghostty", &["Ghostty"], ""),
@@ -464,6 +484,43 @@ fn open_workspace_window(app: &AppHandle, port: u16, broker_ws_url: &str) -> Res
     Ok(())
 }
 
+fn open_native_workspace_window(
+    app: &AppHandle,
+    host_origin: &str,
+    target: &RuntimeTarget,
+) -> Result<(), String> {
+    let label = format!("native-workspace-{}", target.workspace_id);
+    let url = format!(
+        "{}/app/workspaces/{}/sessions/{}",
+        host_origin, target.workspace_id, target.session_id
+    );
+    let icon = Image::from_bytes(include_bytes!("../icons/32x32.png"))
+        .map_err(|error| format!("Failed to load window icon: {error}"))?;
+    let builder = WebviewWindowBuilder::new(
+        app,
+        &label,
+        WebviewUrl::External(
+            url.parse()
+                .map_err(|error| format!("Invalid native Host URL: {error}"))?,
+        ),
+    )
+    .title("Picot")
+    .inner_size(1300.0, 860.0)
+    .min_inner_size(800.0, 600.0)
+    .icon(icon)
+    .map_err(|error| error.to_string())?;
+
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .decorations(true)
+        .title_bar_style(TitleBarStyle::Overlay)
+        .hidden_title(true);
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.decorations(true);
+    builder.build().map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 fn open_bootstrap_window(app: &AppHandle, startup_error: &str) -> Result<(), String> {
     let label = "bootstrap";
     let icon = Image::from_bytes(include_bytes!("../icons/32x32.png"))
@@ -652,6 +709,77 @@ fn find_latest_session_boot_target() -> Option<(String, String)> {
     let session_path = latest.1;
     let cwd = extract_session_cwd(&session_path)?;
     Some((cwd, session_path.to_string_lossy().to_string()))
+}
+
+fn extract_session_id(session_path: &str) -> Option<String> {
+    let file = File::open(session_path).ok()?;
+    for line in BufReader::new(file).lines().take(20).flatten() {
+        let value: Value = serde_json::from_str(line.trim()).ok()?;
+        if value.get("type").and_then(Value::as_str) == Some("session") {
+            return value
+                .get("id")
+                .or_else(|| value.get("sessionId"))
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+        }
+    }
+    None
+}
+
+fn native_runtime_enabled() -> bool {
+    cfg!(debug_assertions)
+        && std::env::var("PICOT_RUNTIME").is_ok_and(|value| value.eq_ignore_ascii_case("native"))
+}
+
+fn setup_native_runtime(app: &mut tauri::App, static_dir: PathBuf) -> Result<(), String> {
+    let home_cwd = dirs::home_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    let (cwd, session_path) = find_latest_session_boot_target()
+        .map(|(cwd, session)| (cwd, Some(session)))
+        .unwrap_or((home_cwd, None));
+    let metadata_path = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Cannot resolve Picot app data directory: {error}"))?
+        .join("picot.sqlite3");
+    let mut metadata = MetadataStore::open(&metadata_path)?;
+    let workspace_id = metadata.workspace_id_for_path(std::path::Path::new(&cwd))?;
+    let session_id = session_path
+        .as_deref()
+        .and_then(extract_session_id)
+        .unwrap_or_else(|| format!("temporary-{}", uuid::Uuid::new_v4().simple()));
+    let target = RuntimeTarget::new(
+        workspace_id,
+        session_id,
+        format!("instance-{}", uuid::Uuid::new_v4().simple()),
+    );
+    let resolver = PiManager::new(static_dir.clone());
+    let launch = resolver.native_launch_spec(&cwd, session_path.as_deref())?;
+    let runtimes = NativePiManager::new(256);
+    let remote_auth = Arc::new(Mutex::new(RemoteAuth::new(metadata)));
+    let host = tauri::async_runtime::block_on(HostServer::start_with_workspaces(
+        static_dir,
+        runtimes.clone(),
+        remote_auth,
+        std::collections::HashMap::from([(target.workspace_id.clone(), PathBuf::from(&cwd))]),
+    ))?;
+    runtimes.spawn(target.clone(), launch)?;
+    if let Err(error) = open_native_workspace_window(app.handle(), host.origin(), &target) {
+        runtimes.stop_all();
+        return Err(error);
+    }
+    log::info!(
+        "[picot-native] started workspace_id={} session_id={} instance_id={} origin={}",
+        target.workspace_id,
+        target.session_id,
+        target.instance_id,
+        host.origin()
+    );
+    app.manage(runtimes);
+    app.manage(host);
+    Ok(())
 }
 
 #[tauri::command]
@@ -939,6 +1067,10 @@ fn main() {
         )
         .setup(|app| {
             let static_dir = find_static_dir(app);
+            if native_runtime_enabled() {
+                setup_native_runtime(app, static_dir).map_err(std::io::Error::other)?;
+                return Ok(());
+            }
             let manager = Arc::new(PiManager::new(static_dir));
             let broker = Arc::new(BrokerWs::start().expect("failed to start broker websocket"));
             std::env::set_var("PI_STUDIO_BROKER_PORT", broker.port().to_string());
@@ -1045,6 +1177,12 @@ fn main() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 let label = window.label();
+                if let Some(workspace_id) = label.strip_prefix("native-workspace-") {
+                    if let Some(manager) = window.try_state::<NativePiManagerState>() {
+                        manager.stop_workspace(workspace_id);
+                    }
+                    return;
+                }
                 if let Some(port_str) = label.strip_prefix("workspace-") {
                     if let Ok(port) = port_str.parse::<u16>() {
                         if let Some(manager) = window.try_state::<PiManagerState>() {
@@ -1067,6 +1205,9 @@ fn main() {
         .expect("error while building tauri application")
         .run(|app_handle: &tauri::AppHandle, event| {
             if let tauri::RunEvent::Exit = event {
+                if let Some(manager) = app_handle.try_state::<NativePiManagerState>() {
+                    manager.stop_all();
+                }
                 if let Some(manager) = app_handle.try_state::<PiManagerState>() {
                     manager.kill_all();
                 }

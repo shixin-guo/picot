@@ -1,4 +1,4 @@
-import "./cost-dashboard.js";
+import "./cost/dashboard.js";
 
 syncThemeFromCookie();
 

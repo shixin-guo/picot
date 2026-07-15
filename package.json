@@ -20,6 +20,7 @@
     "tauri": "tauri",
     "dev": "bun run fetch:pi && PATH=\"$HOME/.cargo/bin:$PATH\" tauri dev",
     "fetch:pi": "bun run scripts/fetch-pi-binary.js",
+    "smoke:pi-rpc": "bun run scripts/smoke-pi-rpc.js",
     "build:extensions": "bun run scripts/build-extensions.js",
     "build": "PATH=\"$HOME/.cargo/bin:$PATH\" tauri build",
     "prebuild": "bun run fetch:pi && bun run build:extensions",

@@ -72,6 +72,13 @@ describe("chat-settings-panel", () => {
     document.body.appendChild(panel);
     await flushPromises();
 
+    expect(panel.querySelector("#setting-super-agent .settings-label-main")?.textContent).toBe(
+      "Agent Inbox",
+    );
+    expect(panel.querySelector("#setting-super-agent .settings-label-sub")?.textContent).toBe(
+      "Start automatically",
+    );
+    expect(panel.querySelector("#toggle-super-agent")).not.toBeNull();
     expect(panel.textContent).toContain("Telegram listener is connected.");
     expect(panel.textContent).toContain("Telegram messages enter Agent Inbox first.");
     expect(panel.textContent).toContain("6085028519");

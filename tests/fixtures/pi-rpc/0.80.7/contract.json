@@ -1,0 +1,26 @@
+{
+  "version": "0.80.7",
+  "commands": [
+    "get_state",
+    "get_commands",
+    "set_steering_mode",
+    "set_follow_up_mode",
+    "prompt",
+    "abort"
+  ],
+  "stateFields": [
+    "autoCompactionEnabled",
+    "followUpMode",
+    "isCompacting",
+    "isStreaming",
+    "messageCount",
+    "model",
+    "pendingMessageCount",
+    "sessionId",
+    "steeringMode",
+    "thinkingLevel"
+  ],
+  "commandSources": ["extension", "prompt", "skill"],
+  "eventTypes": ["extension_ui_request"],
+  "promptAcceptance": true
+}

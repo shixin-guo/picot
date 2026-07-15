@@ -25,7 +25,7 @@
         </script>
         <script>
             // Boot-time instance-swap overlay gate.
-            // Set by workspace-actions.js right before window.location.href changes
+            // Set by workspace/actions.js right before window.location.href changes
             // to a new pi instance's port. Read here synchronously (before <body>
             // renders) so the new page's very first paint is the overlay, not a
             // half-loaded chat UI. Cleared by app.js after the first WebSocket
@@ -790,7 +790,7 @@
                     Configuration
                 </button>
                 <button class="settings-nav-item" data-settings-tab="chat">
-                    Chat
+                    Agent Inbox
                 </button>
                 <button class="settings-nav-back" id="settings-close">
                     <span class="settings-nav-back-icon">‹</span> Back to chat
@@ -840,22 +840,6 @@
                                 <button
                                     class="settings-toggle on"
                                     id="toggle-show-thinking"
-                                ></button>
-                            </div>
-                            <div class="settings-row" id="setting-super-agent">
-                                <span
-                                    class="settings-label settings-label-stack"
-                                >
-                                    <span class="settings-label-main"
-                                        >Agent Inbox</span
-                                    >
-                                    <span class="settings-label-sub"
-                                        >Start automatically</span
-                                    >
-                                </span>
-                                <button
-                                    class="settings-toggle"
-                                    id="toggle-super-agent"
                                 ></button>
                             </div>
                         </div>
@@ -1310,11 +1294,11 @@
         </div>
 
         <!-- Scripts -->
-        <script type="module" src="app.js"></script>
+        <script type="module" src="bootstrap-entry.js"></script>
         <script type="module" src="components/super-agent-entry.js"></script>
         <script type="module" src="components/super-agent-runtime.js"></script>
         <script type="module" src="components/sa-chat-header.js"></script>
         <script type="module" src="components/chat-settings-panel.js"></script>
-        <script type="module" src="super-agent-panel.js"></script>
+        <script type="module" src="super-agent/panel.js"></script>
     </body>
 </html>

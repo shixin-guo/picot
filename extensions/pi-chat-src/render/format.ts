@@ -11,10 +11,7 @@ export interface RenderedChunkPayload {
 
 // Escape HTML special characters outside of tags we generate ourselves.
 function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /**
@@ -99,17 +96,19 @@ function convertSpans(text: string): string {
 }
 
 function convertFormatting(html: string): string {
-  return html
-    // Links: [text](url)
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
-    // Bold: **text** or __text__
-    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
-    .replace(/__([^_]+)__/g, "<b>$1</b>")
-    // Italic: *text* or _text_ (single, not touching word boundaries issues)
-    .replace(/\*([^*\n]+)\*/g, "<i>$1</i>")
-    .replace(/(?<![_\w])_([^_\n]+)_(?![_\w])/g, "<i>$1</i>")
-    // Strikethrough: ~~text~~
-    .replace(/~~([^~]+)~~/g, "<s>$1</s>");
+  return (
+    html
+      // Links: [text](url)
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+      // Bold: **text** or __text__
+      .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+      .replace(/__([^_]+)__/g, "<b>$1</b>")
+      // Italic: *text* or _text_ (single, not touching word boundaries issues)
+      .replace(/\*([^*\n]+)\*/g, "<i>$1</i>")
+      .replace(/(?<![_\w])_([^_\n]+)_(?![_\w])/g, "<i>$1</i>")
+      // Strikethrough: ~~text~~
+      .replace(/~~([^~]+)~~/g, "<s>$1</s>")
+  );
 }
 
 export function formatMarkdownForService(

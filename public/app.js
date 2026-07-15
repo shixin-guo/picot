@@ -2,41 +2,38 @@
  * Main App - Ties everything together
  */
 
-import { setupContextViz } from "./app-context-viz.js";
-import "./cost-dashboard.js";
-import { setupSettingsEditors } from "./app-settings-editors.js";
-import { setupSettingsToggles } from "./app-settings-toggles.js";
-import { createAppUpdater } from "./app-updater.js";
-import { setupVoiceInput } from "./app-voice-input.js";
-import { DialogHandler } from "./dialogs.js";
-import { FileBrowser } from "./file-browser.js";
-import { anchorHistoryToBottom } from "./history-scroll-anchor.js";
-import { setupMessagesInsets } from "./layout-insets.js";
-import { MessageRenderer } from "./message-renderer.js";
-import { selectModel } from "./model-selection.js";
-import { resolveNewSessionLiveFile } from "./new-session-refresh.js";
-import { getOnboardingState } from "./onboarding-state.js";
-import { renderPackageInstallFailure } from "./package-install-status.js";
-import { setupResizablePanel } from "./resizable-panel.js";
+import { setupContextViz } from "./ui/context-viz.js";
+import "./cost/dashboard.js";
+import { StateManager } from "./app/state.js";
+import { initTransport } from "./app/transport.js";
+import { createAppUpdater } from "./app/updater.js";
+import { setupVoiceInput } from "./app/voice-input.js";
+import { resolveWebSocketUrl, WebSocketClient } from "./app/websocket-client.js";
+import { selectModel } from "./models/selection.js";
+import { renderPackageInstallFailure } from "./packages/install-status.js";
+import { getOnboardingState } from "./session/onboarding.js";
+import { resolveNewSessionLiveFile } from "./session/refresh.js";
 import {
   findPortForSession,
   getWorkspacePathForPort,
   shouldSpawnForCrossWorkspaceSelection,
-} from "./session-routing.js";
-import { SessionSidebar } from "./session-sidebar.js";
+} from "./session/routing.js";
+import { anchorHistoryToBottom } from "./session/scroll-anchor.js";
+import { setupSettingsEditors } from "./settings/editors.js";
 import {
   clearSettingsSaveMessage,
   setSettingsSaveButtonSaving,
   showSettingsSaveError,
   showSettingsSaveSuccess,
-} from "./settings-save-status.js";
-import { setupSidebarSearchControl } from "./sidebar-search-control.js";
+} from "./settings/save-status.js";
+import { bindSuperAgentStartupToggle, setupSettingsToggles } from "./settings/toggles.js";
+import { setupSidebarSearchControl } from "./sidebar/search-control.js";
+import { SessionSidebar } from "./sidebar/sidebar.js";
 import { setupSkillSlashCommand } from "./skill-slash-command.js";
-import { StateManager } from "./state.js";
-import { ensureSuperAgentSession } from "./super-agent-bootstrap.js";
-import { getRunningSuperAgentPorts, isSuperAgentSession } from "./super-agent-session.js";
-import { isSuperAgentEnabled } from "./super-agent-settings.js";
-import { planSuperAgentShutdown } from "./super-agent-stop-plan.js";
+import { ensureSuperAgentSession } from "./super-agent/bootstrap.js";
+import { getRunningSuperAgentPorts, isSuperAgentSession } from "./super-agent/session.js";
+import { isSuperAgentEnabled } from "./super-agent/settings.js";
+import { planSuperAgentShutdown } from "./super-agent/stop-plan.js";
 import {
   buildProjectAgentPrompt,
   buildSuperAgentNotificationPrompt,
@@ -44,18 +41,21 @@ import {
   markTaskFinished,
   markTaskForDispatch,
   normalizeSuperAgentTasks,
-} from "./super-agent-task-state.js";
+} from "./super-agent/task-state.js";
 import { applyTheme, getCurrentTheme, themes } from "./themes.js";
-import { ToolCardRenderer } from "./tool-card.js";
-import { initTransport } from "./transport.js";
-import { resolveWebSocketUrl, WebSocketClient } from "./websocket-client.js";
+import { DialogHandler } from "./ui/dialogs.js";
+import { setupMessagesInsets } from "./ui/layout-insets.js";
+import { MessageRenderer } from "./ui/message-renderer.js";
+import { setupResizablePanel } from "./ui/resizable-panel.js";
+import { ToolCardRenderer } from "./ui/tool-card.js";
 import {
   buildWorkspaceUrl,
   openFolderAsWorkspace,
   startInWindowNewSession,
   startNewProjectChat,
   withBrokerWs,
-} from "./workspace-actions.js";
+} from "./workspace/actions.js";
+import { FileBrowser } from "./workspace/file-browser.js";
 
 const fetchInstances = async () => {
   try {
@@ -123,7 +123,7 @@ function hideSwapOverlay() {
   if (overlay) overlay.setAttribute("data-visible", "false");
 }
 
-// Returned to workspace-actions.js — they call this BEFORE openWorkspace
+// Returned to workspace/actions.js — they call this BEFORE openWorkspace
 // (so the overlay covers spawn latency) and the returned dismiss is only
 // invoked on error (success path lets the overlay persist across the
 // navigation boundary).
@@ -533,7 +533,7 @@ function renderWorkspaceWelcome({ force = false } = {}) {
   if (!force && welcomeVisible && lastRenderedWelcomeWorkspacePath === workspacePath) {
     return;
   }
-  messageRenderer.renderWelcome({ workspacePath });
+  messageRenderer.renderWelcome();
   lastRenderedWelcomeWorkspacePath = workspacePath;
 }
 
@@ -3289,7 +3289,7 @@ const themeGrid = document.getElementById("theme-grid");
 const toggleAutoCompact = document.getElementById("toggle-auto-compact");
 const btnThinkingLevel = document.getElementById("btn-thinking-level");
 const toggleShowThinking = document.getElementById("toggle-show-thinking");
-const toggleSuperAgent = document.getElementById("toggle-super-agent");
+let toggleSuperAgent = document.getElementById("toggle-super-agent");
 const toggleAuth = document.getElementById("toggle-auth");
 const authSection = document.getElementById("settings-auth-section");
 const piVersionValue = document.getElementById("setting-pi-version-value");
@@ -3298,6 +3298,16 @@ let piVersionInflight = null;
 let loadInlineConfigEditor = async () => {};
 let loadInlineModelsEditor = async () => {};
 let loadApiKeysPanel = async () => {};
+
+async function handleSuperAgentEnabledChanged(enabled) {
+  if (!enabled) {
+    await stopSuperAgentInstances();
+    return;
+  }
+  await loadSessionsWithSuperAgentBootstrap();
+  sessionsLoaded = true;
+  updateUI();
+}
 
 function selectSettingsTab(tabKey = "general") {
   const targetTabKey = tabKey === "auth" ? "configuration" : tabKey;
@@ -3320,6 +3330,10 @@ function selectSettingsTab(tabKey = "general") {
     dashboard?.ensureLoaded?.().catch((error) => {
       console.error("[Cost] Failed to load dashboard:", error);
     });
+  }
+  if (targetTabKey === "chat") {
+    toggleSuperAgent = document.getElementById("toggle-super-agent");
+    bindSuperAgentStartupToggle(toggleSuperAgent, handleSuperAgentEnabledChanged);
   }
 }
 
@@ -3938,15 +3952,7 @@ setupSettingsToggles({
     currentThinkingLevel = level;
   },
   updateThinkingBtn,
-  onSuperAgentEnabledChanged: async (enabled) => {
-    if (!enabled) {
-      await stopSuperAgentInstances();
-      return;
-    }
-    await loadSessionsWithSuperAgentBootstrap();
-    sessionsLoaded = true;
-    updateUI();
-  },
+  onSuperAgentEnabledChanged: handleSuperAgentEnabledChanged,
 });
 
 ({ loadApiKeysPanel, loadInlineConfigEditor, loadInlineModelsEditor } = setupSettingsEditors({
