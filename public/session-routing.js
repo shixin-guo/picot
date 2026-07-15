@@ -34,3 +34,27 @@ export function applyForegroundMirrorSession({
   if (activeSessionFile) setSidebarActive(activeSessionFile);
   return true;
 }
+
+export function deferFileBrowserWorkspace(sessionFile, projectPath, currentWorkspacePath) {
+  if (
+    typeof sessionFile !== "string" ||
+    !sessionFile ||
+    typeof projectPath !== "string" ||
+    !projectPath ||
+    projectPath === currentWorkspacePath
+  ) {
+    return null;
+  }
+  return { sessionFile, path: projectPath };
+}
+
+export function confirmDeferredFileBrowserWorkspace(pendingWorkspace, sessionFile) {
+  if (
+    !pendingWorkspace ||
+    typeof sessionFile !== "string" ||
+    pendingWorkspace.sessionFile !== sessionFile
+  ) {
+    return null;
+  }
+  return pendingWorkspace;
+}

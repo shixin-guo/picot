@@ -64,3 +64,33 @@ test("does not apply a background mirror session", () => {
   expect(mirrorSessionFile).toBe("/tmp/current.jsonl");
   expect(sidebarSessionFile).toBe("/tmp/current.jsonl");
 });
+
+test("defers a cross-workspace file tree load until the selected session is confirmed", () => {
+  const pending = sessionRouting.deferFileBrowserWorkspace(
+    "/history/new.jsonl",
+    "/work/new",
+    "/work/old",
+  );
+
+  expect(pending).toEqual({ sessionFile: "/history/new.jsonl", path: "/work/new" });
+  expect(
+    sessionRouting.confirmDeferredFileBrowserWorkspace(pending, "/history/old.jsonl"),
+  ).toBeNull();
+  expect(sessionRouting.confirmDeferredFileBrowserWorkspace(pending, "/history/new.jsonl")).toEqual(
+    pending,
+  );
+});
+
+test("does not defer an already-loaded or incomplete workspace", () => {
+  expect(
+    sessionRouting.deferFileBrowserWorkspace(
+      "/history/current.jsonl",
+      "/work/current",
+      "/work/current",
+    ),
+  ).toBeNull();
+  expect(sessionRouting.deferFileBrowserWorkspace("", "/work/new", "/work/old")).toBeNull();
+  expect(
+    sessionRouting.deferFileBrowserWorkspace("/history/new.jsonl", "", "/work/old"),
+  ).toBeNull();
+});
