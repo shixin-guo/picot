@@ -539,6 +539,10 @@ body {
   color: var(--bg);
 }
 
+.archived-header {
+  color: var(--text-dim);
+}
+
 /* Open project in external app (VS Code / Cursor / Terminal / …) */
 .archived-delete-all-btn {
   display: none;

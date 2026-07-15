@@ -1,6 +1,6 @@
 // ABOUTME: Verifies the chat-history navigator turn model, magnification, preview, and lifecycle.
 // ABOUTME: Covers inert rendering, streaming states, scroll anchoring, and hostile-text safety.
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   binarySearchActiveTurn,
   ChatHistoryNavigator,
@@ -9,6 +9,7 @@ import {
   createChatHistoryNavigation,
   createNoOpNavigator,
 } from "./chat-history-navigation.js";
+import { initI18n } from "./i18n.js";
 
 // ── Test harness ──────────────────────────────────────────────────────
 // The navigator injects DOM and layout dependencies. We stub scheduling so
@@ -75,8 +76,27 @@ function makeUserElement(text = "user message") {
   return el;
 }
 
+beforeEach(async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        chatNavigation: {
+          imageMessage: "[image]",
+          waiting: "Waiting for response…",
+          generating: "Generating response…",
+          noVisibleResponse: "No visible response",
+        },
+      }),
+    })),
+  );
+  await initI18n();
+});
+
 afterEach(() => {
   document.body.innerHTML = "";
+  vi.unstubAllGlobals();
 });
 
 // ── 1. One item per user turn ─────────────────────────────────────────
@@ -133,7 +153,7 @@ describe("image-only prompts", () => {
     nav.addUserTurn({ id: "u1", text: "", images: [{ data: "abc" }] });
     flushRafs();
     expect(nav.turns[0].hasUserImage).toBe(true);
-    expect(nav.turns[0].userText).toBe("chatNavigation.imageMessage");
+    expect(nav.turns[0].userText).toBe("[image]");
   });
 
   test("preview shows image-message label for image-only turn", () => {

@@ -33,6 +33,14 @@ export class SessionSidebar {
     this.streamingFiles = new Set();
     this.projectVisibleSessionCounts = new Map();
     this.contextMenu = null;
+    this.sessionItemData = new WeakMap();
+    this.onSessionItemContextMenu = (event) => {
+      const item = event.target.closest?.(".session-item");
+      if (!item || !this.container.contains(item)) return;
+      const data = this.sessionItemData.get(item);
+      if (data) this.showContextMenu(event, data.session, data.project, item);
+    };
+    this.container.addEventListener("contextmenu", this.onSessionItemContextMenu);
     // `loadSeq` counts issued loads; `loadCommitted` is the highest seq that has
     // actually rendered. We discard a response only when a *newer* one has
     // already committed (out-of-order arrival), never just because a newer load
@@ -654,9 +662,7 @@ export class SessionSidebar {
       </div>
     `;
 
-    item.addEventListener("contextmenu", (event) =>
-      this.showContextMenu(event, session, project, item),
-    );
+    this.sessionItemData.set(item, { session, project });
     item.addEventListener("click", () => this.onSessionSelect(session, project));
     const archiveBtn = item.querySelector(".session-archive-btn");
     if (archiveBtn) {
@@ -861,8 +867,12 @@ export class SessionSidebar {
     }
     this.renderPinnedSection();
 
-    const projectsGroup = document.createElement("div");
-    projectsGroup.className = "projects-group";
+    const { section: projectsSection, sessionsContainer: projectsGroup } = buildSidebarSection({
+      region: "projects",
+      titleKey: "sidebar.projects",
+      count: this.projects.length,
+    });
+    projectsSection.className = `projects-group ${projectsSection.className}`;
     for (const project of this.projects) {
       const visibleSessions = (project.sessions || []).filter(
         (session) => !this.isArchived(session.filePath),
@@ -905,7 +915,7 @@ export class SessionSidebar {
       projectsGroup.appendChild(group);
       this.quickInfo.bindHeader(header, project);
     }
-    this.container.appendChild(projectsGroup);
+    this.container.appendChild(projectsSection);
 
     {
       archivedSessions.sort((a, b) => {

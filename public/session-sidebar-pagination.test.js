@@ -21,6 +21,7 @@ beforeEach(async () => {
             openProject: "Open Project",
             loadingSessions: "Loading sessions...",
             pinned: "PINNED",
+            projects: "PROJECTS",
             archived: "Archived",
             untitled: "Untitled",
             emptySession: "Empty session",

@@ -87,6 +87,7 @@ beforeEach(async () => {
           sidebar: {
             recent: "RECENT",
             pinned: "PINNED",
+            projects: "PROJECTS",
             archived: "ARCHIVED",
             unavailable: "Unavailable",
             pinSession: "Pin session",
@@ -147,6 +148,9 @@ describe("SessionSidebar PINNED integration", () => {
       "/sessions/missing.jsonl",
     );
     expect(document.querySelector(".projects-group").textContent).toContain("live");
+    expect(document.querySelector(".projects-group .sidebar-section-header").textContent).toContain(
+      "PROJECTS",
+    );
     expect(quickInfo.bindHeader).toHaveBeenCalledTimes(3);
   });
 
