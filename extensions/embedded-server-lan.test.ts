@@ -1,7 +1,11 @@
 // @vitest-environment node
 
 import { describe, expect, it } from "vitest";
-import { buildLanAccessUrls, LAN_BIND_HOST } from "./embedded-server.ts";
+import {
+  buildLanAccessUrls,
+  isEphemeralSessionMutationRoute,
+  LAN_BIND_HOST,
+} from "./embedded-server.ts";
 
 function restoreBrokerPort(value: string | undefined) {
   if (value === undefined) delete process.env.PI_STUDIO_BROKER_PORT;
@@ -30,5 +34,11 @@ describe("embedded server LAN access helpers", () => {
       "http://192.168.1.20:47821/?mobile=1&brokerWs=ws%3A%2F%2F192.168.1.20%3A49123%2Fui-ws",
     ]);
     restoreBrokerPort(previous);
+  });
+
+  it("classifies session mutation REST routes for ephemeral denial", () => {
+    expect(isEphemeralSessionMutationRoute("/api/sessions/delete-batch", "POST")).toBe(true);
+    expect(isEphemeralSessionMutationRoute("/api/sessions/switch", "POST")).toBe(true);
+    expect(isEphemeralSessionMutationRoute("/api/sessions", "GET")).toBe(false);
   });
 });

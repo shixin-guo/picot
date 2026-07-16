@@ -1,3 +1,6 @@
+// ABOUTME: Serves Picot's embedded Pi HTTP, WebSocket, REST, and ephemeral RPC surfaces.
+// ABOUTME: Applies owner-scoped command policy and publishes sequenced runtime state.
+
 /**
  * Embedded Server Extension for Picot desktop
  *
@@ -41,11 +44,13 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import QRCode from "qrcode";
 import { type WebSocket, WebSocketServer } from "ws";
+import { assertEphemeralCommandAllowed } from "./command-policy.ts";
 import {
   buildCostDashboardPayload,
   buildEmptyCostDashboardPayload,
   type CostSession,
 } from "./cost-dashboard-data.ts";
+import { EphemeralRuntimeState } from "./ephemeral-runtime-state.ts";
 import {
   classifyFile,
   isEditableBySize,
@@ -142,6 +147,29 @@ function isLoopbackHost(host: string): boolean {
   return host === "127.0.0.1" || host === "localhost" || host === "::1";
 }
 
+function tryParseUrl(value: string, base?: string): URL | null {
+  try {
+    return new URL(value, base);
+  } catch {
+    return null;
+  }
+}
+
+function setSameOriginCors(req: http.IncomingMessage, res: http.ServerResponse): void {
+  const origin = req.headers.origin;
+  const requestHost = req.headers.host;
+  const parsedOrigin = typeof origin === "string" ? tryParseUrl(origin) : null;
+  if (
+    parsedOrigin &&
+    requestHost &&
+    (parsedOrigin.protocol === "http:" || parsedOrigin.protocol === "https:") &&
+    (parsedOrigin.host === requestHost || isLoopbackHost(parsedOrigin.hostname))
+  ) {
+    res.setHeader("Access-Control-Allow-Origin", parsedOrigin.origin);
+    res.setHeader("Vary", "Origin");
+  }
+}
+
 function findLanHosts(): string[] {
   const hosts = new Set<string>();
   try {
@@ -154,19 +182,22 @@ function findLanHosts(): string[] {
         }
       }
     }
-  } catch {}
+  } catch {
+    // Fall back to the discovered interface list when host inspection fails.
+  }
   return [...hosts].sort();
 }
 
 export function buildLanAccessUrls(port: number, hosts: string[]): string[] {
   const brokerPort = Number.parseInt(process.env.PI_STUDIO_BROKER_PORT || "", 10);
-  return hosts.map((host) => {
-    const url = new URL(`http://${host}:${port}/`);
+  return hosts.flatMap((host) => {
+    const url = tryParseUrl(`http://${host}:${port}/`);
+    if (!url) return [];
     url.searchParams.set("mobile", "1");
     if (Number.isFinite(brokerPort) && brokerPort > 0) {
       url.searchParams.set("brokerWs", `ws://${host}:${brokerPort}/ui-ws`);
     }
-    return url.toString();
+    return [url.toString()];
   });
 }
 
@@ -182,7 +213,9 @@ function loadSettings(): { port: number } {
     const settingsPath = path.join(PI_AGENT_ROOT, "settings.json");
     // TODO(rename->picot): key `pistudio` kept for backward compat — migrate to `picot` once a settings-migration path exists.
     settings = JSON.parse(fs.readFileSync(settingsPath, "utf8")).pistudio || {};
-  } catch {}
+  } catch {
+    // Invalid settings use the documented defaults below.
+  }
   return {
     port: parseInt(String(process.env.PI_STUDIO_PORT || settings.port || "47821"), 10),
   };
@@ -197,6 +230,24 @@ const BIND_HOST = LAN_BIND_HOST;
 const EMBEDDED_PI_VERSION = process.env.PI_STUDIO_PI_VERSION || "";
 
 const STATIC_DIR = process.env.PI_STUDIO_STATIC_DIR || findPublicDir();
+
+export type EphemeralEnv = {
+  kind: "side-chat" | "quick-chat";
+  instanceId: string;
+  generation: number;
+};
+
+/** Parse the trusted host-injected ephemeral markers. Absent or partial → null. */
+export function parseEphemeralEnv(env: NodeJS.ProcessEnv = process.env): EphemeralEnv | null {
+  const kind = env.PI_STUDIO_EPHEMERAL_KIND;
+  if (kind !== "side-chat" && kind !== "quick-chat") return null;
+  const instanceId = env.PI_STUDIO_EPHEMERAL_INSTANCE_ID || "";
+  const generation = Number.parseInt(env.PI_STUDIO_EPHEMERAL_GENERATION || "0", 10) || 0;
+  if (!instanceId) return null;
+  return { kind, instanceId, generation };
+}
+
+const EPHEMERAL_ENV = parseEphemeralEnv();
 
 function findPublicDir(): string {
   const candidates: string[] = [];
@@ -232,6 +283,7 @@ const INSTANCES_DIR = path.join(path.dirname(PI_AGENT_ROOT), "pistudio-instances
 // processes), we only ever write our own entry: Picot's Rust side
 // manages all pi processes it spawns.
 function registerInstance(port: number, sessionFile: string, cwd: string) {
+  if (EPHEMERAL_ENV) return;
   fs.mkdirSync(INSTANCES_DIR, { recursive: true });
   const info = { port, pid: process.pid, sessionFile, cwd, startedAt: new Date().toISOString() };
   fs.writeFileSync(path.join(INSTANCES_DIR, `${process.pid}.json`), JSON.stringify(info));
@@ -244,7 +296,9 @@ function updateInstanceSession(sessionFile: string) {
     const info = JSON.parse(fs.readFileSync(file, "utf8"));
     info.sessionFile = sessionFile;
     fs.writeFileSync(file, JSON.stringify(info));
-  } catch {}
+  } catch {
+    // The instance may have exited between the existence check and the write.
+  }
 }
 
 function getRunningInstances(): Array<{
@@ -254,7 +308,7 @@ function getRunningInstances(): Array<{
   cwd: string;
   startedAt?: string;
 }> {
-  if (!fs.existsSync(INSTANCES_DIR)) return [];
+  if (EPHEMERAL_ENV || !fs.existsSync(INSTANCES_DIR)) return [];
   const instances: Array<{
     port: number;
     pid: number;
@@ -274,9 +328,13 @@ function getRunningInstances(): Array<{
         // Process dead — clean up stale file
         try {
           fs.unlinkSync(path.join(INSTANCES_DIR, file));
-        } catch {}
+        } catch {
+          // Stale registry cleanup is best effort.
+        }
       }
-    } catch {}
+    } catch {
+      // Ignore malformed registry entries and continue listing live instances.
+    }
   }
   return instances;
 }
@@ -289,6 +347,14 @@ type GitBranchContextLike = {
 
 export function normalizeApiRoutePath(urlPath: string): string {
   return urlPath.split("?")[0] || "/";
+}
+
+export function isEphemeralSessionMutationRoute(urlPath: string, method: string): boolean {
+  const normalizedPath = normalizeApiRoutePath(urlPath);
+  return (
+    method === "POST" &&
+    (normalizedPath === "/api/sessions/delete-batch" || normalizedPath === "/api/sessions/switch")
+  );
 }
 
 export function resolveGitBranchCwd({
@@ -314,7 +380,9 @@ export function resolveGitBranchCwd({
       const entries = latestCtx.sessionManager.getEntries();
       const sessionEntry = entries.find((e: { type?: string }) => e.type === "session");
       if (sessionEntry?.cwd) return sessionEntry.cwd;
-    } catch {}
+    } catch {
+      // The context may be between session replacements; use the fallback cwd.
+    }
   }
 
   return fallbackCwd;
@@ -572,14 +640,18 @@ export default function (pi: ExtensionAPI) {
     try {
       const sessionFile = ctx.sessionManager.getSessionFile();
       if (typeof sessionFile === "string" && sessionFile.trim()) return sessionFile;
-    } catch {}
+    } catch {
+      // Session replacement can invalidate the context while a client reconnects.
+    }
     try {
       const entries = ctx.sessionManager.getEntries();
       const sessionEntry = entries.find(
         (e: { type?: string; id?: unknown }) => e?.type === "session" && typeof e?.id === "string",
       );
       if (sessionEntry?.id) return sessionEntry.id;
-    } catch {}
+    } catch {
+      // No session metadata is available yet.
+    }
     return null;
   }
 
@@ -600,7 +672,9 @@ export default function (pi: ExtensionAPI) {
     if (ws.readyState === WS_OPEN) {
       try {
         ws.send(JSON.stringify(withRouteMeta(data)));
-      } catch {}
+      } catch {
+        // A disconnected client is removed by its close handler.
+      }
     }
   }
 
@@ -613,7 +687,9 @@ export default function (pi: ExtensionAPI) {
       if (client.readyState === WS_OPEN) {
         try {
           client.send(json);
-        } catch {}
+        } catch {
+          // A disconnected client is removed by its close handler.
+        }
       }
     }
   }
@@ -655,18 +731,39 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
+  const ephemeralState = EPHEMERAL_ENV
+    ? new EphemeralRuntimeState({
+        instanceId: EPHEMERAL_ENV.instanceId,
+        generation: EPHEMERAL_ENV.generation,
+      })
+    : null;
+
   for (const eventType of eventTypes) {
     pi.on(
       eventType as Parameters<typeof pi.on>[0],
       async (event: unknown, ctx: ExtensionContext) => {
         rememberCtx(ctx);
-
-        // Forward event to all connected browser clients
-        // Wrap in { type: "event", event: ... } to match the existing frontend protocol
-        broadcast({
-          type: "event",
-          event: { type: eventType, ...(event as Record<string, unknown>) },
-        });
+        const eventPayload = { type: eventType, ...(event as Record<string, unknown>) };
+        if (ephemeralState) {
+          if (ctx) {
+            ephemeralState.setContextState({
+              model: ctx.model,
+              thinkingLevel: currentPi()?.getThinkingLevel() ?? undefined,
+              contextUsage: ctx.getContextUsage(),
+            });
+          }
+          const { runtimeSequence } = ephemeralState.applyEvent(eventPayload);
+          broadcast({
+            type: "event",
+            instanceId: EPHEMERAL_ENV?.instanceId,
+            generation: EPHEMERAL_ENV?.generation,
+            runtimeSequence,
+            event: eventPayload,
+          });
+        } else {
+          // Forward event to all connected browser clients.
+          broadcast({ type: "event", event: eventPayload });
+        }
       },
     );
   }
@@ -682,8 +779,10 @@ export default function (pi: ExtensionAPI) {
     turnCount = 0;
     titleSet = false;
     userMessages = [];
-    // Update instance registry with new session file
-    updateInstanceSession(ctx.sessionManager.getSessionFile() || "");
+    // Ephemeral processes never register a session file or persist state.
+    if (!ephemeralState) {
+      updateInstanceSession(ctx.sessionManager.getSessionFile() || "");
+    }
   });
 
   pi.on("turn_start", async (_event, _ctx) => {
@@ -706,7 +805,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("turn_end", async (_event, _ctx) => {
-    if (titleSet || turnCount < 2) return;
+    if (ephemeralState || titleSet || turnCount < 2) return;
 
     // Defensive: if the turn that just ended also kicked off a session
     // replacement (e.g. `/new`, `/fork`, `/switch`), the captured `pi` of
@@ -821,6 +920,21 @@ export default function (pi: ExtensionAPI) {
     // Always resolve `pi` from the global publisher rather than the
     // closure-captured one. See `currentPi()` for the rationale.
     const api = currentPi();
+    let promptBehavior: string;
+    let promptValidMimes: string[];
+    let promptImageData: string;
+    let promptMimeType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+    let promptImageBlock: {
+      type: "image";
+      data: string;
+      mimeType: typeof promptMimeType;
+    };
+    let promptHasImages: boolean;
+    let exportSessionFile: string;
+    let exportExecSync: typeof import("node:child_process").execSync;
+    let exportArgs: string;
+    let exportOutput: string;
+    let exportResult: string;
 
     const success = (cmd: string, data?: unknown) => {
       const resp: Record<string, unknown> = { type: "response", command: cmd, success: true, id };
@@ -844,14 +958,17 @@ export default function (pi: ExtensionAPI) {
     };
 
     try {
+      if (ephemeralState) {
+        assertEphemeralCommandAllowed(command.type, true);
+      }
       switch (command.type) {
         // ─── Prompting ───
         case "prompt": {
           const a = requireApi("prompt");
           if (!a) break;
           if (ctx && !ctx.isIdle()) {
-            const behavior = command.streamingBehavior || "steer";
-            if (behavior === "steer") {
+            promptBehavior = command.streamingBehavior || "steer";
+            if (promptBehavior === "steer") {
               a.sendUserMessage(command.message, { deliverAs: "steer" });
             } else {
               a.sendUserMessage(command.message, { deliverAs: "followUp" });
@@ -859,7 +976,7 @@ export default function (pi: ExtensionAPI) {
           } else {
             // Build content with optional images
             if (command.images?.length) {
-              const validMimes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+              promptValidMimes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
               // biome-ignore lint/suspicious/noExplicitAny: mixed text/image content blocks for sendUserMessage
               const content: any[] = [
                 { type: "text", text: command.message || "(see attached image)" },
@@ -870,37 +987,37 @@ export default function (pi: ExtensionAPI) {
                   continue;
                 }
                 // Strip data URL prefix if accidentally included
-                const data = img.data.includes(",") ? img.data.split(",")[1] : img.data;
-                const mimeType = (
-                  validMimes.includes(img.mimeType ?? "") ? (img.mimeType as string) : "image/png"
+                promptImageData = img.data.includes(",") ? img.data.split(",")[1] : img.data;
+                promptMimeType = (
+                  promptValidMimes.includes(img.mimeType ?? "")
+                    ? (img.mimeType as string)
+                    : "image/png"
                 ) as "image/png" | "image/jpeg" | "image/gif" | "image/webp";
                 console.log(
-                  `[embedded-server] Image: mimeType=${mimeType}, dataLen=${data.length}, rawMimeType=${img.mimeType}`,
+                  `[embedded-server] Image: mimeType=${promptMimeType}, dataLen=${promptImageData.length}, rawMimeType=${img.mimeType}`,
                 );
-                const imageBlock = {
+                promptImageBlock = {
                   type: "image" as const,
-                  data: data,
-                  mimeType: mimeType,
+                  data: promptImageData,
+                  mimeType: promptMimeType,
                 };
                 // Defensive: verify mimeType is actually set (debug crash where it was missing)
-                if (!imageBlock.mimeType) {
+                if (!promptImageBlock.mimeType) {
                   console.error(
                     `[embedded-server] BUG: mimeType is falsy after assignment! img.mimeType=${img.mimeType}, falling back to image/png`,
                   );
-                  imageBlock.mimeType = "image/png";
+                  promptImageBlock.mimeType = "image/png";
                 }
-                content.push(imageBlock);
+                content.push(promptImageBlock);
               }
               // Only send content array if we actually have images, otherwise just text
-              const hasImages = content.some((c) => c.type === "image");
-              if (hasImages) {
+              promptHasImages = content.some((c) => c.type === "image");
+              if (promptHasImages) {
                 a.sendUserMessage(content);
               } else {
                 a.sendUserMessage(command.message);
               }
-            } else {
-              a.sendUserMessage(command.message);
-            }
+            } else a.sendUserMessage(command.message);
           }
           sendTo(ws, success("prompt"));
           break;
@@ -927,7 +1044,6 @@ export default function (pi: ExtensionAPI) {
           sendTo(ws, success("abort"));
           break;
         }
-
         case "new_session": {
           if (!ctx) {
             sendTo(ws, error("new_session", "No context available"));
@@ -1053,13 +1169,13 @@ export default function (pi: ExtensionAPI) {
           const providers = Array.from(providerNames)
             .sort()
             .map((p) => {
-              const status = registry.getProviderAuthStatus(p);
+              var authStatus = registry.getProviderAuthStatus(p);
               return {
                 provider: p,
                 displayName: registry.getProviderDisplayName(p),
-                configured: status.configured,
-                source: status.source, // "stored" | "environment" | "runtime" | "fallback" | undefined
-                label: status.label,
+                configured: authStatus.configured,
+                source: authStatus.source, // "stored" | "environment" | "runtime" | "fallback" | undefined
+                label: authStatus.label,
               };
             });
           sendTo(ws, success("list_auth_status", { providers }));
@@ -1251,7 +1367,6 @@ export default function (pi: ExtensionAPI) {
           sendTo(ws, success("set_auto_compaction"));
           break;
         }
-
         case "compact": {
           if (ctx) {
             // Broadcast compaction start to all clients
@@ -1269,30 +1384,29 @@ export default function (pi: ExtensionAPI) {
           sendTo(ws, success("compact"));
           break;
         }
-
         case "export_html": {
           if (!ctx) {
             sendTo(ws, error("export_html", "No context available"));
             break;
           }
           try {
-            const sessionFile = ctx.sessionManager.getSessionFile();
-            if (!sessionFile) throw new Error("No session file to export");
-            const { execSync } = require("node:child_process");
-            const args = command.outputPath
-              ? `"${sessionFile}" "${command.outputPath}"`
-              : `"${sessionFile}"`;
+            exportSessionFile = ctx.sessionManager.getSessionFile();
+            if (!exportSessionFile) throw new Error("No session file to export");
+            exportExecSync = require("node:child_process").execSync;
+            exportArgs = command.outputPath
+              ? `"${exportSessionFile}" "${command.outputPath}"`
+              : `"${exportSessionFile}"`;
             // process.execPath at runtime is the embedded pi binary, which
             // supports --export when invoked as a top-level CLI.
-            const output = execSync(`"${process.execPath}" --export ${args}`, {
+            exportOutput = exportExecSync(`"${process.execPath}" --export ${exportArgs}`, {
               cwd: process.cwd(),
               timeout: 30000,
               encoding: "utf-8",
             });
             // pi prints the output path
-            const result =
-              output.trim().split("\n").pop() || sessionFile.replace(".jsonl", ".html");
-            sendTo(ws, success("export_html", { path: result }));
+            exportResult =
+              exportOutput.trim().split("\n").pop() || exportSessionFile.replace(".jsonl", ".html");
+            sendTo(ws, success("export_html", { path: exportResult }));
           } catch (e: unknown) {
             sendTo(ws, error("export_html", errMessage(e)));
           }
@@ -1302,8 +1416,7 @@ export default function (pi: ExtensionAPI) {
         // ─── Sync ───
         case "mirror_sync_request": {
           if (ctx) {
-            const snapshot = await buildStateSnapshot(ctx);
-            sendTo(ws, snapshot);
+            sendTo(ws, await buildStateSnapshot(ctx));
           } else {
             sendTo(ws, { type: "mirror_sync", entries: [], model: null });
           }
@@ -1319,14 +1432,28 @@ export default function (pi: ExtensionAPI) {
           sendTo(ws, success("get_auth", { configured: false, enabled: false }));
           break;
         }
-
         case "set_auth": {
           sendTo(ws, error("set_auth", "Auth is not configurable in desktop mode"));
           break;
         }
-
+        case "ephemeral_snapshot_request": {
+          if (ephemeralState) {
+            sendTo(ws, ephemeralState.snapshot());
+          } else {
+            sendTo(ws, error("ephemeral_snapshot_request", "Not an ephemeral process"));
+          }
+          break;
+        }
+        case "extension_ui_response": {
+          // A user extension's dialog response. The full round-trip to pi's RPC
+          // stdin is owned by the broker host path (Task 8); on an ephemeral
+          // route this case exists so the command is never treated as unknown.
+          sendTo(ws, success("extension_ui_response"));
+          break;
+        }
         default: {
           sendTo(ws, error(command.type, `Unknown command: ${command.type}`));
+          break;
         }
       }
     } catch (e: unknown) {
@@ -1361,12 +1488,14 @@ export default function (pi: ExtensionAPI) {
       Number.isFinite(brokerPort) &&
       brokerPort > 0
     ) {
-      const redirect = new URL(`http://${host}/`);
-      redirect.searchParams.set("mobile", "1");
-      redirect.searchParams.set("brokerWs", `ws://${hostName}:${brokerPort}/ui-ws`);
-      res.writeHead(302, { Location: redirect.toString() });
-      res.end();
-      return;
+      const redirect = tryParseUrl(`http://${host}/`);
+      if (redirect) {
+        redirect.searchParams.set("mobile", "1");
+        redirect.searchParams.set("brokerWs", `ws://${hostName}:${brokerPort}/ui-ws`);
+        res.writeHead(302, { Location: redirect.toString() });
+        res.end();
+        return;
+      }
     }
 
     // Strip query params
@@ -1411,8 +1540,9 @@ export default function (pi: ExtensionAPI) {
   ) {
     urlPath = normalizeApiRoutePath(urlPath);
 
-    // CORS headers
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    // CORS is limited to the server's own origin (plus loopback origins for
+    // desktop clients); arbitrary websites must not gain API access.
+    setSameOriginCors(req, res);
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
@@ -1470,18 +1600,27 @@ export default function (pi: ExtensionAPI) {
     if (urlPath === "/api/instances") {
       res.writeHead(200, {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
       });
-      res.end(JSON.stringify({ instances: getRunningInstances() }));
+      res.end(JSON.stringify({ instances: EPHEMERAL_ENV ? [] : getRunningInstances() }));
       return;
     }
 
     if (urlPath === "/api/sessions" && req.method === "GET") {
-      serveSessionsList(res);
+      if (EPHEMERAL_ENV) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ projects: [] }));
+      } else {
+        serveSessionsList(res);
+      }
       return;
     }
     if (urlPath === "/api/workspace-info" && req.method === "GET") {
-      const requestUrl = new URL(`http://localhost${req.url || urlPath}`);
+      const requestUrl = tryParseUrl(`http://localhost${req.url || urlPath}`);
+      if (!requestUrl) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Invalid request URL" }));
+        return;
+      }
       const workspaceId = requestUrl.searchParams.get("workspaceId") || "";
       const workspacePath = resolveWorkspaceInfoPath(
         workspaceId,
@@ -1528,7 +1667,12 @@ export default function (pi: ExtensionAPI) {
 
     // Current git branch for the active workspace
     if (urlPath === "/api/git-branch" && req.method === "GET") {
-      const gitBranchUrl = new URL(`http://localhost${req.url}`);
+      const gitBranchUrl = tryParseUrl(`http://localhost${req.url || urlPath}`);
+      if (!gitBranchUrl) {
+        res.writeHead(400);
+        res.end("Invalid request URL");
+        return;
+      }
       const requestedPort = Number(gitBranchUrl.searchParams.get("foregroundPort"));
       const cwd = resolveGitBranchCwd({
         foregroundPort: Number.isFinite(requestedPort) ? requestedPort : null,
@@ -1550,7 +1694,17 @@ export default function (pi: ExtensionAPI) {
 
     // Full-text search across sessions
     if (urlPath.startsWith("/api/search") && req.method === "GET") {
-      const searchUrl = new URL(`http://localhost${req.url}`);
+      if (EPHEMERAL_ENV) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ results: [] }));
+        return;
+      }
+      const searchUrl = tryParseUrl(`http://localhost${req.url || urlPath}`);
+      if (!searchUrl) {
+        res.writeHead(400);
+        res.end("Invalid request URL");
+        return;
+      }
       const q = searchUrl.searchParams.get("q") || "";
       serveSearch(res, q);
       return;
@@ -1564,7 +1718,11 @@ export default function (pi: ExtensionAPI) {
         return;
       }
       try {
-        const filesUrl = new URL(`http://localhost${req.url}`);
+        const filesUrl = tryParseUrl(`http://localhost${req.url || urlPath}`);
+        if (!filesUrl) {
+          sendJsonError(res, 400, "Invalid request URL");
+          return;
+        }
         const explicitPath = filesUrl.searchParams.get("path");
         const scope = filesUrl.searchParams.get("scope") === "picker" ? "picker" : "workspace";
         const currentCtx = globalState.getLatestCtx?.() ?? latestCtx;
@@ -1597,7 +1755,11 @@ export default function (pi: ExtensionAPI) {
       req.method === "GET"
     ) {
       try {
-        const contentUrl = new URL(`http://localhost${req.url}`);
+        const contentUrl = tryParseUrl(`http://localhost${req.url || urlPath}`);
+        if (!contentUrl) {
+          sendJsonError(res, 400, "Invalid request URL");
+          return;
+        }
         const requestedPath = contentUrl.searchParams.get("path");
         const currentCtx = globalState.getLatestCtx?.() ?? latestCtx;
         const wsRoot = resolveWorkspaceRoot(currentCtx);
@@ -1685,7 +1847,11 @@ export default function (pi: ExtensionAPI) {
         return;
       }
       try {
-        const rawUrl = new URL(`http://localhost${req.url}`);
+        const rawUrl = tryParseUrl(`http://localhost${req.url || urlPath}`);
+        if (!rawUrl) {
+          sendJsonError(res, 400, "Invalid request URL");
+          return;
+        }
         const requestedPath = rawUrl.searchParams.get("path");
         const currentCtx = globalState.getLatestCtx?.() ?? latestCtx;
         const wsRoot = resolveWorkspaceRoot(currentCtx);
@@ -1894,7 +2060,12 @@ export default function (pi: ExtensionAPI) {
     // Session file endpoint: /api/sessions/:dirName/:file
     const sessionMatch = urlPath.match(/^\/api\/sessions\/([^/]+)\/([^/]+)$/);
     if (sessionMatch && req.method === "GET") {
-      serveSessionFile(res, sessionMatch[1], sessionMatch[2]);
+      if (EPHEMERAL_ENV) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Session history is unavailable in temporary chat" }));
+      } else {
+        serveSessionFile(res, sessionMatch[1], sessionMatch[2]);
+      }
       return;
     }
 
@@ -1930,6 +2101,11 @@ export default function (pi: ExtensionAPI) {
     }
 
     if (urlPath === "/api/sessions/delete-batch" && req.method === "POST") {
+      if (EPHEMERAL_ENV && isEphemeralSessionMutationRoute(urlPath, req.method)) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Command is not available in temporary chat" }));
+        return;
+      }
       let body = "";
       req.on("data", (chunk: Buffer) => {
         body += chunk.toString();
@@ -1979,14 +2155,19 @@ export default function (pi: ExtensionAPI) {
 
     // Session switch — in embedded mode, this is a no-op (session is controlled by Picot).
     if (urlPath === "/api/sessions/switch" && req.method === "POST") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          success: true,
-          embedded: true,
-          note: "Session switching is controlled by Picot's Rust side",
-        }),
-      );
+      if (EPHEMERAL_ENV && isEphemeralSessionMutationRoute(urlPath, req.method)) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Command is not available in temporary chat" }));
+      } else {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            embedded: true,
+            note: "Session switching is controlled by Picot's Rust side",
+          }),
+        );
+      }
       return;
     }
 
@@ -2229,15 +2410,13 @@ export default function (pi: ExtensionAPI) {
     let nextIndex = 0;
     const workerCount = Math.max(1, Math.min(limit, items.length));
 
-    await Promise.all(
-      Array.from({ length: workerCount }, async () => {
-        while (true) {
-          const current = nextIndex++;
-          if (current >= items.length) return;
-          results[current] = await mapper(items[current]);
-        }
-      }),
-    );
+    const runWorker = async (): Promise<void> => {
+      while (nextIndex < items.length) {
+        const current = nextIndex++;
+        results[current] = await mapper(items[current]);
+      }
+    };
+    await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
 
     return results;
   }
@@ -2363,7 +2542,8 @@ export default function (pi: ExtensionAPI) {
 
   function parseRangeParams(req: http.IncomingMessage) {
     const reqUrl = req.url || "";
-    const parsed = new URL(reqUrl, "http://localhost");
+    const parsed = tryParseUrl(reqUrl, "http://localhost");
+    if (!parsed) return null;
     const range = (parsed.searchParams.get("range") || "30d").toLowerCase();
     const granularity = (parsed.searchParams.get("granularity") || "day").toLowerCase();
     const scope = (parsed.searchParams.get("scope") || "all").toLowerCase();
@@ -2526,6 +2706,11 @@ export default function (pi: ExtensionAPI) {
 
       const readline = await import("node:readline");
       const params = parseRangeParams(req);
+      if (!params) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Invalid request URL" }));
+        return;
+      }
       const currentWorkspace = (() => {
         try {
           return fs.realpathSync(process.cwd());
@@ -3039,14 +3224,18 @@ export default function (pi: ExtensionAPI) {
         if (!client.isAlive) {
           try {
             client.terminate();
-          } catch {}
+          } catch {
+            // The socket is already unusable; continue removing it.
+          }
           globalState.clients.delete(client);
           continue;
         }
         client.isAlive = false;
         try {
           client.ping();
-        } catch {}
+        } catch {
+          // The next heartbeat or close handler will remove dead clients.
+        }
       }
     }, 20000);
 
@@ -3093,7 +3282,9 @@ export default function (pi: ExtensionAPI) {
             close: () => {
               try {
                 (bunServer as { stop?: (force?: boolean) => void }).stop?.(true);
-              } catch {}
+              } catch {
+                // Shutdown is already in progress; no further action is possible.
+              }
             },
             nodeServer: null,
             bunServer,
@@ -3126,7 +3317,8 @@ export default function (pi: ExtensionAPI) {
       // inference, and zero-copy streaming, and the adapter's buffered
       // body approach would defeat all of that for the 200+ KB JS bundle.
       async function bunFetchHandler(req: Request, server: unknown): Promise<Response | undefined> {
-        const url = new URL(req.url);
+        const url = tryParseUrl(req.url);
+        if (!url) return new Response("Invalid request URL", { status: 400 });
         if (url.pathname === "/ws") {
           if ((server as { upgrade: (req: Request) => boolean }).upgrade(req)) return undefined;
           return new Response("WebSocket upgrade failed", { status: 400 });
@@ -3157,10 +3349,12 @@ export default function (pi: ExtensionAPI) {
           Number.isFinite(brokerPort) &&
           brokerPort > 0
         ) {
-          const redirect = new URL(`http://${host}/`);
-          redirect.searchParams.set("mobile", "1");
-          redirect.searchParams.set("brokerWs", `ws://${hostName}:${brokerPort}/ui-ws`);
-          return Response.redirect(redirect.toString(), 302);
+          const redirect = tryParseUrl(`http://${host}/`);
+          if (redirect) {
+            redirect.searchParams.set("mobile", "1");
+            redirect.searchParams.set("brokerWs", `ws://${hostName}:${brokerPort}/ui-ws`);
+            return Response.redirect(redirect.toString(), 302);
+          }
         }
 
         if (urlPath === "/") urlPath = "/index.html";
@@ -3245,7 +3439,9 @@ export default function (pi: ExtensionAPI) {
           close: () => {
             try {
               server.close();
-            } catch {}
+            } catch {
+              // The server may already have closed during extension reload.
+            }
           },
           nodeServer: server,
           bunServer: null,
@@ -3303,7 +3499,8 @@ export default function (pi: ExtensionAPI) {
   //     HAS_BUN_SERVE and return a Bun Response with a ReadableStream.
   // ═══════════════════════════════════════════════════════════════════════
   async function runNodeStyleHandler(req: Request): Promise<Response> {
-    const url = new URL(req.url);
+    const url = tryParseUrl(req.url);
+    if (!url) return new Response("Invalid request URL", { status: 400 });
     const bodyText = req.method !== "GET" && req.method !== "HEAD" ? await req.text() : "";
 
     return await new Promise<Response>((resolve) => {

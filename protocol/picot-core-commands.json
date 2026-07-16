@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "commands": {
+    "prompt": "allowed",
+    "steer": "allowed",
+    "follow_up": "allowed",
+    "abort": "allowed",
+    "new_session": "deniedSessionLifecycle",
+    "switch_session": "deniedSessionLifecycle",
+    "get_state": "allowed",
+    "get_messages": "allowed",
+    "get_pi_version": "allowed",
+    "get_available_models": "allowed",
+    "list_auth_status": "allowed",
+    "set_api_key": "desktopOwnerOnly",
+    "remove_api_key": "desktopOwnerOnly",
+    "set_model": "allowed",
+    "cycle_model": "allowed",
+    "cycle_thinking_level": "allowed",
+    "set_thinking_level": "allowed",
+    "get_session_stats": "allowed",
+    "set_session_name": "deniedSessionLifecycle",
+    "set_auto_compaction": "allowed",
+    "compact": "allowed",
+    "export_html": "deniedSessionLifecycle",
+    "mirror_sync_request": "allowed",
+    "get_auth": "allowed",
+    "set_auth": "desktopOwnerOnly",
+    "ephemeral_snapshot_request": "allowed",
+    "extension_ui_response": "allowed"
+  }
+}
