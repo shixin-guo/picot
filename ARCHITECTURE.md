@@ -811,6 +811,51 @@ renderError(message);
 
 ---
 
+## 临时聊天（Side Chat / Quick Chat）
+
+Quick Chat 与 Side Chat 是隔离的、**不持久化**的临时 Pi 会话进程，互不干扰主会话。
+
+- **Side Chat**：复用所属窗口的工作区 cwd，`pi --mode rpc --no-session`，**保留工具**，上限 5 个/窗口，投影进文件预览面板的 tab 条。
+- **Quick Chat**：用 Picot 安全创建的临时目录，`pi --mode rpc --no-session --no-tools`，**禁用工具**，上限 1 个/窗口，渲染为非模态浮动对话框。
+
+### 安全与能力边界（Rust 宿主拥有）
+
+- `window_owner.rs`：每个原生工作区窗口一个不透明 owner 记录，绑定窗口 label、规范化 cwd、主端口、当前精确 Pi origin、256-bit OS 随机 bearer capability（`subtle` 常量时间校验）。capability 绝不进 URL/存储/日志/事件。
+- 精确源导航：`on_navigation` 委托 `authorize_navigation`，仅批准 owner 的当前 origin 或一次性短寿 pending origin；拒绝外部 HTTPS/LAN/file/自定义 scheme/未注册 loopback 端口/重定向。`on_new_window` 一律 `Deny`（消除 `window.open` 依赖）。
+- `capability_initialization_script`：仅当 `location` 为 Picot 的 http loopback hostname 时把 capability 注入为 non-enumerable 属性（导航回调之后的纵深防御）。
+- `command_policy.rs` + `protocol/picot-core-commands.json` + `extensions/command-policy.ts`：单一版本化清单，把每个 core RPC 命令机械分类为 `allowed`/`deniedSessionLifecycle`/`desktopOwnerOnly`；未知命令对临时路由 fail-closed；Rust 与 TS 实现共享同一 JSON。
+
+### 临时进程身份与路由
+
+- `ephemeral_registry.rs`：按 owner 分区，单 owner 临界区管理配额/替换/关闭/退出转换；记录以 `(owner, instanceId, generation)` 标识，绝不按 port 单独标识。`EphemeralDescriptor` redact 掉 capability/cwd/port/pid/参数/temp 路径。
+- `pi_manager.rs`：`spawn_with_spec` 泛化 spawn（`PiSpawnSpec`，环境标记含 kind/instanceId/generation 但不含 capability/token）；per-(port,pid) exit watcher 仅对精确进程 emit 一次 `ProcessExit`，忽略端口复用的不同进程；安全 Quick Chat 临时目录创建/精确删除（拒 root/越界/symlink/token 不匹配，无启动扫描）。
+- `broker_ws.rs`：`client_hello` 能力握手（native/remote 分类，5s 超时，重连取代旧连接）；`VerifiedClientContext` 携带 class/owner，控制 handler 与路由均从 ctx 派生 owner，**忽略 payload 里的 owner/cwd/port 字段**；`ephemeral_command` 信封按 `(owner, instanceId, generation)` 解析路由 + 命令策略校验，**不改 `active_port`**；ephemeral 上游事件仅投递给该 owner 的当前认证 client（不广播）。
+
+### 嵌入式运行时（embedded-server.ts）
+
+- `ephemeral-runtime-state.ts`：序列化 reducer，每个 render-relevant 事件递增进程生命期单调 `runtimeSequence` 后发布；`snapshot()` 返回权威状态 + `runtimeSequenceWatermark`。
+- ephemeral 模式：解析 host 注入的 kind/instanceId/generation 标记；事件带 `runtimeSequence`+instance 身份发布；**跳过** instance registry 写入、自动标题、session 副作用；`handleCommand` 加策略守卫（`assertEphemeralCommandAllowed`）+ `ephemeral_snapshot_request`/`extension_ui_response` 两个 case。
+
+### 重绑（reload 不丢流式内容）
+
+- 前端 `ephemeral-chat-runtime.js`：仅接受匹配 instance+generation 的帧；`applySnapshot` 装载权威状态 + watermark；`applySequencedEvent` 要求严格 `lastAppliedSequence+1`，更大则暂停并 `ephemeral_snapshot_request` 重请求快照，重复序列抑制；owner-targeted 事件不广播。broker 为每个临时 runtime 保留有界 journal（512 帧或 2 MiB），快照请求按 watermark 回放，缺口或溢出由 runtime 再次请求权威快照。
+
+### 前端模块
+
+- `ephemeral-chat-view.js`：元素级隔离的聊天视图，复用 `MessageRenderer`/`ToolCardRenderer`/`DialogHandler`/voice（均有幂等 `destroy()`）；Side Chat `toolsEnabled=true`、Quick Chat `false`；extension UI 请求经 view 的 scoped `DialogHandler` → `runtime.respondToExtensionUi`。
+- `side-chat-manager.js`：Side Chat 集合 + 5 配额 + Unicode-grapheme 安全标题（40 簇）+ transient tab 投影 + 创建/关闭 + 工作区转换 settle + rebind。
+- `quick-chat-dialog.js`：单 Quick Chat 非模态对话框 + 最小化芯片 + 标题拖拽（pointer 捕获 + blur/cancel 清理）+ New Chat 事务替换 + 几何仅内存。
+- `file-preview-panel.js`：discriminated `activeContent={kind:"file"|"transient",id}` + transient tab 投影 API（register/update/activate/requestClose/unregister）+ close-risk 参与者 API + tab-bar 动作适配器（“New Side Chat”）。`FileTabState` 仍是文件唯一持久化源；transient 仅内存。
+- `window-close-coordinator.js`：唯一窗口关闭决策流——冻结交互→收集 versioned risk（脏文件 + 非空/流式 ephemeral）→单摘要对话框→settle 文件→generation-checked ephemeral cleanup→approve；cancel/失败解锁，重复请求合并；owns 唯一 `beforeunload` 脏文件守卫。
+
+### 工作区转换与原生关闭
+
+- 同规范 cwd 导航：保留 Side Chat + Quick Chat，更新主 port/origin（`prepare_navigation`/`commit`），提交时不执行旧工作区 Side Chat 清理。
+- 跨工作区导航：`begin_workspace_transition`→前端 settle 旧 Side Chat→`side_chat_cleanup_for_transition`→`commit`（提交 cwd/port/origin + workspace_generation）；Quick Chat 独立于工作区故保留；取消保留旧绑定。
+- 原生关闭：`CloseRequested` 拦截→owner 定向 `window_close_request`→前端协调器；取消/settle 失败通过 `window_close_cancel` 清除挂起请求，确认后调用 `window_close_approve`（一次性审批，下次 `CloseRequested` 消费）；`Destroyed` 做最终幂等 owner cleanup（杀进程/注销路由/ephemeral owner_cleanup/删 owned temp 目录/revoke owner）；断连 WebView 走原生 fallback 警告。
+
+---
+
 ## 如何读这个仓库
 
 - 要加一个**影响 session 路由**的新 RPC 命令，从
@@ -825,7 +870,7 @@ renderError(message);
 - 要改**窗口本身**，从 `src-tauri/src/main.rs::open_workspace_window` 开始。
 - 要改**工作区恢复逻辑**，从 `src-tauri/src/main.rs::setup`（约 line 940
   的 `setup` 闭包）开始。
-- 要改** pi 启动方式**，从 `src-tauri/src/pi_manager.rs::spawn`
+- 要改**pi 启动方式**，从 `src-tauri/src/pi_manager.rs::spawn`
   （约 line 540）开始。
 - 要加一个**新的 UI 面板**，照着 `public/cost-infobar.js` /
   `public/session-sidebar.js` 的模式来：一个 `public/foo.js` 文件加
