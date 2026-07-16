@@ -1,3 +1,6 @@
+// ABOUTME: Provides one broker-backed transport for Pi, native, workspace, and ephemeral commands.
+// ABOUTME: Keeps request routing owner-scoped and independent of the desktop bridge.
+
 /**
  * Transport layer — the single surface the frontend uses to drive process /
  * window lifecycle and native operations.
@@ -170,7 +173,58 @@ export class WsTransport {
     });
   }
 
-  // ── Helpers ──────────────────────────────────────────────────────────────────
+  // ── Ephemeral chats (Side Chat / Quick Chat) ───────────────────────────────
+
+  createEphemeral(kind) {
+    return this._control("ephemeral_create", { kind }, { timeoutMs: SPAWN_TIMEOUT_MS });
+  }
+  replaceQuickChat() {
+    return this._control("ephemeral_replace_quick", {}, { timeoutMs: SPAWN_TIMEOUT_MS });
+  }
+  closeEphemeral(instanceId, generation) {
+    return this._control("ephemeral_close", { instanceId, generation });
+  }
+  getEphemeralBootstrap() {
+    return this._control("ephemeral_bootstrap", {});
+  }
+  updateEphemeralUi(instanceId, generation, patch) {
+    return this._control("ephemeral_update_ui", { instanceId, generation, ...patch });
+  }
+  // Forward an owner-scoped ephemeral RPC (prompt/abort/model/etc.). The broker
+  // derives the owner from the authenticated connection, never from the payload.
+  sendEphemeral(instanceId, generation, payload) {
+    return this.wsClient?.sendEphemeral(instanceId, generation, payload) ?? null;
+  }
+
+  // ── Workspace transitions (same-cwd switch vs cross-workspace navigation) ──
+
+  prepareWorkspaceTarget(targetCwd, options = {}) {
+    return this._control(
+      "workspace_target_prepare",
+      {
+        targetCwd,
+        sessionPath: options.sessionPath ?? null,
+        forceNewSession: options.forceNewSession ?? false,
+        reuseExisting: options.reuseExisting ?? false,
+        targetPort: options.targetPort ?? null,
+      },
+      { timeoutMs: SPAWN_TIMEOUT_MS },
+    );
+  }
+  commitWorkspaceTransition(transitionGeneration) {
+    return this._control("workspace_transition_commit", { transitionGeneration });
+  }
+  cancelWorkspaceTransition(transitionGeneration) {
+    return this._control("workspace_transition_cancel", { transitionGeneration });
+  }
+  approveWindowClose(requestId) {
+    return this._control("window_close_approve", { requestId });
+  }
+  cancelWindowClose(requestId) {
+    return this._control("window_close_cancel", { requestId });
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────────
 
   currentPort() {
     return currentPort(this.env);

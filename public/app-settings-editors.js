@@ -1,10 +1,8 @@
-import { t } from "./i18n.js";
+// ABOUTME: Builds the settings API-key editor and provider status rows.
+// ABOUTME: Routes key changes through the authenticated Pi transport.
 
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
-}
+import { t } from "./i18n.js";
+import { getTransport } from "./transport.js";
 
 export function setupSettingsEditors({
   rpcCommand,
@@ -18,7 +16,7 @@ export function setupSettingsEditors({
 
   async function loadApiKeysPanel() {
     if (!apiKeysContainer) return;
-    apiKeysContainer.innerHTML = "";
+    apiKeysContainer.replaceChildren();
     const loadingDiv = document.createElement("div");
     loadingDiv.className = "settings-api-keys-loading";
     loadingDiv.textContent = t("settings.loadingProviders");
@@ -32,7 +30,7 @@ export function setupSettingsEditors({
   }
 
   function renderApiKeysPanelError(message) {
-    apiKeysContainer.innerHTML = "";
+    apiKeysContainer.replaceChildren();
     const wrap = document.createElement("div");
     wrap.className = "settings-api-keys-empty";
     const msg = document.createElement("div");
@@ -49,9 +47,12 @@ export function setupSettingsEditors({
   }
 
   function renderApiKeysPanel(providers) {
-    apiKeysContainer.innerHTML = "";
+    apiKeysContainer.replaceChildren();
     if (providers.length === 0) {
-      apiKeysContainer.innerHTML = `<div class="settings-api-keys-empty">${escapeHtml(t("settings.apiKeys.noProviders"))}</div>`;
+      const empty = document.createElement("div");
+      empty.className = "settings-api-keys-empty";
+      empty.textContent = t("settings.apiKeys.noProviders");
+      apiKeysContainer.appendChild(empty);
       return;
     }
     for (const p of providers) {
@@ -373,17 +374,14 @@ export function setupSettingsEditors({
     e.preventDefault();
     const url =
       "https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/models.md";
-    fetch("/api/open", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filePath: url }),
-    })
-      .then((r) => {
-        if (!r.ok) throw new Error("open failed");
-      })
-      .catch(() => {
-        window.open(url, "_blank");
-      });
+    const transport = getTransport();
+    if (transport?.available) {
+      transport
+        .openExternal(url)
+        .catch(() => showInlineModelsError(`${t("settings.models.docsOpenFailed")}: ${url}`));
+    } else {
+      showInlineModelsError(`${t("settings.models.docsOpenFailed")}: ${url}`);
+    }
   });
 
   return {

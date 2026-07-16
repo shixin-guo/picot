@@ -125,4 +125,79 @@ describe("WsTransport", () => {
 
     await expect(transport.relaunchApp()).resolves.toBeUndefined();
   });
+
+  test("ephemeral lifecycle methods issue their control commands", async () => {
+    const ws = fakeWsClient();
+    const transport = new WsTransport(ws, {});
+
+    await transport.createEphemeral("side-chat");
+    await transport.replaceQuickChat();
+    await transport.closeEphemeral("inst-1", 2);
+    await transport.getEphemeralBootstrap();
+    await transport.updateEphemeralUi("inst-1", 2, { title: "Hi", unread: true });
+
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "ephemeral_create",
+      { kind: "side-chat" },
+      expect.objectContaining({ timeoutMs: expect.any(Number) }),
+    );
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "ephemeral_close",
+      {
+        instanceId: "inst-1",
+        generation: 2,
+      },
+      {},
+    );
+    expect(ws.sendControl).toHaveBeenCalledWith("ephemeral_bootstrap", {}, {});
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "ephemeral_update_ui",
+      {
+        instanceId: "inst-1",
+        generation: 2,
+        title: "Hi",
+        unread: true,
+      },
+      {},
+    );
+  });
+
+  test("workspace transition + close methods issue their control commands", async () => {
+    const ws = fakeWsClient();
+    const transport = new WsTransport(ws, {});
+
+    await transport.prepareWorkspaceTarget("/tmp/b", { forceNewSession: true });
+    await transport.commitWorkspaceTransition(7);
+    await transport.cancelWorkspaceTransition(7);
+    await transport.approveWindowClose("close-1");
+
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "workspace_target_prepare",
+      expect.objectContaining({ targetCwd: "/tmp/b", forceNewSession: true }),
+      expect.objectContaining({ timeoutMs: expect.any(Number) }),
+    );
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "workspace_transition_commit",
+      {
+        transitionGeneration: 7,
+      },
+      {},
+    );
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "window_close_approve",
+      { requestId: "close-1" },
+      {},
+    );
+  });
+
+  test("sendEphemeral forwards to the wsClient and returns its requestId", () => {
+    const ws = {
+      capabilities: { native: true },
+      sendControl: vi.fn(),
+      sendEphemeral: vi.fn(() => "ep-9"),
+    };
+    const transport = new WsTransport(ws, {});
+    expect(transport.sendEphemeral("inst-1", 3, { type: "prompt" })).toBe("ep-9");
+    expect(ws.sendEphemeral).toHaveBeenCalledWith("inst-1", 3, { type: "prompt" });
+  });
 });

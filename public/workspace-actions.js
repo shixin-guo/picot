@@ -1,3 +1,6 @@
+// ABOUTME: Coordinates workspace/session navigation and native transition permits.
+// ABOUTME: Keeps same-window activation separate from cross-workspace navigation.
+
 import { t } from "./i18n.js";
 
 // Multi-task model
@@ -86,6 +89,8 @@ async function attachToWorkspace({
   getCurrentPort,
   navigate,
   onBeforeSwap,
+  beforeWorkspaceTransition,
+  onWorkspaceTransitionCancelled,
   renderError,
 }) {
   const instances = await fetchInstances();
@@ -98,24 +103,54 @@ async function attachToWorkspace({
 
   const existing = instances.find((i) => i.cwd === targetCwd);
   let targetPort = existing?.port;
-
-  const dismissOverlay = runOnBeforeSwap(onBeforeSwap, "Opening workspace…");
-  if (!targetPort) {
-    try {
+  let prepared = null;
+  let dismissOverlay = () => {};
+  try {
+    if (typeof transport.prepareWorkspaceTarget === "function") {
       targetPort = await transport.openWorkspace(targetCwd, {
         forceNewSession: false,
         openWindow: false,
         waitForSessions: false,
       });
-    } catch (e) {
-      dismissOverlay();
-      if (renderError) renderError(`${t("errors.attachWorkspaceFailed")}: ${String(e)}`);
-      return null;
+      prepared = await transport.prepareWorkspaceTarget(targetCwd, { targetPort });
+      const crossWorkspace = prepared?.classification === "cross";
+      if (crossWorkspace && typeof beforeWorkspaceTransition === "function") {
+        const settled = await beforeWorkspaceTransition(prepared);
+        if (!settled) {
+          onWorkspaceTransitionCancelled?.();
+          await transport.cancelWorkspaceTransition(prepared.transitionGeneration).catch(() => {});
+          return null;
+        }
+      }
+      if (typeof prepared?.transitionGeneration !== "number") {
+        throw new Error("Workspace transition was not prepared");
+      }
+      dismissOverlay = runOnBeforeSwap(onBeforeSwap, "Opening workspace…");
+      await transport.commitWorkspaceTransition(prepared.transitionGeneration);
+      targetPort = Number(new URL(prepared.targetOrigin).port);
+      navigate(withBrokerWs(buildWorkspaceUrl(targetPort), transport));
+      return { samePort: false, port: targetPort };
     }
-  }
 
-  navigate(withBrokerWs(buildWorkspaceUrl(targetPort), transport));
-  return { samePort: false, port: targetPort };
+    dismissOverlay = runOnBeforeSwap(onBeforeSwap, "Opening workspace…");
+    if (!targetPort) {
+      targetPort = await transport.openWorkspace(targetCwd, {
+        forceNewSession: false,
+        openWindow: false,
+        waitForSessions: false,
+      });
+    }
+    navigate(withBrokerWs(buildWorkspaceUrl(targetPort), transport));
+    return { samePort: false, port: targetPort };
+  } catch (e) {
+    dismissOverlay();
+    if (prepared?.transitionGeneration != null) {
+      onWorkspaceTransitionCancelled?.();
+      await transport.cancelWorkspaceTransition(prepared.transitionGeneration).catch(() => {});
+    }
+    if (renderError) renderError(`${t("errors.attachWorkspaceFailed")}: ${String(e)}`);
+    return null;
+  }
 }
 
 // "+ New Session" button in the current window's header.
@@ -133,6 +168,8 @@ export async function startInWindowNewSession({
   shouldSpawnParallel,
   onInPlaceSessionCreated,
   onParallelSessionCreated,
+  beforeWorkspaceTransition,
+  onWorkspaceTransitionCancelled,
   renderError,
 }) {
   if (!transport) {
@@ -204,6 +241,9 @@ export async function startInWindowNewSession({
     transport,
     navigate,
     onBeforeSwap,
+    getCurrentCwd,
+    beforeWorkspaceTransition,
+    onWorkspaceTransitionCancelled,
     onParallelSessionCreated,
     renderError,
     label: t("sidebar.startingSession"),
@@ -220,13 +260,20 @@ async function spawnFreshSession({
   transport,
   navigate,
   onBeforeSwap,
+  getCurrentCwd,
+  beforeWorkspaceTransition,
+  onWorkspaceTransitionCancelled,
   onParallelSessionCreated,
   renderError,
   label,
   debugTag,
   errorLabel = t("errors.newSessionFailed"),
 }) {
-  const dismissOverlay = runOnBeforeSwap(onBeforeSwap, label);
+  const currentCwd = typeof getCurrentCwd === "function" ? getCurrentCwd() : null;
+  const canActivateInPlace =
+    typeof onParallelSessionCreated === "function" && (!currentCwd || currentCwd === targetCwd);
+  let dismissOverlay = () => {};
+  let prepared = null;
   try {
     // Wait before both in-place activation and full-page navigation. Otherwise
     // remote/mobile clients can land on a not-yet-listening embedded port and
@@ -238,11 +285,26 @@ async function spawnFreshSession({
       waitForHealth,
       waitForSessions: false,
     });
+    if (!canActivateInPlace && typeof transport.prepareWorkspaceTarget === "function") {
+      prepared = await transport.prepareWorkspaceTarget(targetCwd, { targetPort: newPort });
+      if (prepared?.classification === "cross" && typeof beforeWorkspaceTransition === "function") {
+        const settled = await beforeWorkspaceTransition(prepared);
+        if (!settled) {
+          onWorkspaceTransitionCancelled?.();
+          await transport.cancelWorkspaceTransition(prepared.transitionGeneration).catch(() => {});
+          return false;
+        }
+      }
+      dismissOverlay = runOnBeforeSwap(onBeforeSwap, label);
+      await transport.commitWorkspaceTransition(prepared.transitionGeneration);
+    } else {
+      dismissOverlay = runOnBeforeSwap(onBeforeSwap, label);
+    }
     console.debug(`[Session route] ${debugTag}:parallel-created`, {
       targetCwd,
       newPort,
     });
-    if (typeof onParallelSessionCreated === "function") {
+    if (canActivateInPlace) {
       // In-place activation: no full-page navigation happens, so the swap
       // overlay would otherwise stay up forever. Dismiss it ourselves once
       // the new parallel session is wired up.
@@ -253,10 +315,17 @@ async function spawnFreshSession({
       }
       return true;
     }
-    navigate(withBrokerWs(buildWorkspaceUrl(newPort), transport));
+    const targetPort = prepared?.targetOrigin
+      ? Number(new URL(prepared.targetOrigin).port)
+      : newPort;
+    navigate(withBrokerWs(buildWorkspaceUrl(targetPort), transport));
     return true;
   } catch (e) {
     dismissOverlay();
+    if (prepared?.transitionGeneration != null) {
+      onWorkspaceTransitionCancelled?.();
+      await transport.cancelWorkspaceTransition(prepared.transitionGeneration).catch(() => {});
+    }
     renderError(`${errorLabel}: ${e}`);
     return false;
   }
@@ -284,6 +353,8 @@ export async function startNewProjectChat({
   fetchInstances,
   navigate,
   onBeforeSwap,
+  beforeWorkspaceTransition,
+  onWorkspaceTransitionCancelled,
   renderError,
 }) {
   if (!transport) {
@@ -343,6 +414,9 @@ export async function startNewProjectChat({
         transport,
         navigate,
         onBeforeSwap,
+        getCurrentCwd,
+        beforeWorkspaceTransition,
+        onWorkspaceTransitionCancelled,
         onParallelSessionCreated,
         renderError,
         label: t("sidebar.startingSession"),
@@ -360,6 +434,8 @@ export async function startNewProjectChat({
       getCurrentPort,
       navigate,
       onBeforeSwap,
+      beforeWorkspaceTransition,
+      onWorkspaceTransitionCancelled,
       renderError,
     });
     return result !== null;
@@ -370,6 +446,9 @@ export async function startNewProjectChat({
     transport,
     navigate,
     onBeforeSwap,
+    getCurrentCwd,
+    beforeWorkspaceTransition,
+    onWorkspaceTransitionCancelled,
     onParallelSessionCreated,
     renderError,
     label: t("sidebar.startingSession"),
@@ -389,6 +468,8 @@ export async function openProjectWorkspace({
   getCurrentPort,
   navigate,
   onBeforeSwap,
+  beforeWorkspaceTransition,
+  onWorkspaceTransitionCancelled,
   renderError,
 }) {
   if (!transport) {
@@ -410,6 +491,8 @@ export async function openProjectWorkspace({
       getCurrentPort,
       navigate,
       onBeforeSwap,
+      beforeWorkspaceTransition,
+      onWorkspaceTransitionCancelled,
       renderError,
     });
     return result !== null;
@@ -425,6 +508,8 @@ export async function openFolderAsWorkspace({
   getCurrentPort,
   navigate,
   onBeforeSwap,
+  beforeWorkspaceTransition,
+  onWorkspaceTransitionCancelled,
   renderError,
 }) {
   if (!transport) {
@@ -443,6 +528,8 @@ export async function openFolderAsWorkspace({
       getCurrentPort,
       navigate,
       onBeforeSwap,
+      beforeWorkspaceTransition,
+      onWorkspaceTransitionCancelled,
       renderError,
     });
     return result !== null;

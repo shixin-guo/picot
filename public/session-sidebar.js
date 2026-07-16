@@ -1,3 +1,6 @@
+// ABOUTME: Lists sessions grouped by project and handles session switching.
+// ABOUTME: Coordinates recent, pinned, and live workspace state for the sidebar.
+
 /**
  * Session Sidebar - Lists sessions grouped by project, handles switching
  */
@@ -9,10 +12,66 @@ import { buildSidebarSection, buildSidebarWorkspaceGroup } from "./sidebar-works
 import { mergeWorkspaceProjects, resolvePinnedWorkspaceGroups } from "./workspace-projects.js";
 import { WorkspaceQuickInfo } from "./workspace-quick-info.js";
 
-const ARCHIVE_ICON =
-  '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="4" rx="1.5"></rect><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"></path><path d="M10 12h4"></path></svg>';
-const OPEN_FOLDER_ICON =
-  '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>';
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function readJsonArray(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
+
+function createSvgIcon(kind) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  const elements =
+    kind === "archive"
+      ? [
+          ["rect", { x: "3", y: "4", width: "18", height: "4", rx: "1.5" }],
+          ["path", { d: "M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" }],
+          ["path", { d: "M10 12h4" }],
+        ]
+      : kind === "folder"
+        ? [
+            [
+              "path",
+              { d: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" },
+            ],
+          ]
+        : [
+            ["path", { d: "M6 7h12l-1 14H7z" }],
+            ["path", { d: "M4 7h16M9 7V4h6v3" }],
+          ];
+  for (const [tag, attrs] of elements) {
+    const element = document.createElementNS(SVG_NS, tag);
+    for (const [name, value] of Object.entries(attrs)) element.setAttribute(name, value);
+    svg.appendChild(element);
+  }
+  return svg;
+}
+
+function appendHighlightedText(container, text, query) {
+  const source = String(text || "");
+  if (!query) {
+    container.textContent = source;
+    return;
+  }
+  const expression = new RegExp(query.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&"), "gi");
+  let cursor = 0;
+  for (const match of source.matchAll(expression)) {
+    if (match.index > cursor)
+      container.appendChild(document.createTextNode(source.slice(cursor, match.index)));
+    const mark = document.createElement("mark");
+    mark.textContent = match[0];
+    container.appendChild(mark);
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
+}
 
 export class SessionSidebar {
   constructor(container, onSessionSelect, onNewChat, options = {}) {
@@ -28,9 +87,9 @@ export class SessionSidebar {
     this.searchQuery = "";
     this.recent = readRecentSessions();
     this.recentCollapsed = false;
-    this.archived = JSON.parse(localStorage.getItem("pi-studio-archived") || "[]");
+    this.archived = readJsonArray("pi-studio-archived");
     this.archivedCollapsed = localStorage.getItem("pi-studio-archived-collapsed") !== "false";
-    this.unread = new Set(JSON.parse(localStorage.getItem("pi-studio-unread") || "[]"));
+    this.unread = new Set(readJsonArray("pi-studio-unread"));
     this.pinStore = options.pinStore || createPinnedItemsStore();
     this.quickInfo = options.quickInfo || new WorkspaceQuickInfo({ pinStore: this.pinStore });
     this.unsubscribePinStore =
@@ -188,15 +247,27 @@ export class SessionSidebar {
     return new Promise((resolve) => {
       const overlay = document.createElement("div");
       overlay.className = "sidebar-confirm-overlay";
-      overlay.innerHTML = `
-        <div class="sidebar-confirm-dialog" role="dialog" aria-modal="true" aria-label="${this.escapeHtml(t("sidebar.deleteArchivedAriaLabel"))}">
-          <div class="sidebar-confirm-message">${this.escapeHtml(message)}</div>
-          <div class="sidebar-confirm-actions">
-            <button type="button" class="sidebar-confirm-no">${this.escapeHtml(t("actions.cancel"))}</button>
-            <button type="button" class="sidebar-confirm-yes">${this.escapeHtml(t("actions.delete"))}</button>
-          </div>
-        </div>
-      `;
+      const dialog = document.createElement("div");
+      dialog.className = "sidebar-confirm-dialog";
+      dialog.setAttribute("role", "dialog");
+      dialog.setAttribute("aria-modal", "true");
+      dialog.setAttribute("aria-label", t("sidebar.deleteArchivedAriaLabel"));
+      const messageElement = document.createElement("div");
+      messageElement.className = "sidebar-confirm-message";
+      messageElement.textContent = message;
+      const actions = document.createElement("div");
+      actions.className = "sidebar-confirm-actions";
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "sidebar-confirm-no";
+      cancel.textContent = t("actions.cancel");
+      const confirm = document.createElement("button");
+      confirm.type = "button";
+      confirm.className = "sidebar-confirm-yes";
+      confirm.textContent = t("actions.delete");
+      actions.append(cancel, confirm);
+      dialog.append(messageElement, actions);
+      overlay.appendChild(dialog);
 
       const cleanup = (result) => {
         document.removeEventListener("keydown", onKeyDown);
@@ -223,11 +294,17 @@ export class SessionSidebar {
   async loadSessions({ retries = 4, retryDelayMs = 250, quiet = false } = {}) {
     const seq = ++this.loadSeq;
     if (!quiet) {
-      this.container.innerHTML = Array.from(
-        { length: 6 },
-        () =>
-          '<div class="session-skeleton"><div class="session-skeleton-title"></div><div class="session-skeleton-meta"></div></div>',
-      ).join("");
+      this.container.replaceChildren();
+      for (let index = 0; index < 6; index += 1) {
+        const skeleton = document.createElement("div");
+        skeleton.className = "session-skeleton";
+        const title = document.createElement("div");
+        title.className = "session-skeleton-title";
+        const meta = document.createElement("div");
+        meta.className = "session-skeleton-meta";
+        skeleton.append(title, meta);
+        this.container.appendChild(skeleton);
+      }
     }
 
     let lastError = null;
@@ -275,12 +352,18 @@ export class SessionSidebar {
     const message = likelyRuntimeDown
       ? t("sidebar.failedToLoadSessionsRuntime")
       : t("sidebar.failedToLoadSessions");
-    const retryLabel = this.escapeHtml(t("sidebar.retry"));
-    this.container.innerHTML = `<div class="session-loading">${this.escapeHtml(message)} <button class="retry-link" id="retry-load-sessions">${retryLabel}</button></div>`;
-    const retryBtn = this.container.querySelector("#retry-load-sessions");
-    if (retryBtn) {
-      retryBtn.addEventListener("click", () => this.loadSessions());
-    }
+    this.container.replaceChildren();
+    const loading = document.createElement("div");
+    loading.className = "session-loading";
+    loading.textContent = message;
+    const retryBtn = document.createElement("button");
+    retryBtn.type = "button";
+    retryBtn.className = "retry-link";
+    retryBtn.id = "retry-load-sessions";
+    retryBtn.textContent = t("sidebar.retry");
+    retryBtn.addEventListener("click", () => this.loadSessions());
+    loading.append(" ", retryBtn);
+    this.container.appendChild(loading);
   }
 
   setSearchQuery(query) {
@@ -332,7 +415,14 @@ export class SessionSidebar {
 
     const header = document.createElement("div");
     header.className = "project-header search-results-header";
-    header.innerHTML = `<span>🔍</span> <span>${this.escapeHtml(t("sidebar.messageMatches"))}</span> <span class="project-count">${this._searchResults.length}</span>`;
+    const searchIcon = document.createElement("span");
+    searchIcon.textContent = "🔍";
+    const label = document.createElement("span");
+    label.textContent = t("sidebar.messageMatches");
+    const count = document.createElement("span");
+    count.className = "project-count";
+    count.textContent = String(this._searchResults.length);
+    header.append(searchIcon, label, count);
     group.appendChild(header);
 
     const sessionsDiv = document.createElement("div");
@@ -352,13 +442,21 @@ export class SessionSidebar {
       const matchCount = result.matches.length;
       const time = this.formatTime(result.sessionTimestamp);
 
-      item.innerHTML = `
-        <div class="session-title-row">
-          <div class="session-title" title="${this.escapeHtml(title)}">${this.escapeHtml(title)}</div>
-        </div>
-        <div class="search-snippet">${this.highlightMatch(snippet, this.searchQuery)}</div>
-        <div class="session-meta">${time}${matchCount > 1 ? ` · ${this.escapeHtml(t("sidebar.matchCount", { count: matchCount }))}` : ""}</div>
-      `;
+      const titleRow = document.createElement("div");
+      titleRow.className = "session-title-row";
+      const titleElement = document.createElement("div");
+      titleElement.className = "session-title";
+      titleElement.title = title;
+      titleElement.textContent = title;
+      titleRow.appendChild(titleElement);
+      const snippetElement = document.createElement("div");
+      snippetElement.className = "search-snippet";
+      appendHighlightedText(snippetElement, snippet, this.searchQuery);
+      const meta = document.createElement("div");
+      meta.className = "session-meta";
+      meta.textContent = time;
+      if (matchCount > 1) meta.append(` · ${t("sidebar.matchCount", { count: matchCount })}`);
+      item.append(titleRow, snippetElement, meta);
 
       // Find the matching project/session to pass to onSessionSelect
       item.addEventListener("click", () => {
@@ -385,10 +483,9 @@ export class SessionSidebar {
   }
 
   highlightMatch(text, query) {
-    if (!query) return this.escapeHtml(text);
-    const escaped = this.escapeHtml(text);
-    const re = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
-    return escaped.replace(re, "<mark>$1</mark>");
+    const fragment = document.createDocumentFragment();
+    appendHighlightedText(fragment, text, query);
+    return fragment;
   }
   applySearch() {
     if (!this.searchQuery) {
@@ -505,12 +602,12 @@ export class SessionSidebar {
         },
       },
       {
-        icon: OPEN_FOLDER_ICON,
+        iconKind: "folder",
         label: t("sidebar.openInFinder"),
         action: () => this.onOpenProject?.(workspace),
       },
       {
-        icon: ARCHIVE_ICON,
+        iconKind: "archive",
         label: t("sidebar.archiveWorkspaceSessions"),
         action: () => this.archiveWorkspaceSessions(workspace),
       },
@@ -528,7 +625,7 @@ export class SessionSidebar {
       const icon = document.createElement("span");
       icon.className = `context-menu-icon${item.iconClass ? ` ${item.iconClass}` : ""}`;
       icon.setAttribute("aria-hidden", "true");
-      if (item.icon) icon.innerHTML = item.icon;
+      if (item.iconKind) icon.appendChild(createSvgIcon(item.iconKind));
       const label = document.createElement("span");
       label.textContent = item.label;
       row.append(icon, label);
@@ -623,7 +720,13 @@ export class SessionSidebar {
         })
       ).json();
       if (data?.success && data.data?.path) {
-        window.open(`/api/sessions/${encodeURIComponent(data.data.path)}`);
+        const downloadUrl = `/api/sessions/${encodeURIComponent(data.data.path)}`;
+        const anchor = document.createElement("a");
+        anchor.href = downloadUrl;
+        anchor.download = "";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
       }
     } catch {
       /* silent */
@@ -647,7 +750,6 @@ export class SessionSidebar {
 
     const title = session.name || session.firstMessage || t("sidebar.emptySession");
     const time = this.formatTime(session.timestamp);
-    const tmuxTag = session.tmux ? '<span class="session-tag tmux-tag">tmux</span>' : "";
     const isArchived = this.isArchived(session.filePath);
     const isPinned = this.pinStore.isSessionPinned(session.filePath);
     const pinBtnLabel = isPinned ? t("sidebar.unpinSession") : t("sidebar.pinSession");
@@ -655,25 +757,39 @@ export class SessionSidebar {
       ? t("sidebar.unarchiveSession")
       : t("sidebar.archiveSession");
 
-    item.innerHTML = `
-      <div class="session-title-row">
-        <div class="session-title" title="${this.escapeHtml(title)}">${this.escapeHtml(title)}</div>
-        ${tmuxTag}
-        <span class="session-action-slot">
-          <span class="session-time">${time}</span>
-        </span>
-      </div>
-    `;
+    const titleRow = document.createElement("div");
+    titleRow.className = "session-title-row";
+    const titleElement = document.createElement("div");
+    titleElement.className = "session-title";
+    titleElement.title = title;
+    titleElement.textContent = title;
+    titleRow.appendChild(titleElement);
+    if (session.tmux) {
+      const tmuxTag = document.createElement("span");
+      tmuxTag.className = "session-tag tmux-tag";
+      tmuxTag.textContent = "tmux";
+      titleRow.appendChild(tmuxTag);
+    }
+    const actionSlot = document.createElement("span");
+    actionSlot.className = "session-action-slot";
+    const timeElement = document.createElement("span");
+    timeElement.className = "session-time";
+    timeElement.textContent = time;
+    actionSlot.appendChild(timeElement);
+    titleRow.appendChild(actionSlot);
+    item.appendChild(titleRow);
 
     item.addEventListener("click", () => this.onSessionSelect(session, project));
-    const actionSlot = item.querySelector(".session-action-slot");
     const pinBtn = document.createElement("button");
     pinBtn.type = "button";
     pinBtn.className = "session-pin-btn";
     pinBtn.title = pinBtnLabel;
     pinBtn.setAttribute("aria-label", pinBtnLabel);
     pinBtn.setAttribute("aria-pressed", String(isPinned));
-    pinBtn.innerHTML = '<span class="session-pin-icon" aria-hidden="true"></span>';
+    const pinIcon = document.createElement("span");
+    pinIcon.className = "session-pin-icon";
+    pinIcon.setAttribute("aria-hidden", "true");
+    pinBtn.appendChild(pinIcon);
     pinBtn.addEventListener("click", (event) => {
       event.stopPropagation();
       if (isPinned) this.pinStore.unpinSession(session.filePath);
@@ -687,7 +803,7 @@ export class SessionSidebar {
       archiveBtn.className = "session-archive-btn";
       archiveBtn.title = archiveBtnLabel;
       archiveBtn.setAttribute("aria-label", archiveBtnLabel);
-      archiveBtn.innerHTML = ARCHIVE_ICON;
+      archiveBtn.appendChild(createSvgIcon("archive"));
       archiveBtn.addEventListener("click", (event) => {
         event.stopPropagation();
         this.toggleArchived(session.filePath);
@@ -838,7 +954,7 @@ export class SessionSidebar {
   render({ preserveQuickInfo = false } = {}) {
     const recentSessions = this.resolveRecentSessions();
 
-    this.container.innerHTML = "";
+    this.container.replaceChildren();
     this.quickInfo.clearHeaders({ preserveCard: preserveQuickInfo });
     this.quickInfo.setWorkspaces(this.projects);
 
@@ -858,10 +974,12 @@ export class SessionSidebar {
       header.setAttribute("role", "button");
       header.tabIndex = 0;
       header.setAttribute("aria-expanded", String(!this.recentCollapsed));
-      header.innerHTML = `
-        <span class="chevron">▼</span>
-        <span>${this.escapeHtml(t("sidebar.recent"))}</span>
-      `;
+      const chevron = document.createElement("span");
+      chevron.className = "chevron";
+      chevron.textContent = "▼";
+      const label = document.createElement("span");
+      label.textContent = t("sidebar.recent");
+      header.append(chevron, label);
       recentGroup.appendChild(header);
 
       const sessionsDiv = document.createElement("div");
@@ -955,30 +1073,28 @@ export class SessionSidebar {
 
       const header = document.createElement("div");
       header.className = `project-header archived-header${this.archivedCollapsed ? " collapsed" : ""}`;
-      header.innerHTML = `
-        <span class="chevron">▼</span>
-        <span>${this.escapeHtml(t("sidebar.archived"))}</span>
-        <span class="project-count">${archivedSessions.length}</span>
-        <button class="archived-delete-all-btn" title="${this.escapeHtml(t("sidebar.deleteAllArchived"))}" aria-label="${this.escapeHtml(t("sidebar.deleteAllArchived"))}">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="3 6 5 6 21 6"></polyline>
-            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-            <path d="M10 11v6"></path>
-            <path d="M14 11v6"></path>
-            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
-          </svg>
-        </button>
-      `;
+      const archivedChevron = document.createElement("span");
+      archivedChevron.className = "chevron";
+      archivedChevron.textContent = "▼";
+      const archivedLabel = document.createElement("span");
+      archivedLabel.textContent = t("sidebar.archived");
+      const archivedCount = document.createElement("span");
+      archivedCount.className = "project-count";
+      archivedCount.textContent = String(archivedSessions.length);
+      const deleteAllBtn = document.createElement("button");
+      deleteAllBtn.type = "button";
+      deleteAllBtn.className = "archived-delete-all-btn";
+      deleteAllBtn.title = t("sidebar.deleteAllArchived");
+      deleteAllBtn.setAttribute("aria-label", t("sidebar.deleteAllArchived"));
+      deleteAllBtn.appendChild(createSvgIcon("trash"));
+      header.append(archivedChevron, archivedLabel, archivedCount, deleteAllBtn);
       archivedGroup.appendChild(header);
 
-      const deleteAllBtn = header.querySelector(".archived-delete-all-btn");
-      if (deleteAllBtn) {
-        deleteAllBtn.hidden = archivedSessions.length === 0;
-        deleteAllBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          this.deleteAllArchived();
-        });
-      }
+      deleteAllBtn.hidden = archivedSessions.length === 0;
+      deleteAllBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.deleteAllArchived();
+      });
 
       const sessionsDiv = document.createElement("div");
       sessionsDiv.className = `project-sessions${this.archivedCollapsed ? " collapsed" : ""}`;
@@ -1054,11 +1170,5 @@ export class SessionSidebar {
     } catch {
       return "";
     }
-  }
-
-  escapeHtml(text) {
-    const div = document.createElement("div");
-    div.textContent = text;
-    return div.innerHTML;
   }
 }

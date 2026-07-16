@@ -1,3 +1,6 @@
+// ABOUTME: Coordinates file preview tabs, transient chat tabs, and panel layout.
+// ABOUTME: Owns dirty-buffer settlement, renderer lifecycle, and tab interactions.
+
 /**
  * File Preview Panel — orchestrator module.
  *
@@ -15,6 +18,35 @@ import { onLocaleChange, t } from "./i18n.js";
 const AUTO_SAVE_DELAY = 1500;
 const DEFAULT_PANEL_RATIO = 0.42;
 const MIN_PANEL_WIDTH = 320;
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function appendCloseIcon(button) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  for (const [name, value] of Object.entries({
+    "aria-hidden": "true",
+    width: "10",
+    height: "10",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": "2.5",
+    "stroke-linecap": "round",
+  })) {
+    svg.setAttribute(name, value);
+  }
+  const firstLine = document.createElementNS(SVG_NS, "line");
+  firstLine.setAttribute("x1", "18");
+  firstLine.setAttribute("y1", "6");
+  firstLine.setAttribute("x2", "6");
+  firstLine.setAttribute("y2", "18");
+  const secondLine = document.createElementNS(SVG_NS, "line");
+  secondLine.setAttribute("x1", "6");
+  secondLine.setAttribute("y1", "6");
+  secondLine.setAttribute("x2", "18");
+  secondLine.setAttribute("y2", "18");
+  svg.append(firstLine, secondLine);
+  button.appendChild(svg);
+}
 
 export class FilePreviewPanel {
   constructor({
@@ -64,6 +96,15 @@ export class FilePreviewPanel {
     this.transientStatus = "";
     this.cleanupListeners = [];
     this.activeDialogCancel = null;
+    // Transient (non-file) content tabs — Side Chats — projected into the same
+    // tab strip as file tabs but never persisted to FileTabState.
+    this.transientTabs = new Map();
+    // Discriminated active content: { kind: "file" | "transient", id } | null.
+    this.activeContent = null;
+    // Tab-bar actions (e.g. "New Side Chat") registered by an external manager.
+    this.tabBarActions = new Map();
+    this._interactionLocked = false;
+    this._riskVersion = 0;
 
     this._restorePreferences();
     this._setupListeners();
@@ -93,12 +134,14 @@ export class FilePreviewPanel {
     this._renderToolbar();
 
     if (this.state.getTabs().length === 0) {
+      this.activeContent = null;
       this._closePanel();
       return true;
     }
 
     this._openPanel();
     const activeTab = this.state.getActiveTab();
+    this.activeContent = activeTab ? { kind: "file", id: activeTab.id } : null;
     if (activeTab) await this._loadTabContent(activeTab);
     return true;
   }
@@ -107,6 +150,7 @@ export class FilePreviewPanel {
     const normalizedPath = typeof filePath === "string" ? filePath.replace(/\/+$/, "") : "";
     const existing = this.state.getTabs().find((tab) => tab.filePath === normalizedPath);
     const currentTab = this.state.getActiveTab();
+    if (this.activeContent?.kind === "transient") this._deactivateCurrent();
 
     if (existing) {
       if (currentTab?.id !== existing.id) {
@@ -120,6 +164,7 @@ export class FilePreviewPanel {
       } else if (currentTab?.id !== existing.id || !this.currentRenderer) {
         await this._mountRenderer(this.state.getTab(existing.id));
       }
+      this.activeContent = { kind: "file", id: existing.id };
       return existing;
     }
 
@@ -128,6 +173,7 @@ export class FilePreviewPanel {
     this._openPanel();
     this._renderTabBar();
     await this._loadTabContent(tab);
+    this.activeContent = { kind: "file", id: tab.id };
     return tab;
   }
 
@@ -173,6 +219,164 @@ export class FilePreviewPanel {
     this._unsubscribeLocale?.();
   }
 
+  // ── Transient content tabs + close-risk participant APIs ────────────────
+
+  registerTransientTab(descriptor) {
+    if (!descriptor?.id) return;
+    this.transientTabs.set(descriptor.id, { ...descriptor });
+    this._renderTabBar();
+  }
+
+  updateTransientTab(id, visualState = {}) {
+    const entry = this.transientTabs.get(id);
+    if (!entry) return;
+    Object.assign(entry, visualState);
+    this._renderTabBar();
+  }
+
+  activateContent({ kind, id } = {}) {
+    if (kind !== "file" && kind !== "transient") return;
+    if (kind === "transient") {
+      const entry = this.transientTabs.get(id);
+      if (!entry) return;
+      this._deactivateCurrent();
+      if (this.content && entry.contentElement) {
+        this.content.appendChild(entry.contentElement);
+      }
+      entry.onActivate?.();
+      this.activeContent = { kind: "transient", id };
+      this._openPanel();
+      this._renderTabBar();
+      this._renderToolbar();
+    } else {
+      this._deactivateCurrent();
+      void this._selectTab(id).then(() => {
+        this.activeContent = { kind: "file", id };
+        this._renderTabBar();
+      });
+    }
+  }
+
+  requestCloseTransientTab(id) {
+    const entry = this.transientTabs.get(id);
+    return entry?.onRequestClose?.();
+  }
+
+  unregisterTransientTab(id) {
+    const entry = this.transientTabs.get(id);
+    if (!entry) return;
+    const wasActive = this.activeContent?.kind === "transient" && this.activeContent.id === id;
+    const transientOrder = Array.from(this.transientTabs.keys());
+    const closedIndex = transientOrder.indexOf(id);
+    if (wasActive) this._deactivateCurrent();
+    this.transientTabs.delete(id);
+    this._renderTabBar();
+    if (wasActive) {
+      const nextTransient =
+        transientOrder[closedIndex + 1] || transientOrder[closedIndex - 1] || null;
+      if (nextTransient) {
+        this.activateContent({ kind: "transient", id: nextTransient });
+        Array.from(this.tabBar?.querySelectorAll("[data-transient-id]") || [])
+          .find((tab) => tab.dataset.transientId === nextTransient)
+          ?.focus();
+      } else if (this.state.getActiveTab()) {
+        this.activateContent({ kind: "file", id: this.state.activeTabId });
+      } else {
+        document.getElementById("side-chat-btn")?.focus();
+      }
+    }
+    // If no tabs remain, hide the panel.
+    if (this.transientTabs.size === 0 && this.state.getTabs().length === 0) {
+      this._closePanel();
+    }
+  }
+
+  showPanel() {
+    this._openPanel();
+  }
+
+  hidePanel() {
+    this._closePanel();
+  }
+
+  // Close-risk participant contract consumed by the window close coordinator.
+  getCloseRisk() {
+    this._riskVersion += 1;
+    return {
+      version: 3,
+      riskVersion: this._riskVersion,
+      dirtyFiles: this.state
+        .getTabs()
+        .filter((tab) => tab.dirty)
+        .map((tab) => ({ id: tab.id, name: tab.fileName })),
+    };
+  }
+
+  setInteractionLocked(locked) {
+    this._interactionLocked = Boolean(locked);
+    if (this.content) this.content.inert = this._interactionLocked;
+    this._renderTabBar();
+  }
+
+  async settleCloseRisk(decision) {
+    if (decision === "cancel") return this.getCloseRisk();
+    const dirtyTabs = this.state.getTabs().filter((tab) => tab.dirty);
+    if (dirtyTabs.length === 0) return this.getCloseRisk();
+    if (decision === "discard") {
+      for (const tab of dirtyTabs) {
+        this.state.updateTab(tab.id, { content: tab.originalContent ?? "", dirty: false });
+      }
+      return this.getCloseRisk();
+    }
+    // decision === "save": flush every dirty tab.
+    for (const tab of dirtyTabs) {
+      await this._saveTab(tab.id).catch(() => {});
+    }
+    return this.getCloseRisk();
+  }
+
+  // Tab-bar action adapter so an external manager (SideChatManager) can place a
+  // control (e.g. "New Side Chat") inside the tab strip without owning DOM.
+  registerTabBarAction(actionId, { label, onClick, iconSvg = "" } = {}) {
+    if (!actionId) return;
+    this.tabBarActions.set(actionId, {
+      label,
+      onClick,
+      iconSvg,
+      enabled: true,
+      visible: true,
+      disabledReason: "",
+    });
+    this._renderTabBar();
+  }
+
+  setTabBarActionEnabled(actionId, enabled, disabledReason = "") {
+    const action = this.tabBarActions.get(actionId);
+    if (!action) return;
+    action.enabled = Boolean(enabled);
+    action.disabledReason = disabledReason;
+    this._renderTabBar();
+  }
+
+  setTabBarActionVisible(actionId, visible) {
+    const action = this.tabBarActions.get(actionId);
+    if (!action) return;
+    action.visible = Boolean(visible);
+    this._renderTabBar();
+  }
+
+  _deactivateCurrent() {
+    if (this.activeContent?.kind === "transient") {
+      const entry = this.transientTabs.get(this.activeContent.id);
+      entry?.onDeactivate?.();
+      entry?.contentElement?.remove();
+    } else if (this.activeContent?.kind === "file" || this.currentRenderer) {
+      this._captureActiveRenderer();
+      this._destroyRenderer();
+    }
+    this.activeContent = null;
+  }
+
   _openPanel() {
     this.panelOpen = true;
     this.panel?.classList.remove("collapsed");
@@ -189,8 +393,9 @@ export class FilePreviewPanel {
     this.panel?.classList.remove("enlarged");
     this.resizer?.classList.add("collapsed");
     this.mainContainer?.classList.remove("preview-enlarged");
+    if (this.activeContent) this._deactivateCurrent();
     this._destroyRenderer();
-    if (this.content) this.content.innerHTML = "";
+    this.content?.replaceChildren();
     this._updateControlButtons();
     this._renderToolbar();
   }
@@ -242,15 +447,67 @@ export class FilePreviewPanel {
 
   _renderTabBar() {
     if (!this.tabBar) return;
-    this.tabBar.innerHTML = "";
+    this.tabBar.replaceChildren();
+    this.tabBar.setAttribute("role", "tablist");
+
+    // Transient (Side Chat) tabs render before file tabs and preserve
+    // registration order. They are in-memory only — never FileTabState.
+    for (const [id, entry] of this.transientTabs) {
+      const tabEl = document.createElement("div");
+      const isActive = this.activeContent?.kind === "transient" && this.activeContent.id === id;
+      tabEl.className = `file-preview-tab transient-tab${isActive ? " active" : ""}`;
+      tabEl.dataset.transientId = id;
+      tabEl.setAttribute("role", "tab");
+      tabEl.setAttribute("tabindex", isActive ? "0" : "-1");
+      tabEl.setAttribute("aria-selected", String(isActive));
+
+      const name = document.createElement("span");
+      name.className = "file-preview-tab-name";
+      name.textContent = entry.title || "";
+      name.title = entry.fullTitle || entry.title || "";
+      tabEl.appendChild(name);
+
+      if (entry.status === "streaming" || entry.unread) {
+        const status = document.createElement("span");
+        status.className = "transient-tab-status";
+        const label =
+          entry.status === "streaming" ? t("ephemeral.generating") : t("ephemeral.unread");
+        status.textContent = entry.status === "streaming" ? "⋯" : "●";
+        status.title = label;
+        status.setAttribute("aria-label", label);
+        tabEl.appendChild(status);
+      }
+
+      const closeBtn = document.createElement("button");
+      closeBtn.className = "file-preview-tab-close";
+      closeBtn.type = "button";
+      closeBtn.title = t("files.preview.close");
+      closeBtn.setAttribute("aria-label", t("files.preview.close"));
+      closeBtn.disabled = this._interactionLocked;
+      appendCloseIcon(closeBtn);
+      closeBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.requestCloseTransientTab(id);
+      });
+      tabEl.appendChild(closeBtn);
+
+      tabEl.addEventListener("click", () => {
+        if (!this._interactionLocked) this.activateContent({ kind: "transient", id });
+      });
+      tabEl.addEventListener("keydown", (event) => this._onTabKeydown(event));
+      this.tabBar.appendChild(tabEl);
+    }
 
     for (const tab of this.state.getTabs()) {
       const tabEl = document.createElement("div");
-      const isActive = tab.id === this.state.activeTabId;
+      const isActive =
+        this.activeContent?.kind === "file"
+          ? this.activeContent.id === tab.id
+          : this.activeContent == null && tab.id === this.state.activeTabId;
       tabEl.className = `file-preview-tab${isActive ? " active" : ""}`;
       tabEl.dataset.tabId = tab.id;
       tabEl.setAttribute("role", "tab");
-      tabEl.setAttribute("tabindex", "0");
+      tabEl.setAttribute("tabindex", isActive ? "0" : "-1");
       tabEl.setAttribute("aria-selected", String(isActive));
 
       const icon = document.createElement("span");
@@ -287,23 +544,74 @@ export class FilePreviewPanel {
       closeBtn.type = "button";
       closeBtn.title = t("files.preview.close");
       closeBtn.setAttribute("aria-label", t("files.preview.close"));
-      closeBtn.innerHTML =
-        '<svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      closeBtn.disabled = this._interactionLocked;
+      appendCloseIcon(closeBtn);
       closeBtn.addEventListener("click", (event) => {
         event.stopPropagation();
         void this._closeTab(tab.id);
       });
       tabEl.appendChild(closeBtn);
 
-      tabEl.addEventListener("click", () => void this._selectTab(tab.id));
+      tabEl.addEventListener("click", () => {
+        if (!this._interactionLocked) void this._selectTab(tab.id);
+      });
       tabEl.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           void this._selectTab(tab.id);
+          return;
         }
+        this._onTabKeydown(event);
       });
       this.tabBar.appendChild(tabEl);
     }
+
+    // Tab-bar actions (e.g. "New Side Chat") registered by an external manager.
+    for (const [actionId, action] of this.tabBarActions) {
+      if (action.visible === false) continue;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "file-preview-tab-action";
+      btn.dataset.actionId = actionId;
+      btn.textContent = action.label || "";
+      btn.setAttribute("aria-label", action.label || "");
+      btn.disabled = !action.enabled || this._interactionLocked;
+      if (action.disabledReason) btn.title = action.disabledReason;
+      btn.addEventListener("click", () => {
+        if (action.enabled && !this._interactionLocked) action.onClick?.();
+      });
+      this.tabBar.appendChild(btn);
+    }
+    this._ensureRovingTabindex();
+  }
+
+  _onTabKeydown(event) {
+    if (this._interactionLocked) return;
+    const tabs = Array.from(this.tabBar.querySelectorAll(".file-preview-tab"));
+    const current = tabs.indexOf(event.currentTarget);
+    if (current < 0) return;
+    let target = current;
+    if (event.key === "ArrowRight") target = (current + 1) % tabs.length;
+    else if (event.key === "ArrowLeft") target = (current - 1 + tabs.length) % tabs.length;
+    else if (event.key === "Home") target = 0;
+    else if (event.key === "End") target = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    const next = tabs[target];
+    if (next) {
+      next.focus();
+      next.click();
+    }
+  }
+
+  // Roving tabindex: exactly one tab is in the tab order. If none is active,
+  // make the first tab focusable so keyboard users can enter the strip.
+  _ensureRovingTabindex() {
+    if (!this.tabBar) return;
+    const tabs = Array.from(this.tabBar.querySelectorAll(".file-preview-tab"));
+    if (tabs.length === 0) return;
+    if (tabs.some((tab) => tab.getAttribute("tabindex") === "0")) return;
+    tabs[0].setAttribute("tabindex", "0");
   }
 
   _getFileIcon(fileName) {
@@ -334,7 +642,15 @@ export class FilePreviewPanel {
 
   async _selectTab(tabId) {
     const currentTab = this.state.getActiveTab();
-    if (currentTab?.id === tabId) return true;
+    if (currentTab?.id === tabId) {
+      if (!this.currentRenderer) {
+        const tab = this.state.getTab(tabId);
+        if (tab) await this._mountRenderer(tab);
+      }
+      this.activeContent = { kind: "file", id: tabId };
+      return true;
+    }
+    if (this.activeContent?.kind === "transient") this._deactivateCurrent();
     this._captureActiveRenderer();
     if (!this.state.selectTab(tabId)) return false;
 
@@ -345,6 +661,7 @@ export class FilePreviewPanel {
     } else {
       await this._mountRenderer(tab);
     }
+    this.activeContent = { kind: "file", id: tabId };
     return true;
   }
 
@@ -373,8 +690,14 @@ export class FilePreviewPanel {
       } else if (wasActive && nextTab) {
         await this._mountRenderer(nextTab);
       }
+      if (wasActive) {
+        Array.from(this.tabBar?.querySelectorAll("[data-tab-id]") || [])
+          .find((tab) => tab.dataset.tabId === result.nextTabId)
+          ?.focus();
+      }
     } else {
       this._closePanel();
+      if (wasActive) document.getElementById("file-sidebar-toggle")?.focus();
     }
     return true;
   }
@@ -456,7 +779,7 @@ export class FilePreviewPanel {
   async _mountRenderer(tab) {
     if (!tab || tab.id !== this.state.activeTabId || !this.content) return;
     this._destroyRenderer();
-    this.content.innerHTML = "";
+    this.content.replaceChildren();
 
     if (tab.loading) {
       const loadingEl = document.createElement("div");
@@ -484,6 +807,7 @@ export class FilePreviewPanel {
       readOnly: tab.mode !== "edit" || !this._isEditable(tab),
       wrapLines: this.wrapLines,
       onChange: (newContent) => {
+        if (this._interactionLocked) return;
         const freshTab = this.state.getTab(tab.id);
         if (!freshTab) return;
         const dirty = newContent !== (freshTab.originalContent ?? "");
@@ -495,6 +819,7 @@ export class FilePreviewPanel {
         if (dirty) this._scheduleAutoSave(tab.id);
       },
       onModeChange: (mode) => {
+        if (this._interactionLocked) return;
         this.state.updateTab(tab.id, { mode });
         this.state.persist();
       },
@@ -914,12 +1239,6 @@ export class FilePreviewPanel {
       this._renderTabBar();
       this._renderToolbar();
     });
-    const onBeforeUnload = (event) => {
-      if (!this.state.getTabs().some((tab) => tab.dirty)) return;
-      event.preventDefault();
-      event.returnValue = true;
-    };
-    this._listen(window, "beforeunload", onBeforeUnload);
   }
 
   _showDirtyDialog(tabs) {

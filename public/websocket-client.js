@@ -1,3 +1,6 @@
+// ABOUTME: Maintains the broker WebSocket, authentication handshake, and reconnect state.
+// ABOUTME: Dispatches correlated control, session, and owner-scoped ephemeral frames.
+
 /**
  * WebSocket Client - Handles connection to backend WebSocket server
  */
@@ -54,8 +57,13 @@ export class WebSocketClient extends EventTarget {
     this.sourcePort = null;
     this.requestCounter = 0;
     // Whether the broker advertised native (OS/window) capabilities. Updated by
-    // the `capabilities` handshake frame; consumers gate native-only UI on it.
+    // the authenticated `capabilities` handshake frame; consumers gate native-only
+    // UI on it.
     this.capabilities = { native: false };
+    // True once the broker has authenticated our `client_hello`. `connected` only
+    // fires after this, so no command is sent before the owner/class is verified.
+    this.authenticated = false;
+    this._pendingConnect = false;
     // Pending control requests keyed by requestId. Each entry resolves/rejects
     // the promise returned by sendControl() when a matching control_response
     // arrives (or on timeout / disconnect). `onProgress` receives streamed
@@ -87,6 +95,7 @@ export class WebSocketClient extends EventTarget {
 
     this.isIntentionallyClosed = false;
     this.connectionState = "connecting";
+    this._pendingConnect = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -101,10 +110,11 @@ export class WebSocketClient extends EventTarget {
     this.ws = new WebSocket(this.url);
 
     this.ws.onopen = () => {
-      console.log("[WS] Connected");
+      console.log("[WS] Open; sending client_hello");
       this.reconnectAttempts = 0;
       this.connectionState = "open";
-      this.dispatchEvent(new CustomEvent("connected"));
+      this.authenticated = false;
+      this._sendClientHello();
     };
 
     this.ws.onmessage = (event) => {
@@ -137,6 +147,8 @@ export class WebSocketClient extends EventTarget {
   disconnect() {
     this.isIntentionallyClosed = true;
     this.connectionState = "closed";
+    this.authenticated = false;
+    this._pendingConnect = false;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -217,6 +229,64 @@ export class WebSocketClient extends EventTarget {
       console.error("[WS] Cannot send, not connected");
       return null;
     }
+  }
+
+  // Read the host-injected native bearer capability exactly once, then delete
+  // the global. The value is never logged or persisted to storage.
+  _readNativeCapability() {
+    try {
+      const capability = globalThis.__PICOT_NATIVE_CAPABILITY__;
+      if (typeof capability === "string" && capability) {
+        try {
+          delete globalThis.__PICOT_NATIVE_CAPABILITY__;
+        } catch {
+          // ignore non-configurable globals
+        }
+        return capability;
+      }
+    } catch {
+      // ignore access errors
+    }
+    return null;
+  }
+
+  // Send the first-frame `client_hello`. Native clients present the injected
+  // capability; remote (LAN/mobile) clients send a bare hello with no secret.
+  _sendClientHello() {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const capability = this._readNativeCapability();
+    const hello = { type: "client_hello", protocolVersion: this.protocolVersion };
+    if (capability) hello.capability = capability;
+    try {
+      this.ws.send(JSON.stringify(hello));
+    } catch (err) {
+      console.error("[WS] Failed to send client_hello:", err);
+    }
+  }
+
+  // Send an owner-scoped ephemeral command and return its requestId. The broker
+  // derives the owner from the authenticated connection, never from the payload.
+  sendEphemeral(instanceId, generation, payload) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      const requestId = `ep-${++this.requestCounter}`;
+      const envelope = {
+        type: "ephemeral_command",
+        protocolVersion: this.protocolVersion,
+        requestId,
+        ephemeralInstanceId: instanceId,
+        generation,
+        payload,
+      };
+      try {
+        this.ws.send(JSON.stringify(envelope));
+      } catch (err) {
+        console.error("[WS] Failed to send ephemeral command:", err);
+        return null;
+      }
+      return requestId;
+    }
+    console.error("[WS] Cannot send ephemeral command, not connected");
+    return null;
   }
 
   // Resolve once the socket is OPEN, or reject after `timeoutMs`. Lets control
@@ -370,12 +440,48 @@ export class WebSocketClient extends EventTarget {
       return;
     }
 
-    // Broker capability handshake — tells the UI whether native (OS/window)
-    // operations are available (true inside the desktop host, false for a bare
-    // broker / remote / mobile client without a control handler).
+    // Broker capability handshake — authenticates the client and tells the UI
+    // whether native (OS/window) operations are available (class "native"
+    // inside the desktop host, "remote" for LAN/mobile).
     if (message.type === "capabilities") {
-      this.capabilities = { native: Boolean(message.native) };
+      const cls = message.class === "native" ? "native" : "remote";
+      this.capabilities = {
+        native: cls === "native" || Boolean(message.native),
+        class: cls,
+      };
+      this.authenticated = true;
       this.dispatchEvent(new CustomEvent("capabilities", { detail: this.capabilities }));
+      if (this._pendingConnect) {
+        this._pendingConnect = false;
+        console.log("[WS] Authenticated; connected");
+        this.dispatchEvent(new CustomEvent("connected"));
+      }
+      return;
+    }
+
+    // Owner-scoped bootstrap (live ephemeral descriptors) for a native client.
+    if (message.type === "owner_bootstrap") {
+      this.dispatchEvent(new CustomEvent("ownerBootstrap", { detail: message }));
+      return;
+    }
+
+    // A sequenced event from one of this owner's ephemeral runtimes.
+    if (message.type === "ephemeral_event") {
+      this.dispatchEvent(new CustomEvent("ephemeralEvent", { detail: message }));
+      return;
+    }
+
+    // An ephemeral command could not be routed/delivered (correlated by
+    // requestId); the error is generic and never reveals instance existence.
+    if (message.type === "ephemeral_command_failed") {
+      this.dispatchEvent(new CustomEvent("ephemeralCommandFailed", { detail: message }));
+      return;
+    }
+
+    // Host-targeted window close request: the coordinator runs its serialized
+    // risk/settlement flow and replies with window_close_approve.
+    if (message.type === "window_close_request") {
+      this.dispatchEvent(new CustomEvent("windowCloseRequest", { detail: message }));
       return;
     }
 

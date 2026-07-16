@@ -106,6 +106,7 @@
           <button class="icon-btn lan-qr-btn hidden" id="lan-qr-btn" title="Show mobile QR code" aria-label="Show mobile QR code" data-i18n-title="nav.showMobileQR" data-i18n-aria-label="nav.showMobileQR">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
           </button>
+          <button class="icon-btn lan-only hidden" id="quick-chat-btn" title="Quick Chat" aria-label="Quick Chat" data-i18n-title="nav.quickChat" data-i18n-aria-label="nav.quickChat"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></button>
           <div class="status">
             <span class="status-indicator" id="status-indicator"></span>
             <span class="status-text" id="status-text" data-i18n="status.connecting">Connecting...</span>
@@ -136,11 +137,14 @@
           <button class="icon-btn" id="file-sidebar-toggle" title="Files" aria-label="Toggle file browser" data-i18n-title="nav.files" data-i18n-aria-label="nav.files">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
           </button>
+          <button class="icon-btn" id="side-chat-btn" title="Side Chat" aria-label="Side Chat" data-i18n-title="nav.sideChat" data-i18n-aria-label="nav.sideChat"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
         </div>
       </div>
       <div class="workspace-content">
         <!-- Main Chat Area -->
         <div class="main">
+          <div class="quick-chat-dialog-root" id="quick-chat-dialog-root"></div>
+          <div class="quick-chat-chip-root" id="quick-chat-chip-root"></div>
 
       <!-- Messages Container -->
       <div class="messages" id="messages">

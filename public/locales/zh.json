@@ -18,7 +18,10 @@
     "files": "文件",
     "openWorkspaceInNamedApp": "在 {app} 中打开 {path}",
     "openWorkspaceInAppAria": "在 {app} 中打开工作区",
-    "openInApp": "在 {app} 中打开"
+    "openInApp": "在 {app} 中打开",
+    "sideChat": "侧边聊天",
+    "quickChat": "快速聊天",
+    "newSideChat": "新建侧边聊天"
   },
   "git": {
     "currentBranch": "当前 Git 分支",
@@ -452,7 +455,8 @@
       "helpPost1": "以添加自定义提供者（Ollama、vLLM、LM Studio、OpenAI 兼容代理、OpenRouter 路由覆盖等）。参见",
       "docsLink": "models.json 文档",
       "helpPost2": "了解完整架构。更改即时生效 — 无需重启。",
-      "replaceConfirm": "用 Ollama 示例替换当前内容？"
+      "replaceConfirm": "用 Ollama 示例替换当前内容？",
+      "docsOpenFailed": "无法打开文档链接"
     },
     "apiKeys": {
       "noProviders": "无已知提供者。",
@@ -534,5 +538,25 @@
     "compact": "压缩",
     "compactTitle": "上下文已超过 80% — 压缩以节省令牌",
     "qrUnavailable": "二维码不可用"
+  },
+  "browse": {
+    "openExternalPrompt": "在新标签页打开此链接："
+  },
+  "ephemeral": {
+    "placeholder": "随便问点什么…",
+    "send": "发送",
+    "abort": "中止",
+    "newChat": "新对话",
+    "tokens": "tokens",
+    "sideChat": "侧边聊天",
+    "sideChatLimit": "已达到侧边聊天上限",
+    "quickChat": "快速聊天",
+    "minimize": "最小化",
+    "close": "关闭",
+    "confirmDiscard": "此临时聊天不会被保存。确定丢弃？",
+    "confirmCloseSummary": "关闭并丢弃未保存的文件和临时聊天？",
+    "generating": "生成中",
+    "unread": "未读",
+    "resize": "调整快速聊天大小"
   }
 }

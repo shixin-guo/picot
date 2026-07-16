@@ -152,3 +152,53 @@ describe("ToolCardRenderer locale change", () => {
     expect(copyBtn.getAttribute("aria-label")).toBe("复制输出");
   });
 });
+
+describe("ToolCardRenderer teardown", () => {
+  it("destroy() clears cards, stops locale updates, and is idempotent", async () => {
+    vi.stubGlobal("fetch", makeFetchMock());
+    const { initI18n, setLocale } = await importFreshI18n();
+    await initI18n();
+    const { ToolCardRenderer } = await import("./tool-card.js");
+    const container = document.createElement("div");
+    const renderer = new ToolCardRenderer(container);
+    renderer.createToolCard({
+      toolCallId: "t1",
+      toolName: "bash",
+      status: "streaming",
+      args: {},
+    });
+    expect(container.querySelector(".tool-card")).toBeTruthy();
+
+    renderer.destroy();
+    expect(() => renderer.destroy()).not.toThrow();
+    expect(renderer.toolCards.size).toBe(0);
+    // A locale change after destroy must not throw or re-render.
+    await setLocale("zh");
+  });
+
+  it("destroy() makes queued scroll callbacks safe", async () => {
+    vi.stubGlobal("fetch", makeFetchMock());
+    const { initI18n } = await importFreshI18n();
+    await initI18n();
+    const { ToolCardRenderer } = await import("./tool-card.js");
+    const queuedFrames = [];
+    vi.stubGlobal("requestAnimationFrame", (callback) => {
+      queuedFrames.push(callback);
+      return queuedFrames.length;
+    });
+    const renderer = new ToolCardRenderer(document.createElement("div"));
+    renderer.createToolCard({
+      toolCallId: "t2",
+      toolName: "bash",
+      status: "streaming",
+      args: {},
+    });
+
+    renderer.destroy();
+    expect(() => {
+      queuedFrames.forEach((callback) => {
+        callback();
+      });
+    }).not.toThrow();
+  });
+});

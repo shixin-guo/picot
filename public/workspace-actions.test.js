@@ -72,6 +72,39 @@ describe("startInWindowNewSession parallel-spawn", () => {
     expect(dismiss).toHaveBeenCalledTimes(1);
   });
 
+  it("cancels a cross-workspace transition when ephemeral settlement is rejected", async () => {
+    const transport = makeTransport();
+    transport.prepareWorkspaceTarget = vi.fn().mockResolvedValue({
+      classification: "cross",
+      transitionGeneration: 7,
+      targetOrigin: "http://127.0.0.1:47826/",
+    });
+    transport.commitWorkspaceTransition = vi.fn();
+    transport.cancelWorkspaceTransition = vi.fn().mockResolvedValue(undefined);
+    const beforeWorkspaceTransition = vi.fn().mockResolvedValue(false);
+    const onWorkspaceTransitionCancelled = vi.fn();
+    const navigate = vi.fn();
+
+    const ok = await startInWindowNewSession({
+      transport,
+      getCurrentCwd: () => "/other",
+      getCurrentPort: () => 47820,
+      navigate,
+      onBeforeSwap: vi.fn(),
+      shouldSpawnParallel: () => true,
+      beforeWorkspaceTransition,
+      onWorkspaceTransitionCancelled,
+      renderError: vi.fn(),
+    });
+
+    expect(ok).toBe(false);
+    expect(beforeWorkspaceTransition).toHaveBeenCalled();
+    expect(onWorkspaceTransitionCancelled).toHaveBeenCalledTimes(1);
+    expect(transport.cancelWorkspaceTransition).toHaveBeenCalledWith(7);
+    expect(transport.commitWorkspaceTransition).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it("dismisses the overlay and surfaces an error if activation throws", async () => {
     const transport = makeTransport();
     const dismiss = vi.fn();

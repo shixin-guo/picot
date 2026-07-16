@@ -419,3 +419,106 @@ describe("FilePreviewPanel", () => {
     expect(content.querySelectorAll(".cm-editor").length).toBe(0);
   });
 });
+
+describe("FilePreviewPanel transient tabs", () => {
+  test("registerTransientTab renders a tab before file tabs", async () => {
+    const p = createPanel();
+    await p.openFile("/test/workspace/a.txt", { fileName: "a.txt" });
+    p.registerTransientTab({
+      id: "sc1",
+      title: "Side Chat",
+      status: "ready",
+      contentElement: document.createElement("div"),
+      onActivate: () => {},
+      onDeactivate: () => {},
+      onRequestClose: () => {},
+    });
+    const transientTabs = tabBar.querySelectorAll('.file-preview-tab[data-transient-id="sc1"]');
+    expect(transientTabs.length).toBe(1);
+    // Transient tab is rendered before any file tab.
+    const firstTab = tabBar.querySelector(".file-preview-tab");
+    expect(firstTab.dataset.transientId).toBe("sc1");
+    p.destroy();
+  });
+
+  test("activateContent shows the transient content and fires onActivate", () => {
+    const p = createPanel();
+    const body = document.createElement("div");
+    body.textContent = "side chat body";
+    let activated = false;
+    p.registerTransientTab({
+      id: "sc1",
+      title: "Side Chat",
+      status: "ready",
+      contentElement: body,
+      onActivate: () => {
+        activated = true;
+      },
+      onDeactivate: () => {},
+      onRequestClose: () => {},
+    });
+    p.activateContent({ kind: "transient", id: "sc1" });
+    expect(activated).toBe(true);
+    expect(content.contains(body)).toBe(true);
+    p.destroy();
+  });
+
+  test("the transient close button calls onRequestClose", () => {
+    const p = createPanel();
+    let requested = false;
+    p.registerTransientTab({
+      id: "sc1",
+      title: "Side Chat",
+      status: "ready",
+      contentElement: document.createElement("div"),
+      onActivate: () => {},
+      onDeactivate: () => {},
+      onRequestClose: () => {
+        requested = true;
+      },
+    });
+    tabBar
+      .querySelector('.file-preview-tab[data-transient-id="sc1"] .file-preview-tab-close')
+      .click();
+    expect(requested).toBe(true);
+    p.destroy();
+  });
+
+  test("unregisterTransientTab removes the tab and deactivates it", () => {
+    const p = createPanel();
+    let deactivated = false;
+    p.registerTransientTab({
+      id: "sc1",
+      title: "Side Chat",
+      status: "ready",
+      contentElement: document.createElement("div"),
+      onActivate: () => {},
+      onDeactivate: () => {
+        deactivated = true;
+      },
+      onRequestClose: () => {},
+    });
+    p.activateContent({ kind: "transient", id: "sc1" });
+    p.unregisterTransientTab("sc1");
+    expect(tabBar.querySelector('.file-preview-tab[data-transient-id="sc1"]')).toBeFalsy();
+    expect(deactivated).toBe(true);
+    p.destroy();
+  });
+
+  test("getCloseRisk reports dirty file tabs with a monotonic version", () => {
+    const p = createPanel();
+    const first = p.getCloseRisk();
+    expect(first.version).toBeGreaterThan(0);
+    expect(Array.isArray(first.dirtyFiles)).toBe(true);
+    p.destroy();
+  });
+
+  test("showPanel / hidePanel toggle the collapsed state", () => {
+    const p = createPanel();
+    p.showPanel();
+    expect(panel.classList.contains("collapsed")).toBe(false);
+    p.hidePanel();
+    expect(panel.classList.contains("collapsed")).toBe(true);
+    p.destroy();
+  });
+});

@@ -1,3 +1,6 @@
+/* ABOUTME: Defines Picot's shared layout, component, and accessibility styles. */
+/* ABOUTME: Includes transient Side Chat and Quick Chat geometry and interaction states. */
+
 /* ═══════════════════════════════════════════════════════
    Picot — Dark Glassmorphism
    ═══════════════════════════════════════════════════════ */
@@ -6379,4 +6382,223 @@ body.file-preview-resizing {
 
 .wqi-error {
   color: var(--error);
+}
+
+/* ── Ephemeral chats (Side Chat / Quick Chat) ────────────────────────────── */
+.ephemeral-chat-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.ephemeral-messages {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 12px;
+  min-height: 0;
+}
+.ephemeral-tools,
+.ephemeral-usage,
+.ephemeral-dialog-container {
+  flex: 0 0 auto;
+}
+.ephemeral-usage {
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--muted-color, #888);
+}
+.ephemeral-composer {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--border-color, #e5e5e5);
+  flex: 0 0 auto;
+}
+.ephemeral-input {
+  flex: 1 1 auto;
+  resize: none;
+  min-height: 40px;
+  max-height: 160px;
+}
+.ephemeral-send,
+.ephemeral-mic {
+  flex: 0 0 auto;
+}
+
+/* Quick Chat floating dialog + minimized chip */
+.quick-chat-dialog-root {
+  position: static;
+}
+.quick-chat-dialog {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: min(520px, calc(100vw - 48px));
+  height: min(640px, calc(100vh - 48px));
+  min-width: 360px;
+  min-height: 280px;
+  background: var(--bg-color, #fff);
+  border: 1px solid var(--border-color, #d0d0d0);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  z-index: 9000;
+}
+.quick-chat-dialog.hidden {
+  display: none;
+}
+.quick-chat-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: grab;
+  border-bottom: 1px solid var(--border-color, #e5e5e5);
+  -webkit-app-region: no-drag;
+  user-select: none;
+}
+.quick-chat-title-text {
+  font-weight: 600;
+}
+.quick-chat-cost {
+  font-size: 11px;
+  color: var(--muted-color, #888);
+  margin-left: auto;
+}
+.quick-chat-title button {
+  -webkit-app-region: no-drag;
+}
+.quick-chat-resize-handle {
+  position: absolute;
+  z-index: 2;
+  -webkit-app-region: no-drag;
+}
+.quick-chat-resize-n,
+.quick-chat-resize-s {
+  left: 12px;
+  right: 12px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.quick-chat-resize-n {
+  top: -4px;
+}
+.quick-chat-resize-s {
+  bottom: -4px;
+}
+.quick-chat-resize-e,
+.quick-chat-resize-w {
+  top: 12px;
+  bottom: 12px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.quick-chat-resize-e {
+  right: -4px;
+}
+.quick-chat-resize-w {
+  left: -4px;
+}
+.quick-chat-resize-ne,
+.quick-chat-resize-se,
+.quick-chat-resize-sw,
+.quick-chat-resize-nw {
+  width: 12px;
+  height: 12px;
+}
+.quick-chat-resize-ne {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+.quick-chat-resize-se {
+  right: -4px;
+  bottom: -4px;
+  cursor: nwse-resize;
+}
+.quick-chat-resize-sw {
+  bottom: -4px;
+  left: -4px;
+  cursor: nesw-resize;
+}
+.quick-chat-resize-nw {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+.quick-chat-dialog,
+.quick-chat-dialog *,
+.quick-chat-dialog button,
+.quick-chat-dialog textarea,
+.quick-chat-dialog input {
+  -webkit-app-region: no-drag;
+}
+.quick-chat-dialog.is-dragging,
+.quick-chat-dialog.is-resizing {
+  user-select: none;
+}
+.quick-chat-resize-handle:focus-visible {
+  outline: 2px solid var(--accent-color, #4c9ffe);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .quick-chat-dialog,
+  .quick-chat-chip {
+    transition: none;
+  }
+}
+.quick-chat-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.quick-chat-chip {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  padding: 8px 12px;
+  background: var(--accent-color, #2563eb);
+  color: #fff;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  z-index: 9000;
+}
+.quick-chat-chip.hidden {
+  display: none;
+}
+
+/* Transient (Side Chat) tabs + tab-bar actions */
+.file-preview-tab.transient-tab .file-preview-tab-name {
+  font-style: normal;
+}
+.transient-tab-status {
+  font-size: 10px;
+  opacity: 0.8;
+}
+.file-preview-tab-action {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* Non-native external-link toast */
+.external-link-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  background: #1f2937;
+  color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  z-index: 10000;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.external-link-toast-link {
+  color: #93c5fd;
 }

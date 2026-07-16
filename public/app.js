@@ -1,3 +1,6 @@
+// ABOUTME: Orchestrates Picot's main chat, workspace, file, and ephemeral-chat modules.
+// ABOUTME: Keeps feature state in focused modules and wires their lifecycle events.
+
 /**
  * Main App - Ties everything together
  */
@@ -9,6 +12,7 @@ import { createAppUpdater } from "./app-updater.js";
 import { setupVoiceInput } from "./app-voice-input.js";
 import { createChatHistoryNavigation } from "./chat-history-navigation.js";
 import { DialogHandler } from "./dialogs.js";
+import { EphemeralChatView } from "./ephemeral-chat-view.js";
 import { FileBrowser } from "./file-browser.js";
 import { FilePreviewPanel } from "./file-preview-panel.js";
 import { anchorHistoryToBottom } from "./history-scroll-anchor.js";
@@ -26,6 +30,7 @@ import { MessageRenderer } from "./message-renderer.js";
 import { resolveNewSessionLiveFile } from "./new-session-refresh.js";
 import { getOnboardingState } from "./onboarding-state.js";
 import { renderPackageInstallFailure } from "./package-install-status.js";
+import { QuickChatDialog } from "./quick-chat-dialog.js";
 import {
   applyForegroundMirrorSession,
   confirmDeferredFileBrowserWorkspace,
@@ -41,6 +46,7 @@ import {
   showSettingsSaveError,
   showSettingsSaveSuccess,
 } from "./settings-save-status.js";
+import { SideChatManager } from "./side-chat-manager.js";
 import { createSidebarResizer } from "./sidebar-resizer.js";
 import { setupSidebarSearchControl } from "./sidebar-search-control.js";
 import { StateManager } from "./state.js";
@@ -48,6 +54,7 @@ import { applyTheme, getCurrentTheme, themes } from "./themes.js";
 import { ToolCardRenderer } from "./tool-card.js";
 import { initTransport } from "./transport.js";
 import { resolveWebSocketUrl, WebSocketClient } from "./websocket-client.js";
+import { WindowCloseCoordinator } from "./window-close-coordinator.js";
 import {
   openFolderAsWorkspace,
   startInWindowNewSession,
@@ -72,15 +79,25 @@ const getCurrentPort = () => {
 };
 const mobileClientMode = new URLSearchParams(window.location.search).get("mobile") === "1";
 const navigateInWindow = (url) => {
-  let target = url;
-  if (mobileClientMode) {
-    try {
-      const nextUrl = new URL(url, window.location.href);
-      nextUrl.searchParams.set("mobile", "1");
-      target = nextUrl.toString();
-    } catch {}
+  let targetUrl;
+  try {
+    targetUrl = new URL(url, window.location.href);
+    const currentUrl = new URL(window.location.href);
+    if (
+      targetUrl.protocol !== currentUrl.protocol ||
+      targetUrl.hostname !== currentUrl.hostname ||
+      targetUrl.username ||
+      targetUrl.password
+    ) {
+      console.error("[navigation] rejected cross-origin target");
+      return;
+    }
+    if (mobileClientMode) targetUrl.searchParams.set("mobile", "1");
+  } catch {
+    console.error("[navigation] rejected invalid target");
+    return;
   }
-  window.location.href = target;
+  window.location.assign(targetUrl.toString());
 };
 
 // ──────────────────────────────────────────────────────────────────────
@@ -181,7 +198,11 @@ const chatHistoryNavigation = createChatHistoryNavigation({
 });
 const messageRenderer = new MessageRenderer(messagesElement);
 const toolCardRenderer = new ToolCardRenderer(messagesElement);
-const dialogHandler = new DialogHandler(document.getElementById("dialog-container"), wsClient);
+const dialogHandler = new DialogHandler({
+  container: document.getElementById("dialog-container"),
+  notificationContainer: document.getElementById("messages"),
+  send: (message) => wsClient.send(message),
+});
 
 function clearConversationRenderers() {
   messageRenderer.clear();
@@ -446,6 +467,122 @@ const filePreviewPanel = new FilePreviewPanel({
 });
 let fileBrowserWorkspacePath = null;
 
+// ── Ephemeral chats (Side Chat + Quick Chat) + window close coordination ─────
+function confirmEphemeralDiscard(_risks, _reason) {
+  // Minimal confirmation; the full localized summary dialog lives in the close
+  // coordinator for window close. Per-chat close uses this lightweight gate.
+  return Promise.resolve(window.confirm(t("ephemeral.confirmDiscard")) ? "discard" : "cancel");
+}
+
+function showCloseSummaryDialog(_risk) {
+  return Promise.resolve(window.confirm(t("ephemeral.confirmCloseSummary")) ? "discard" : "cancel");
+}
+
+const createEphemeralView = (runtime) =>
+  new EphemeralChatView({
+    runtime,
+    kind: runtime.kind,
+    toolsEnabled: runtime.kind === "side-chat",
+  });
+
+const sideChatManager = new SideChatManager({
+  transport,
+  filePreviewPanel,
+  confirmDiscard: confirmEphemeralDiscard,
+  createView: createEphemeralView,
+});
+const quickChatDialog = new QuickChatDialog({
+  transport,
+  dialogRoot: document.getElementById("quick-chat-dialog-root"),
+  chipRoot: document.getElementById("quick-chat-chip-root"),
+  boundsElement: document.querySelector(".main"),
+  confirmDiscard: confirmEphemeralDiscard,
+  createView: createEphemeralView,
+});
+const windowCloseCoordinator = new WindowCloseCoordinator({
+  transport,
+  showSummaryDialog: showCloseSummaryDialog,
+});
+windowCloseCoordinator.registerParticipant("file", filePreviewPanel);
+windowCloseCoordinator.registerParticipant("side", sideChatManager);
+windowCloseCoordinator.registerParticipant("quick", quickChatDialog);
+
+async function prepareEphemeralWorkspaceTransition() {
+  quickChatDialog.setInteractionLocked(true);
+  filePreviewPanel.setInteractionLocked(true);
+  try {
+    const accepted = await sideChatManager.prepareWorkspaceTransition();
+    if (accepted) {
+      sideChatManager.setInteractionLocked(true);
+    } else {
+      quickChatDialog.setInteractionLocked(false);
+      filePreviewPanel.setInteractionLocked(false);
+    }
+    return accepted;
+  } catch (error) {
+    sideChatManager.setInteractionLocked(false);
+    quickChatDialog.setInteractionLocked(false);
+    filePreviewPanel.setInteractionLocked(false);
+    throw error;
+  }
+}
+
+function cancelEphemeralWorkspaceTransition() {
+  sideChatManager.setInteractionLocked(false);
+  quickChatDialog.setInteractionLocked(false);
+  filePreviewPanel.setInteractionLocked(false);
+}
+
+wsClient.addEventListener("ownerBootstrap", async (event) => {
+  if (!nativeAvailable()) return;
+  try {
+    const advertised = event.detail?.instances;
+    const instances = Array.isArray(advertised)
+      ? advertised
+      : (await transport.getEphemeralBootstrap()) || [];
+    sideChatManager.rebind(instances.filter((d) => d.kind === "side-chat"));
+    const quick = instances.find((d) => d.kind === "quick-chat");
+    if (quick) quickChatDialog.rebind(quick);
+  } catch (err) {
+    console.warn("[ephemeral] bootstrap fetch failed:", err);
+  }
+});
+wsClient.addEventListener("ephemeralEvent", (event) => {
+  const { instanceId } = event.detail || {};
+  const side = sideChatManager.chats.get(instanceId)?.runtime;
+  if (side) {
+    side.applySequencedEvent(event.detail);
+    return;
+  }
+  if (quickChatDialog.runtime?.instanceId === instanceId) {
+    quickChatDialog.runtime.applySequencedEvent(event.detail);
+  }
+});
+wsClient.addEventListener("ephemeralCommandFailed", (event) => {
+  const requestId = event.detail?.requestId;
+  for (const chat of sideChatManager.chats.values()) {
+    chat.runtime.handleCommandFailure(requestId);
+  }
+  quickChatDialog.runtime?.handleCommandFailure(requestId);
+});
+wsClient.addEventListener("windowCloseRequest", (event) => {
+  windowCloseCoordinator.handleHostCloseRequest(event.detail?.requestId);
+});
+
+document.getElementById("side-chat-btn")?.addEventListener("click", () => {
+  if (nativeAvailable()) void sideChatManager.openMostRecent();
+});
+document.getElementById("quick-chat-btn")?.addEventListener("click", () => {
+  if (nativeAvailable()) void quickChatDialog.open();
+});
+filePreviewPanel.registerTabBarAction("new-side-chat", {
+  label: t("nav.newSideChat"),
+  onClick: () => {
+    if (nativeAvailable()) void sideChatManager.createAdditional();
+  },
+});
+filePreviewPanel.setTabBarActionVisible?.("new-side-chat", nativeAvailable());
+
 async function refreshFileBrowserForWorkspace(
   path = getCurrentWorkspacePath(),
   { force = false } = {},
@@ -545,13 +682,22 @@ function openAppIconPath(app) {
   return HEADER_OPEN_APP_ICONS[app.id] || "";
 }
 
-function renderOpenAppLogo(app) {
+function populateOpenAppLogo(container, app) {
+  if (!container) return;
+  container.replaceChildren();
   const icon = openAppIconPath(app);
-  const monogram = openAppMonogram(app);
   if (icon) {
-    return `<img src="${icon}" alt="" class="header-open-app-logo-img">`;
+    const image = document.createElement("img");
+    image.src = icon;
+    image.alt = "";
+    image.className = "header-open-app-logo-img";
+    container.appendChild(image);
+    return;
   }
-  return `<span class="header-open-app-logo-text">${monogram}</span>`;
+  const monogram = document.createElement("span");
+  monogram.className = "header-open-app-logo-text";
+  monogram.textContent = openAppMonogram(app);
+  container.appendChild(monogram);
 }
 
 function refreshHeaderOpenAppButton() {
@@ -564,7 +710,7 @@ function refreshHeaderOpenAppButton() {
     return;
   }
   headerOpenApp.el.classList.remove("hidden");
-  if (headerOpenApp.logo) headerOpenApp.logo.innerHTML = renderOpenAppLogo(selected);
+  populateOpenAppLogo(headerOpenApp.logo, selected);
   headerOpenApp.btn.title = t("nav.openWorkspaceInNamedApp", { path, app: selected.label });
   headerOpenApp.btn.setAttribute(
     "aria-label",
@@ -599,7 +745,7 @@ function toggleHeaderOpenAppMenu() {
     closeHeaderOpenAppMenu();
     return;
   }
-  headerOpenApp.menu.innerHTML = "";
+  headerOpenApp.menu.replaceChildren();
   for (const app of headerOpenApp.apps) {
     const row = document.createElement("button");
     row.type = "button";
@@ -607,7 +753,13 @@ function toggleHeaderOpenAppMenu() {
     if (app.id === headerOpenApp.selectedId) row.classList.add("active");
     row.title = t("nav.openInApp", { app: app.label });
     row.setAttribute("aria-label", t("nav.openInApp", { app: app.label }));
-    row.innerHTML = `<span class="header-open-app-logo" aria-hidden="true">${renderOpenAppLogo(app)}</span><span>${app.label}</span>`;
+    const logo = document.createElement("span");
+    logo.className = "header-open-app-logo";
+    logo.setAttribute("aria-hidden", "true");
+    populateOpenAppLogo(logo, app);
+    const label = document.createElement("span");
+    label.textContent = app.label;
+    row.append(logo, label);
     row.addEventListener("click", (ev) => {
       ev.stopPropagation();
       closeHeaderOpenAppMenu();
@@ -888,13 +1040,15 @@ function handleRPCEvent(event) {
       messageRenderer.renderError(t("errors.extensionError", { error: event.error }));
       break;
     case "session_name":
-      // Auto-title: update sidebar with new session name
-      if (event.name) {
-        const activeItem = document.querySelector(".session-item.active .session-title");
-        if (activeItem) activeItem.textContent = event.name;
-      }
+      handleSessionNameEvent(event);
       break;
   }
+}
+
+function handleSessionNameEvent(event) {
+  if (!event.name) return;
+  const activeItem = document.querySelector(".session-item.active .session-title");
+  if (activeItem) activeItem.textContent = event.name;
 }
 
 function handleBackgroundRPCEvent(sessionFile, event) {
@@ -918,7 +1072,10 @@ function handleCompactionStart() {
   const el = document.createElement("div");
   el.className = "system-message compaction-message";
   el.id = "compaction-indicator";
-  el.innerHTML = `<span class="compaction-spinner">⟳</span> ${escapeHtml(t("status.compacting"))}`;
+  const spinner = document.createElement("span");
+  spinner.className = "compaction-spinner";
+  spinner.textContent = "⟳";
+  el.replaceChildren(spinner, document.createTextNode(` ${t("status.compacting")}`));
   messagesContainer.appendChild(el);
   scrollToBottom();
 }
@@ -926,13 +1083,9 @@ function handleCompactionStart() {
 function handleCompactionEnd(event) {
   const indicator = document.getElementById("compaction-indicator");
   if (indicator) {
-    if (event.summary) {
-      indicator.innerHTML = escapeHtml(
-        t("status.compactedWithSummary", { summary: event.summary }),
-      );
-    } else {
-      indicator.innerHTML = escapeHtml(t("status.compacted"));
-    }
+    indicator.textContent = event.summary
+      ? t("status.compactedWithSummary", { summary: event.summary })
+      : t("status.compacted");
     indicator.classList.add("compaction-done");
   }
   // Reset token tracking — next message will update
@@ -1363,24 +1516,28 @@ messageInput.addEventListener("paste", (e) => {
 });
 
 function renderImagePreviews() {
-  imagePreviews.innerHTML = "";
+  imagePreviews.replaceChildren();
   if (pendingImages.length === 0) {
     imagePreviews.classList.add("hidden");
     return;
   }
   imagePreviews.classList.remove("hidden");
   pendingImages.forEach((img, i) => {
-    const el = document.createElement("div");
-    el.className = "image-preview";
-    el.innerHTML = `
-      <img src="data:${img.mimeType};base64,${img.data}" />
-      <button class="image-preview-remove" data-index="${i}">✕</button>
-    `;
-    el.querySelector(".image-preview-remove").addEventListener("click", () => {
+    const preview = document.createElement("div");
+    preview.className = "image-preview";
+    const image = document.createElement("img");
+    image.src = `data:${img.mimeType};base64,${img.data}`;
+    image.alt = "";
+    const removeButton = document.createElement("button");
+    removeButton.className = "image-preview-remove";
+    removeButton.dataset.index = String(i);
+    removeButton.textContent = "✕";
+    removeButton.addEventListener("click", () => {
       pendingImages.splice(i, 1);
       renderImagePreviews();
     });
-    imagePreviews.appendChild(el);
+    preview.append(image, removeButton);
+    imagePreviews.appendChild(preview);
   });
 }
 
@@ -1468,32 +1625,32 @@ function sendMessage() {
 const queuedMessagesEl = document.getElementById("queued-messages");
 
 function renderQueuedMessages() {
-  queuedMessagesEl.innerHTML = "";
+  queuedMessagesEl.replaceChildren();
   if (messageQueue.length === 0) {
     queuedMessagesEl.classList.add("hidden");
     return;
   }
   queuedMessagesEl.classList.remove("hidden");
   messageQueue.forEach((cmd, i) => {
-    const el = document.createElement("div");
-    el.className = "queued-msg";
-    el.innerHTML = `
-      <span class="queued-msg-label">${escapeHtml(t("queue.queued"))}</span>
-      <span class="queued-msg-text">${escapeHtml(cmd.message)}</span>
-      <button class="queued-msg-cancel" title="${escapeHtml(t("queue.cancelTitle"))}">×</button>
-    `;
-    el.querySelector(".queued-msg-cancel").addEventListener("click", () => {
+    const item = document.createElement("div");
+    item.className = "queued-msg";
+    const label = document.createElement("span");
+    label.className = "queued-msg-label";
+    label.textContent = t("queue.queued");
+    const message = document.createElement("span");
+    message.className = "queued-msg-text";
+    message.textContent = cmd.message;
+    const cancel = document.createElement("button");
+    cancel.className = "queued-msg-cancel";
+    cancel.title = t("queue.cancelTitle");
+    cancel.textContent = "×";
+    cancel.addEventListener("click", () => {
       messageQueue.splice(i, 1);
       renderQueuedMessages();
     });
-    queuedMessagesEl.appendChild(el);
+    item.append(label, message, cancel);
+    queuedMessagesEl.appendChild(item);
   });
-}
-
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 function flushQueue() {
@@ -1557,22 +1714,27 @@ const commands = [
 ];
 
 function openCommandPalette() {
-  commandList.innerHTML = "";
+  commandList.replaceChildren();
   commands.forEach((cmd) => {
-    const el = document.createElement("div");
-    el.className = "command-item";
-    el.innerHTML = `
-      <div class="command-icon">${cmd.icon}</div>
-      <div>
-        <div class="command-label">${cmd.label}</div>
-        <div class="command-desc">${cmd.desc}</div>
-      </div>
-    `;
-    el.addEventListener("click", () => {
+    const item = document.createElement("div");
+    item.className = "command-item";
+    const icon = document.createElement("div");
+    icon.className = "command-icon";
+    icon.textContent = cmd.icon;
+    const details = document.createElement("div");
+    const label = document.createElement("div");
+    label.className = "command-label";
+    label.textContent = cmd.label;
+    const description = document.createElement("div");
+    description.className = "command-desc";
+    description.textContent = cmd.desc;
+    details.append(label, description);
+    item.append(icon, details);
+    item.addEventListener("click", () => {
       closeCommandPalette();
       cmd.action();
     });
-    commandList.appendChild(el);
+    commandList.appendChild(item);
   });
   commandPalette.classList.remove("hidden");
   commandPaletteOverlay.classList.remove("hidden");
@@ -1772,7 +1934,7 @@ function toggleModelDropdown() {
 }
 
 function openModelDropdown() {
-  modelDropdownMenu.innerHTML = "";
+  modelDropdownMenu.replaceChildren();
 
   // Search input
   const search = document.createElement("input");
@@ -1787,7 +1949,7 @@ function openModelDropdown() {
   modelDropdownMenu.appendChild(itemsContainer);
 
   function renderItems(filter) {
-    itemsContainer.innerHTML = "";
+    itemsContainer.replaceChildren();
     const query = (filter || "").toLowerCase();
     // Empty-state: no API keys configured anywhere. Surface this loudly
     // instead of leaving the dropdown blank — empty dropdowns look like
@@ -1795,16 +1957,24 @@ function openModelDropdown() {
     if (availableModels.length === 0) {
       const empty = document.createElement("div");
       empty.className = "model-dropdown-empty";
-      empty.innerHTML = `
-        <div style="padding:14px;color:var(--text-dim);font-size:12px;line-height:1.5">
-          <div style="color:var(--text-primary);margin-bottom:6px">${escapeHtml(t("models.emptyTitle"))}</div>
-          <div>${escapeHtml(t("models.emptyHelp"))}</div>
-          <button type="button" class="btn-primary" style="margin-top:10px">${escapeHtml(t("settings.openSettings"))}</button>
-        </div>`;
-      empty.querySelector("button").addEventListener("click", () => {
+      const content = document.createElement("div");
+      content.style.cssText = "padding:14px;color:var(--text-dim);font-size:12px;line-height:1.5";
+      const title = document.createElement("div");
+      title.style.cssText = "color:var(--text-primary);margin-bottom:6px";
+      title.textContent = t("models.emptyTitle");
+      const help = document.createElement("div");
+      help.textContent = t("models.emptyHelp");
+      const settingsButton = document.createElement("button");
+      settingsButton.type = "button";
+      settingsButton.className = "btn-primary";
+      settingsButton.style.marginTop = "10px";
+      settingsButton.textContent = t("settings.openSettings");
+      settingsButton.addEventListener("click", () => {
         closeModelDropdown();
         openConfigurationSettings().catch(() => {});
       });
+      content.append(title, help, settingsButton);
+      empty.appendChild(content);
       itemsContainer.appendChild(empty);
       return;
     }
@@ -1821,11 +1991,18 @@ function openModelDropdown() {
       const el = document.createElement("div");
       el.className = `model-dropdown-item${m.id === currentModelId ? " active" : ""}`;
       const ctxK = m.contextWindow ? `${(m.contextWindow / 1000).toFixed(0)}k` : "";
-      const providerLabel =
-        m.provider && m.provider !== "anthropic"
-          ? `<span class="model-dropdown-item-provider">${m.provider}</span>`
-          : "";
-      el.innerHTML = `<span>${shortName}${providerLabel}</span><span class="model-dropdown-item-ctx">${ctxK}</span>`;
+      const name = document.createElement("span");
+      name.textContent = shortName;
+      if (m.provider && m.provider !== "anthropic") {
+        const provider = document.createElement("span");
+        provider.className = "model-dropdown-item-provider";
+        provider.textContent = m.provider;
+        name.appendChild(provider);
+      }
+      const context = document.createElement("span");
+      context.className = "model-dropdown-item-ctx";
+      context.textContent = ctxK;
+      el.append(name, context);
       el.addEventListener("click", async () => {
         closeModelDropdown();
         const display = m.id.replace(/^claude-/, "").replace(/-\d{8}$/, "");
@@ -2199,6 +2376,8 @@ async function handleNewProjectChat(project) {
       fetchInstances,
       navigate: navigateInWindow,
       onBeforeSwap: onBeforeInstanceSwap,
+      beforeWorkspaceTransition: prepareEphemeralWorkspaceTransition,
+      onWorkspaceTransitionCancelled: cancelEphemeralWorkspaceTransition,
       renderError: (message) => messageRenderer.renderError(message),
     });
     if (!launched) return;
@@ -3155,9 +3334,12 @@ async function loadPiVersion() {
 function setExtensionActionButton(button, label, loading = false) {
   if (!button) return;
   if (loading) {
-    button.innerHTML = '<span class="settings-btn-spinner" aria-hidden="true"></span><span></span>';
-    const text = button.querySelector("span:last-child");
-    if (text) text.textContent = label;
+    const spinner = document.createElement("span");
+    spinner.className = "settings-btn-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    const text = document.createElement("span");
+    text.textContent = label;
+    button.replaceChildren(spinner, text);
     return;
   }
   button.textContent = label;
@@ -3203,7 +3385,10 @@ async function loadBrowsePackages(force = false) {
     return;
   }
   browseLoading = true;
-  browseListEl.innerHTML = `<div class="settings-api-keys-loading pkg-browse-full-row">${escapeHtml(t("extensions.loadingPackages"))}</div>`;
+  const loading = document.createElement("div");
+  loading.className = "settings-api-keys-loading pkg-browse-full-row";
+  loading.textContent = t("extensions.loadingPackages");
+  browseListEl.replaceChildren(loading);
   try {
     const [packages, installed] = await Promise.all([
       fetchBrowsePackages(),
@@ -3215,9 +3400,18 @@ async function loadBrowsePackages(force = false) {
     renderBrowsePackages();
   } catch (err) {
     const message = String(err?.message || err || t("extensions.failedToLoadPackages"));
-    browseListEl.innerHTML = `<div class="settings-api-keys-empty pkg-browse-full-row">${escapeHtml(message)} <button type="button" class="settings-value-btn" id="pkg-browse-retry">${escapeHtml(t("actions.retry"))}</button></div>`;
-    const retry = document.getElementById("pkg-browse-retry");
-    if (retry) retry.addEventListener("click", () => loadBrowsePackages(true));
+    const error = document.createElement("div");
+    error.className = "settings-api-keys-empty pkg-browse-full-row";
+    const messageText = document.createElement("span");
+    messageText.textContent = message;
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "settings-value-btn";
+    retry.id = "pkg-browse-retry";
+    retry.textContent = t("actions.retry");
+    retry.addEventListener("click", () => loadBrowsePackages(true));
+    error.append(messageText, document.createTextNode(" "), retry);
+    browseListEl.replaceChildren(error);
   } finally {
     browseLoading = false;
   }
@@ -3268,17 +3462,70 @@ function openExternalLink(url) {
     transport.openExternal(url).catch((err) => {
       console.error("[browse] failed to open external link:", err);
     });
-  } else {
-    window.open(url, "_blank", "noopener");
+    return;
   }
+  // Non-native (LAN/mobile): no native opener and no popup window. Show a
+  // transient inline toast with a clickable link the user can follow.
+  showExternalLinkToast(url);
 }
 
-const BROWSE_LINK_SVGS = {
-  npm: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M0 0v24h24v-24h-24zm19.2 19.2h-2.4v-9.6h-4.8v9.6h-7.2v-14.4h14.4v14.4z"/></svg>',
-  github:
-    '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>',
-  link: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+function showExternalLinkToast(url) {
+  const host = document.body;
+  if (!host) return;
+  const toast = document.createElement("div");
+  toast.className = "external-link-toast";
+  const label = document.createElement("span");
+  label.textContent = t("browse.openExternalPrompt");
+  const link = document.createElement("a");
+  link.className = "external-link-toast-link";
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = url;
+  toast.append(label, link);
+  host.appendChild(toast);
+  setTimeout(() => toast.remove(), 8000);
+}
+
+const BROWSE_LINK_PATHS = {
+  npm: [{ d: "M0 0v24h24v-24h-24zm19.2 19.2h-2.4v-9.6h-4.8v9.6h-7.2v-14.4h14.4v14.4z" }],
+  github: [
+    {
+      d: "M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z",
+    },
+  ],
+  link: [
+    { d: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" },
+    { d: "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" },
+  ],
 };
+
+function createBrowseIcon(kind) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const isLink = kind === "link";
+  for (const [name, value] of Object.entries({
+    viewBox: "0 0 24 24",
+    width: "14",
+    height: "14",
+    fill: isLink ? "none" : "currentColor",
+    ...(isLink
+      ? {
+          stroke: "currentColor",
+          "stroke-width": "2",
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+        }
+      : {}),
+  })) {
+    svg.setAttribute(name, value);
+  }
+  for (const attrs of BROWSE_LINK_PATHS[kind] || BROWSE_LINK_PATHS.link) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", attrs.d);
+    svg.appendChild(path);
+  }
+  return svg;
+}
 
 function createBrowseLinkButton(kind, label, url) {
   const btn = document.createElement("button");
@@ -3286,7 +3533,9 @@ function createBrowseLinkButton(kind, label, url) {
   btn.className = "pkg-browse-link";
   btn.title = label;
   btn.setAttribute("aria-label", label);
-  btn.innerHTML = `${BROWSE_LINK_SVGS[kind] || BROWSE_LINK_SVGS.link}<span>${escapeHtml(label)}</span>`;
+  const labelElement = document.createElement("span");
+  labelElement.textContent = label;
+  btn.append(createBrowseIcon(kind), labelElement);
   btn.addEventListener("click", (event) => {
     event.stopPropagation();
     openExternalLink(url);
@@ -3385,9 +3634,12 @@ function renderBrowsePackages() {
     }
   }
 
-  browseListEl.innerHTML = "";
+  browseListEl.replaceChildren();
   if (!results.length) {
-    browseListEl.innerHTML = `<div class="settings-api-keys-empty pkg-browse-full-row">${escapeHtml(t("extensions.noPackagesMatch"))}</div>`;
+    const empty = document.createElement("div");
+    empty.className = "settings-api-keys-empty pkg-browse-full-row";
+    empty.textContent = t("extensions.noPackagesMatch");
+    browseListEl.appendChild(empty);
     renderBrowsePagination(totalPages);
     return;
   }
@@ -3401,11 +3653,11 @@ function renderBrowsePagination(totalPages) {
   if (!browsePaginationEl) return;
   if (totalPages <= 1) {
     browsePaginationEl.hidden = true;
-    browsePaginationEl.innerHTML = "";
+    browsePaginationEl.replaceChildren();
     return;
   }
   browsePaginationEl.hidden = false;
-  browsePaginationEl.innerHTML = "";
+  browsePaginationEl.replaceChildren();
 
   const goTo = (page) => {
     browsePage = page;
@@ -3615,19 +3867,29 @@ wsClient.addEventListener("capabilities", () => {
   refreshHeaderOpenAppButton();
   void loadHeaderOpenApps();
   void updater.initUpdaterUI();
+  // Ephemeral chat entry points are native-only.
+  const showEphemeral = nativeAvailable();
+  document.getElementById("side-chat-btn")?.classList.toggle("hidden", !showEphemeral);
+  document.getElementById("quick-chat-btn")?.classList.toggle("hidden", !showEphemeral);
+  filePreviewPanel.setTabBarActionVisible?.("new-side-chat", showEphemeral);
 });
 
 function buildThemeGrid() {
-  themeGrid.innerHTML = "";
+  themeGrid.replaceChildren();
   const current = getCurrentTheme();
 
   for (const [id, theme] of Object.entries(themes)) {
     const btn = document.createElement("button");
     btn.className = `theme-swatch${current === id ? " active" : ""}`;
-    const dots = (theme.colors || [])
-      .map((c) => `<span class="swatch-dot" style="background:${c}"></span>`)
-      .join("");
-    btn.innerHTML = `<span class="swatch-colors">${dots}</span>`;
+    const colors = document.createElement("span");
+    colors.className = "swatch-colors";
+    for (const color of theme.colors || []) {
+      const dot = document.createElement("span");
+      dot.className = "swatch-dot";
+      dot.style.background = color;
+      colors.appendChild(dot);
+    }
+    btn.appendChild(colors);
     btn.addEventListener("click", () => {
       applyTheme(id);
       themeGrid.querySelectorAll(".theme-swatch").forEach((s) => {
@@ -3647,7 +3909,7 @@ function refreshUsageIframeLocale() {
 
 function buildLanguageSelector() {
   if (!languageOptions) return;
-  languageOptions.innerHTML = "";
+  languageOptions.replaceChildren();
   const current = getLanguagePreference();
 
   for (const lang of LANGUAGES) {
@@ -3838,6 +4100,8 @@ async function handleOpenFolder() {
       getCurrentPort: getActivePort,
       navigate: navigateInWindow,
       onBeforeSwap: onBeforeInstanceSwap,
+      beforeWorkspaceTransition: prepareEphemeralWorkspaceTransition,
+      onWorkspaceTransitionCancelled: cancelEphemeralWorkspaceTransition,
       renderError: (message) => messageRenderer.renderError(message),
     });
   } finally {

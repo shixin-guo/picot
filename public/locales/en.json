@@ -18,7 +18,10 @@
     "files": "Files",
     "openWorkspaceInNamedApp": "Open {path} in {app}",
     "openWorkspaceInAppAria": "Open workspace in {app}",
-    "openInApp": "Open in {app}"
+    "openInApp": "Open in {app}",
+    "sideChat": "Side Chat",
+    "quickChat": "Quick Chat",
+    "newSideChat": "New Side Chat"
   },
   "git": {
     "currentBranch": "Current git branch",
@@ -452,7 +455,8 @@
       "helpPost1": "to add custom providers (Ollama, vLLM, LM Studio, OpenAI-compatible proxies, OpenRouter routing overrides, etc). See the",
       "docsLink": "models.json docs",
       "helpPost2": "for the full schema. Changes are picked up immediately — no restart needed.",
-      "replaceConfirm": "Replace current content with the Ollama example?"
+      "replaceConfirm": "Replace current content with the Ollama example?",
+      "docsOpenFailed": "Could not open the documentation link"
     },
     "apiKeys": {
       "noProviders": "No providers known.",
@@ -534,5 +538,25 @@
     "compact": "Compact",
     "compactTitle": "Context is over 80% — compact to save tokens",
     "qrUnavailable": "QR code unavailable"
+  },
+  "browse": {
+    "openExternalPrompt": "Open this link in a new tab:"
+  },
+  "ephemeral": {
+    "placeholder": "Ask anything…",
+    "send": "Send",
+    "abort": "Abort",
+    "newChat": "New chat",
+    "tokens": "tokens",
+    "sideChat": "Side Chat",
+    "sideChatLimit": "Side Chat limit reached",
+    "quickChat": "Quick Chat",
+    "minimize": "Minimize",
+    "close": "Close",
+    "confirmDiscard": "This temporary chat is not saved. Discard it?",
+    "confirmCloseSummary": "Close and discard unsaved files and temporary chats?",
+    "generating": "Generating",
+    "unread": "Unread",
+    "resize": "Resize Quick Chat"
   }
 }

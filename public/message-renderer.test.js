@@ -108,6 +108,18 @@ describe("MessageRenderer streaming markdown preview", () => {
     expect(content.querySelector("script")).toBeNull();
   });
 
+  it("removes unsafe HTML attributes and URL schemes from user markdown", () => {
+    const el = renderer.renderUserMessage({
+      content:
+        '<img src="javascript:alert(1)" onerror="alert(2)"><a href="javascript:alert(3)">link</a>',
+    });
+
+    expect(el.querySelector("script")).toBeNull();
+    expect(el.querySelector("img").getAttribute("src")).toBeNull();
+    expect(el.querySelector("img").getAttribute("onerror")).toBeNull();
+    expect(el.querySelector("a").getAttribute("href")).toBeNull();
+  });
+
   it("highlights keyword matches across rendered messages", () => {
     renderer.renderUserMessage({ content: "Alpha beta gamma" }, true);
     renderer.renderAssistantMessage({ content: "Beta appears twice: beta." }, false, true);
@@ -159,6 +171,19 @@ describe("MessageRenderer locale change", () => {
     expect(el.querySelector(".message-content").innerHTML).toBe(contentHtmlBefore);
   });
 
+  it("toggles thinking content within its own message element", () => {
+    const el = renderer.renderAssistantMessage({
+      content: [{ type: "thinking", thinking: "pondering" }],
+    });
+    const toggle = el.querySelector("[data-thinking-toggle]");
+    const content = el.querySelector(".thinking-content");
+    expect(toggle.getAttribute("id")).toBeNull();
+    toggle.click();
+    expect(content.classList.contains("expanded")).toBe(true);
+    toggle.click();
+    expect(content.classList.contains("expanded")).toBe(false);
+  });
+
   it("updates thinking label text on locale change", async () => {
     const el = renderer.renderAssistantMessage(
       {
@@ -199,5 +224,33 @@ describe("MessageRenderer locale change", () => {
 
     expect(el._streamingRawText).toBe("partial **bold** text");
     expect(el.querySelector(".message-content").innerHTML).toBe(contentHtmlBefore);
+  });
+});
+
+describe("MessageRenderer teardown", () => {
+  it("clear() keeps the renderer live so a locale change still re-renders", async () => {
+    const container = document.createElement("div");
+    const renderer = new MessageRenderer(container);
+    renderer.renderWelcome({});
+    renderer.clear();
+    renderer.renderWelcome({});
+    await setLocale("zh");
+    expect(container.querySelector(".welcome p").textContent).toBe("欢迎使用 Picot");
+  });
+
+  it("destroy() stops locale re-renders, removes the scroll listener, and is idempotent", async () => {
+    const container = document.createElement("div");
+    const removeSpy = vi.spyOn(container, "removeEventListener");
+    const renderer = new MessageRenderer(container);
+    renderer.renderWelcome({});
+    const welcomeP = container.querySelector(".welcome p");
+    expect(welcomeP.textContent).toBe("Welcome to Picot");
+
+    renderer.destroy();
+    expect(() => renderer.destroy()).not.toThrow();
+    expect(removeSpy).toHaveBeenCalled();
+    // No re-render after destroy: the welcome stays English.
+    await setLocale("zh");
+    expect(welcomeP.textContent).toBe("Welcome to Picot");
   });
 });
