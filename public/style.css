@@ -506,6 +506,7 @@ body {
 .project-count {
   font-size: var(--font-size-sm);
   color: var(--text-dim);
+  line-height: 21px;
 }
 
 .project-name {
@@ -905,8 +906,8 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  margin-right: 11px;
-  margin-left: 1px;
+  margin-right: 10px;
+  margin-left: 2px;
   vertical-align: middle;
   animation: pulse 2s infinite;
 }
@@ -4746,7 +4747,7 @@ body.hide-thinking .thinking-block {
 /* ── Rail — no background, just floating ticks on the right edge ── */
 .conv-nav {
   position: absolute;
-  right: 6px;
+  right: 16px;
   top: 50%;
   transform: translateY(-50%);
   z-index: 30;
@@ -4800,13 +4801,13 @@ body.hide-thinking .thinking-block {
   align-items: flex-end;
   gap: var(--space-1);
   overflow: visible;
-  margin-right: 4px;
+  margin-right: 2px;
 }
 
 /* Individual tick — button is the (large) hit target; ::after is the visual line */
 .conv-nav-dot {
   width: 28px; /* wide hit target */
-  height: 2px; /* tall hit target */
+  height: 14px; /* tall hit target, well beyond the thin visual line */
   display: flex;
   align-items: center;
   justify-content: flex-end; /* bar hugs the right/rail edge */
@@ -4820,7 +4821,7 @@ body.hide-thinking .thinking-block {
 .conv-nav-dot::after {
   content: "";
   height: 2px;
-  width: var(--nav-w, 16px);
+  width: var(--nav-w, 10px);
   border-radius: var(--radius-pill);
   background: var(--border-hover);
   opacity: 0.6;
@@ -4833,12 +4834,15 @@ body.hide-thinking .thinking-block {
 }
 
 .conv-nav-dot:hover::after {
-  width: max(var(--nav-w, 13px), 18px);
+  opacity: 0.9;
 }
 
 .conv-nav-dot.active::after {
-  height: 2px;
-  background: var(--accent);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 28%, var(--border-hover)),
+    var(--accent)
+  );
   opacity: 1;
   box-shadow: 2px 0 6px var(--accent-glow);
 }
@@ -4846,7 +4850,7 @@ body.hide-thinking .thinking-block {
 /* Tooltip — floated to the left of the rail */
 .conv-nav-tooltip {
   position: fixed;
-  right: 54px; /* close to the ticks */
+  right: 44px; /* close to the compact ticks */
   width: 260px;
   background: var(--bg-glass-strong);
   border: 1px solid var(--border-hover);

@@ -34,15 +34,14 @@ import {
 import { SessionSidebar } from "./sidebar/index.js";
 import { setupSidebarSearchControl } from "./sidebar/search-control.js";
 import { ensureSuperAgentSession } from "./super-agent/bootstrap.js";
+import { dispatchSuperAgentTask as dispatchSuperAgentTaskCore } from "./super-agent/dispatch.js";
 import { getRunningSuperAgentPorts, isSuperAgentSession } from "./super-agent/session.js";
 import { isSuperAgentEnabled } from "./super-agent/settings.js";
 import { planSuperAgentShutdown } from "./super-agent/stop-plan.js";
 import {
-  buildProjectAgentPrompt,
   buildSuperAgentNotificationPrompt,
   buildTaskComposerPrompt,
   markTaskFinished,
-  markTaskForDispatch,
   normalizeSuperAgentTasks,
 } from "./super-agent/task-state.js";
 import { applyTheme, getCurrentTheme, themes } from "./themes.js";
@@ -896,9 +895,13 @@ function jumpToNextConversationOrBottom() {
 let _tooltipHideTimer = null;
 let _navLockedIdx = -1;
 let _navLockTimer = null;
+let _navHoverIdx = -1;
 
 // Minimum height (px) the nav needs to be useful:
 const CONV_NAV_MAX_HEIGHT = 560;
+const CONV_NAV_BASE_WIDTH = 10;
+const CONV_NAV_HOVER_PEAK_WIDTH = 16;
+const CONV_NAV_HOVER_SIGMA = 3.2;
 
 function rebuildNavDots() {
   const turns = getConversations();
@@ -907,8 +910,6 @@ function rebuildNavDots() {
   if (!hasConvs) return;
 
   const activeIdx = getActiveConvIndex(turns);
-  // Diff-update dots to avoid full rebuild on each scroll tick
-  const existing = [...convNavTrack.children];
   // Add missing dots
   while (convNavTrack.children.length < turns.length) {
     const dot = document.createElement("button");
@@ -921,22 +922,34 @@ function rebuildNavDots() {
     convNavTrack.removeChild(convNavTrack.lastChild);
   }
 
-  // Update active state and wire events only when the dot count changed
-  if (existing.length !== turns.length) {
-    [...convNavTrack.children].forEach((dot, i) => {
-      dot.onclick = () => jumpToConversation(turns[i], i);
-      dot.onmouseenter = () => showNavTooltip(dot, turns[i]);
-      dot.onmouseleave = () => hideNavTooltip();
-    });
+  if (_navHoverIdx >= turns.length) {
+    _navHoverIdx = -1;
   }
 
   [...convNavTrack.children].forEach((dot, i) => {
     dot.classList.toggle("active", i === activeIdx);
     dot.setAttribute("aria-label", `Jump to conversation ${i + 1}`);
-    const dist = Math.abs(i - activeIdx);
-    // Gaussian bell curve: peak=20, base=13, sigma=5
-    const w = Math.round(13 + 7 * Math.exp(-(dist * dist) / (2 * 5 * 5)));
-    dot.style.setProperty("--nav-w", w + "px");
+    dot.onclick = () => jumpToConversation(turns[i], i);
+    dot.onmouseenter = () => {
+      _navHoverIdx = i;
+      rebuildNavDots();
+      showNavTooltip(dot, turns[i]);
+    };
+    dot.onmouseleave = () => {
+      _navHoverIdx = -1;
+      rebuildNavDots();
+      hideNavTooltip();
+    };
+    const dist = _navHoverIdx >= 0 ? Math.abs(i - _navHoverIdx) : null;
+    const w =
+      dist === null
+        ? CONV_NAV_BASE_WIDTH
+        : Math.round(
+            CONV_NAV_BASE_WIDTH +
+              (CONV_NAV_HOVER_PEAK_WIDTH - CONV_NAV_BASE_WIDTH) *
+                Math.exp(-(dist * dist) / (2 * CONV_NAV_HOVER_SIGMA * CONV_NAV_HOVER_SIGMA)),
+          );
+    dot.style.setProperty("--nav-w", `${w}px`);
   });
 
   // Scale the track down if all dots would exceed the max height.
@@ -1269,38 +1282,13 @@ function handleCompactionStart() {
 }
 
 async function dispatchSuperAgentTask(task) {
-  if (!transport) return;
-  const targetCwd = task.targetProject;
-  if (!targetCwd) return;
-  try {
-    const newPort = await transport.openWorkspace(targetCwd, {
-      forceNewSession: true,
-      openWindow: false,
-      waitForHealth: true,
-      waitForSessions: false,
-    });
-    // Use the current port as the super-agent port if not set by the agent
-    const saPort = task.superAgentPort || getCurrentPort();
-    const dispatchTask = markTaskForDispatch(task, {
-      superAgentPort: saPort,
-      childPort: newPort,
-    });
-    await updateSuperAgentTask(saPort, dispatchTask.id, () => dispatchTask);
-    dispatchedTasks.set(newPort, {
-      taskId: dispatchTask.id,
-      superAgentPort: saPort,
-      title: dispatchTask.title,
-    });
-    // Send the task description as the first message to the new session
-    const msg = buildProjectAgentPrompt(dispatchTask);
-    await fetch(`http://localhost:${newPort}/api/rpc`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "prompt", message: msg }),
-    });
-  } catch (e) {
-    console.error("[SuperAgent] dispatch failed:", e);
-  }
+  await dispatchSuperAgentTaskCore({
+    task,
+    transport,
+    getCurrentPort,
+    updateSuperAgentTask,
+    dispatchedTasks,
+  });
 }
 
 async function notifySuperAgent(port, taskId, title, status, failReason) {
@@ -2173,7 +2161,9 @@ function currentOnboardingState() {
 }
 
 function openConfigurationSettings() {
-  return openSettings("configuration");
+  return openSettings("configuration").then(() => {
+    selectSettingsTab("configuration");
+  });
 }
 
 function updateOnboardingUI() {
