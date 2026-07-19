@@ -8,16 +8,53 @@ export function setupSettingsEditors({
   showSettingsSaveSuccess,
 }) {
   const apiKeysContainer = document.getElementById("settings-api-keys");
+  const providerExpansionState = new Map();
 
-  async function loadApiKeysPanel() {
+  async function loadApiKeysPanel(options = {}) {
     if (!apiKeysContainer) return;
-    apiKeysContainer.innerHTML = '<div class="settings-api-keys-loading">Loading providers…</div>';
+    rememberProviderExpansionState();
+    const scrollContainer = options.preserveUi ? getSettingsScrollContainer() : null;
+    const scrollTop = scrollContainer?.scrollTop ?? 0;
+    if (!options.preserveUi) {
+      apiKeysContainer.innerHTML =
+        '<div class="settings-api-keys-loading">Loading providers…</div>';
+    }
     const data = await rpcCommand({ type: "list_model_catalog" });
     if (!data?.success || !Array.isArray(data.data?.providers)) {
       renderApiKeysPanelError(data?.error || "Failed to load providers.");
+      restoreScroll(scrollContainer, scrollTop);
       return;
     }
     renderApiKeysPanel(data.data.providers);
+    restoreScroll(scrollContainer, scrollTop);
+  }
+
+  function rememberProviderExpansionState() {
+    if (!apiKeysContainer) return;
+    for (const row of apiKeysContainer.querySelectorAll(".api-key-row[data-provider]")) {
+      const modelList = row.querySelector(".api-model-list");
+      if (modelList) {
+        providerExpansionState.set(
+          row.dataset.provider,
+          !modelList.classList.contains("collapsed"),
+        );
+      }
+    }
+  }
+
+  function getSettingsScrollContainer() {
+    return (
+      apiKeysContainer?.closest?.(".settings-content") ||
+      document.scrollingElement ||
+      document.documentElement
+    );
+  }
+
+  function restoreScroll(scrollContainer, scrollTop) {
+    if (!scrollContainer) return;
+    requestAnimationFrame(() => {
+      scrollContainer.scrollTop = scrollTop;
+    });
   }
 
   function renderApiKeysPanelError(message) {
@@ -88,6 +125,15 @@ export function setupSettingsEditors({
 
     const models = getProviderModels(p);
     const hasConfiguredModels = p.configured && models.length > 0;
+    if (hasConfiguredModels) {
+      const checkHealthBtn = document.createElement("button");
+      checkHealthBtn.type = "button";
+      checkHealthBtn.className = "api-model-check-visible";
+      checkHealthBtn.textContent = "Check health";
+      checkHealthBtn.disabled = !models.some((model) => model.visible !== false && model.available);
+      checkHealthBtn.addEventListener("click", () => checkModelHealth(p.provider));
+      actions.appendChild(checkHealthBtn);
+    }
     actions.appendChild(setBtn);
     if (p.configured && p.source === "stored") {
       const removeBtn = document.createElement("button");
@@ -110,10 +156,14 @@ export function setupSettingsEditors({
     header.appendChild(actions);
     row.appendChild(header);
     if (modelList) {
-      toggle.setAttribute("aria-expanded", "true");
+      const isExpanded = providerExpansionState.get(p.provider) ?? true;
+      modelList.classList.toggle("collapsed", !isExpanded);
+      toggle.setAttribute("aria-expanded", String(isExpanded));
       const toggleModelList = () => {
         modelList.classList.toggle("collapsed");
-        toggle.setAttribute("aria-expanded", String(!modelList.classList.contains("collapsed")));
+        const expanded = !modelList.classList.contains("collapsed");
+        toggle.setAttribute("aria-expanded", String(expanded));
+        providerExpansionState.set(p.provider, expanded);
       };
       header.addEventListener("click", (event) => {
         if (event.target.closest?.(".api-key-row-actions")) return;
@@ -153,29 +203,22 @@ export function setupSettingsEditors({
 
     const actions = document.createElement("div");
     actions.className = "api-model-list-heading-actions";
-    const checkHealthBtn = document.createElement("button");
-    checkHealthBtn.type = "button";
-    checkHealthBtn.className = "api-model-check-visible";
-    checkHealthBtn.textContent = "Check health";
-    checkHealthBtn.disabled = !models.some((model) => model.visible !== false && model.available);
-    checkHealthBtn.addEventListener("click", () => checkModelHealth(p.provider));
-    const disableUnhealthy = document.createElement("button");
-    disableUnhealthy.type = "button";
-    disableUnhealthy.className = "api-model-disable-unhealthy";
-    disableUnhealthy.textContent = "Disable unhealthy models";
-    disableUnhealthy.disabled = !models.some(
-      (model) => model.visible !== false && model.health?.status === "unhealthy",
+    const visibilityColumn = document.createElement("label");
+    visibilityColumn.className = "api-model-select-all";
+    const allModelsEnabled = models.every((model) => model.visible !== false);
+    const visibilityToggle = document.createElement("input");
+    visibilityToggle.type = "checkbox";
+    visibilityToggle.className = "api-model-select-all-toggle";
+    visibilityToggle.checked = allModelsEnabled;
+    visibilityToggle.setAttribute(
+      "aria-label",
+      `${allModelsEnabled ? "Deselect" : "Select"} all ${p.displayName || p.provider} models`,
     );
-    disableUnhealthy.addEventListener("click", () =>
-      disableUnhealthyModels(p.provider, getVisibleUnhealthyModels(p.provider)),
+    visibilityToggle.addEventListener("change", () =>
+      setProviderModelsVisibility(p.provider, visibilityToggle.checked),
     );
-    actions.appendChild(checkHealthBtn);
-    actions.appendChild(disableUnhealthy);
-    const contextColumn = document.createElement("span");
-    contextColumn.textContent = "Context";
-    const enabledColumn = document.createElement("span");
-    enabledColumn.textContent = "Enabled";
-    columnLabels.append(statusColumn, modelColumn, actions, contextColumn, enabledColumn);
+    visibilityColumn.appendChild(visibilityToggle);
+    columnLabels.append(statusColumn, modelColumn, actions, visibilityColumn);
     wrap.appendChild(columnLabels);
 
     for (const model of models) {
@@ -184,39 +227,45 @@ export function setupSettingsEditors({
     return wrap;
   }
 
-  function getVisibleUnhealthyModels(provider) {
+  function getProviderModelRows(provider) {
     return [
       ...apiKeysContainer.querySelectorAll(
         `.api-model-row[data-provider="${escapeSelectorValue(provider)}"]`,
       ),
-    ]
-      .filter(
-        (row) =>
-          row.querySelector(".api-model-visibility-toggle")?.checked &&
-          row.querySelector(".api-model-health-dot")?.classList.contains("unhealthy"),
-      )
-      .map((row) => ({ id: row.dataset.modelId }));
+    ];
   }
 
-  function refreshDisableUnhealthyButton(provider) {
+  async function setProviderModelsVisibility(provider, visible) {
+    const rows = getProviderModelRows(provider);
+    const toggles = rows
+      .map((row) => row.querySelector(".api-model-visibility-toggle"))
+      .filter(Boolean);
+    const modelsToUpdate = rows.filter(
+      (row) => row.querySelector(".api-model-visibility-toggle")?.checked !== visible,
+    );
+    if (modelsToUpdate.length === 0) return;
+
     const providerRow = apiKeysContainer.querySelector(
       `.api-key-row[data-provider="${escapeSelectorValue(provider)}"]`,
     );
-    const button = providerRow?.querySelector(".api-model-disable-unhealthy");
-    if (button) button.disabled = getVisibleUnhealthyModels(provider).length === 0;
-  }
-
-  async function disableUnhealthyModels(provider, models) {
-    for (const model of models) {
-      await rpcCommand({
+    const visibilityButton = providerRow?.querySelector(".api-model-select-all-toggle");
+    if (visibilityButton) visibilityButton.disabled = true;
+    for (const toggle of toggles) toggle.disabled = true;
+    for (const row of modelsToUpdate) {
+      const resp = await rpcCommand({
         type: "set_model_visibility",
         provider,
-        modelId: model.id,
-        visible: false,
+        modelId: row.dataset.modelId,
+        visible,
       });
+      if (!resp?.success) {
+        if (visibilityButton) visibilityButton.disabled = false;
+        for (const toggle of toggles) toggle.disabled = false;
+        return;
+      }
     }
     await onModelConfigurationChanged?.();
-    await loadApiKeysPanel();
+    await loadApiKeysPanel({ preserveUi: true });
   }
 
   function buildModelRow(model) {
@@ -224,6 +273,7 @@ export function setupSettingsEditors({
     row.className = "api-model-row";
     row.dataset.provider = model.provider;
     row.dataset.modelId = model.id;
+    row.dataset.available = String(model.available);
 
     const health = model.health || { status: "unknown" };
     const healthDot = document.createElement("span");
@@ -244,10 +294,6 @@ export function setupSettingsEditors({
     const actions = document.createElement("div");
     actions.className = "api-model-actions";
 
-    const context = document.createElement("span");
-    context.className = "api-model-context";
-    context.textContent = model.contextWindow ? `${Math.round(model.contextWindow / 1000)}k` : "—";
-
     const visibilityLabel = document.createElement("label");
     visibilityLabel.className = "api-model-visibility";
     const visibility = document.createElement("input");
@@ -265,7 +311,7 @@ export function setupSettingsEditors({
       });
       if (resp?.success) {
         await onModelConfigurationChanged?.();
-        await loadApiKeysPanel();
+        await loadApiKeysPanel({ preserveUi: true });
       } else {
         visibility.checked = !visibility.checked;
         visibility.disabled = false;
@@ -273,21 +319,10 @@ export function setupSettingsEditors({
     });
     visibilityLabel.appendChild(visibility);
 
-    const healthBtn = document.createElement("button");
-    healthBtn.type = "button";
-    healthBtn.className = "api-model-health-check";
-    healthBtn.textContent = "↻";
-    healthBtn.setAttribute("aria-label", `Check health for ${model.name || model.id}`);
-    healthBtn.title = "Check health";
-    healthBtn.disabled = !model.available;
-    healthBtn.addEventListener("click", () => checkModelHealth(model.provider, model.id, row));
-
     actions.appendChild(visibilityLabel);
-    actions.appendChild(healthBtn);
 
     row.appendChild(healthDot);
     row.appendChild(label);
-    row.appendChild(context);
     row.appendChild(actions);
     return row;
   }
@@ -323,7 +358,6 @@ export function setupSettingsEditors({
       dot.title = "Checking health";
     }
     if (status) status.textContent = "Checking health...";
-    refreshDisableUnhealthyButton(row.dataset.provider);
   }
 
   function setModelRowHealthError(row, message) {
@@ -336,7 +370,6 @@ export function setupSettingsEditors({
       dot.title = text;
     }
     if (status) status.textContent = text;
-    refreshDisableUnhealthyButton(row.dataset.provider);
   }
 
   function applyHealthResult(result) {
@@ -356,38 +389,25 @@ export function setupSettingsEditors({
       dot.title = describeModelHealth(health);
     }
     if (status) status.textContent = describeModelHealth(health);
-    refreshDisableUnhealthyButton(result.provider);
   }
 
-  async function checkModelHealth(provider, modelId, row) {
-    if (row) {
-      setModelRowChecking(row);
-    } else {
-      for (const modelRow of apiKeysContainer.querySelectorAll(
-        `.api-model-row[data-provider="${escapeSelectorValue(provider)}"]`,
-      )) {
-        const toggle = modelRow.querySelector(".api-model-visibility-toggle");
-        const checkBtn = modelRow.querySelector(".api-model-health-check");
-        if (toggle?.checked && !checkBtn?.disabled) setModelRowChecking(modelRow);
-      }
+  async function checkModelHealth(provider) {
+    for (const modelRow of getProviderModelRows(provider)) {
+      const toggle = modelRow.querySelector(".api-model-visibility-toggle");
+      if (toggle?.checked && modelRow.dataset.available !== "false") setModelRowChecking(modelRow);
     }
     const resp = await rpcCommand({
       type: "check_model_health",
       provider,
-      ...(modelId ? { modelId } : {}),
     });
     if (resp?.success && Array.isArray(resp.data?.results)) {
       for (const result of resp.data.results) applyHealthResult(result);
     } else {
       const message = resp?.error || "Health check failed";
-      if (row) {
-        setModelRowHealthError(row, message);
-      } else {
-        for (const modelRow of apiKeysContainer.querySelectorAll(
-          `.api-model-row[data-provider="${escapeSelectorValue(provider)}"]`,
-        )) {
-          const toggle = modelRow.querySelector(".api-model-visibility-toggle");
-          if (toggle?.checked) setModelRowHealthError(modelRow, message);
+      for (const modelRow of getProviderModelRows(provider)) {
+        const toggle = modelRow.querySelector(".api-model-visibility-toggle");
+        if (toggle?.checked && modelRow.dataset.available !== "false") {
+          setModelRowHealthError(modelRow, message);
         }
       }
     }

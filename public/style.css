@@ -1872,6 +1872,13 @@ body {
   margin-right: auto;
 }
 
+.settings-config-actions .settings-save-status[data-tone="ok"] {
+  flex: 0 0 auto;
+  min-width: auto;
+  margin-right: 0;
+  white-space: nowrap;
+}
+
 .settings-config-button-group {
   display: flex;
   align-items: center;
@@ -2419,8 +2426,7 @@ body {
 }
 
 .api-model-check-visible,
-.api-model-disable-unhealthy,
-.api-model-health-check {
+.api-model-disable-unhealthy {
   padding: var(--space-1) var(--space-2);
   background: var(--bg-glass-strong, var(--bg-glass));
   border: 1px solid var(--border);
@@ -2431,22 +2437,21 @@ body {
 }
 
 .api-model-check-visible:disabled,
-.api-model-disable-unhealthy:disabled,
-.api-model-health-check:disabled {
+.api-model-disable-unhealthy:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 
 .api-model-row {
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) max-content 58px 70px;
+  grid-template-columns: 14px minmax(0, 1fr) max-content max-content;
   align-items: center;
   column-gap: var(--space-2);
 }
 
 .api-model-list-heading {
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) max-content 58px 70px;
+  grid-template-columns: 14px minmax(0, 1fr) max-content max-content;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3) var(--space-1);
@@ -2457,7 +2462,7 @@ body {
   text-transform: uppercase;
 }
 
-.api-model-list-heading > span:last-child {
+.api-model-list-heading > :last-child {
   justify-self: center;
 }
 
@@ -2470,14 +2475,13 @@ body {
 .api-model-list-heading-actions .api-model-disable-unhealthy {
   padding: var(--space-1) var(--space-1-5);
   font-size: var(--font-size-sm);
-}
-
-.api-model-context {
-  grid-column: 4;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .api-model-actions {
-  grid-column: 5;
+  grid-column: 4;
 }
 
 .api-model-row {
@@ -2527,11 +2531,6 @@ body {
   font-size: var(--font-size-sm);
 }
 
-.api-model-context {
-  color: var(--text-dim);
-  text-align: center;
-}
-
 .api-model-actions {
   display: flex;
   align-items: center;
@@ -2540,16 +2539,76 @@ body {
   flex-shrink: 0;
 }
 
-.api-model-visibility {
+.api-model-visibility,
+.api-model-select-all {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: var(--space-1);
 }
 
-.api-model-health-check {
-  width: 22px;
-  padding: var(--space-0-5);
-  line-height: 1;
+.api-model-select-all {
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.api-model-visibility-toggle,
+.api-model-select-all-toggle {
+  appearance: none;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-glass-strong, var(--bg-glass));
+  cursor: pointer;
+  transition:
+    background var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
+}
+
+.api-model-visibility-toggle::after,
+.api-model-select-all-toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition:
+    left 0.25s var(--spring),
+    background 0.25s var(--spring);
+}
+
+.api-model-visibility-toggle:checked,
+.api-model-select-all-toggle:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.api-model-visibility-toggle:checked::after,
+.api-model-select-all-toggle:checked::after {
+  left: 18px;
+  background: white;
+}
+
+.api-model-visibility-toggle:focus-visible,
+.api-model-select-all-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.api-model-visibility-toggle:disabled,
+.api-model-select-all-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .api-key-editor {
@@ -2959,6 +3018,11 @@ body {
     margin-right: 0;
   }
 
+  .settings-config-actions .settings-save-status[data-tone="ok"] {
+    align-self: flex-end;
+    width: auto;
+  }
+
   .settings-config-button-group {
     width: 100%;
     justify-content: flex-end;
@@ -3145,9 +3209,9 @@ body {
 }
 
 .config-editor-error[data-tone="ok"] {
-  color: var(--accent, #4caf50);
-  background: rgba(76, 175, 80, 0.1);
-  border-color: rgba(76, 175, 80, 0.25);
+  color: var(--accent-success, #4caf50);
+  background: var(--bg-glass);
+  border-color: var(--border);
 }
 
 .config-editor-error[data-tone="error"] {
@@ -5013,37 +5077,42 @@ body.hide-thinking .thinking-block {
   max-height: 280px;
 }
 
-/* Individual tick — short horizontal line, grows leftward on hover */
+/* Individual tick — button is the (large) hit target; ::after is the visual line */
 .conv-nav-dot {
-  /* Start short */
-  width: 10px;
-  height: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--border-hover);
+  width: 28px; /* wide hit target */
+  height: 16px; /* tall hit target */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end; /* bar hugs the right/rail edge */
+  background: transparent;
+  border: none;
+  padding: 0;
   cursor: pointer;
   flex-shrink: 0;
-  /* grow from right → left */
+}
+
+.conv-nav-dot::after {
+  content: "";
+  height: 2px;
+  width: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--border-hover);
+  opacity: 0.6;
   transform-origin: right center;
   transition:
     width 0.22s var(--ease),
     background 0.2s var(--ease),
     height 0.2s var(--ease),
     opacity 0.2s var(--ease);
-  opacity: 0.6;
-  border: none;
-  /* Expand hit target without growing visual size */
-  padding: var(--space-2) var(--space-2);
-  margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2));
-  display: block;
 }
 
-.conv-nav-dot:hover {
+.conv-nav-dot:hover::after {
   width: 22px;
   background: var(--text-muted);
   opacity: 1;
 }
 
-.conv-nav-dot.active {
+.conv-nav-dot.active::after {
   width: 16px;
   height: 3px;
   background: var(--accent);

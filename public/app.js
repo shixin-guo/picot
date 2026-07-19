@@ -61,6 +61,8 @@ import {
 } from "./workspace/actions.js";
 import { FileBrowser } from "./workspace/file-browser.js";
 
+const COMPOSER_PLACEHOLDER = "Type a message, or use / to call a skill…";
+
 const fetchInstances = async () => {
   try {
     const res = await fetch("/api/instances");
@@ -217,8 +219,7 @@ document.addEventListener("sa-view-session", (e) => viewSuperAgentChildSession(e
 
 // <sa-chat-header> service buttons open Settings > Chat tab
 window.__saOpenSettings = () => {
-  document.getElementById("settings-btn")?.click();
-  document.querySelector('[data-settings-tab="chat"]')?.click();
+  void openSettings("chat");
 };
 // ── end Super Agent wiring ───────────────────────────────────────────────────
 
@@ -554,8 +555,7 @@ function renderWorkspaceWelcome({ force = false } = {}) {
   if (!force && welcomeVisible && lastRenderedWelcomeWorkspacePath === workspacePath) {
     return;
   }
-  const projectName = workspacePath ? workspacePath.split("/").filter(Boolean).pop() : "";
-  messageRenderer.renderWelcome(projectName);
+  messageRenderer.renderWelcome({ workspacePath });
   lastRenderedWelcomeWorkspacePath = workspacePath;
 }
 
@@ -1703,7 +1703,9 @@ chatForm.addEventListener("submit", (e) => {
 
 messageInput.addEventListener("keydown", (e) => {
   // IME composition uses Enter to confirm candidates; never send during composition.
-  const isImeComposing = e.isComposing;
+  // Some WebKit/IME combinations report Enter candidate confirmation with
+  // `isComposing === false` but `keyCode === 229`, so keep the legacy fallback.
+  const isImeComposing = e.isComposing || e.keyCode === 229;
   if (isImeComposing) return;
 
   // Enter sends, Shift+Enter inserts newline
@@ -2137,7 +2139,7 @@ function currentOnboardingState() {
 }
 
 function openConfigurationSettings() {
-  return openSettings().then(() => selectSettingsTab("configuration"));
+  return openSettings("configuration");
 }
 
 function updateOnboardingUI() {
@@ -3184,7 +3186,7 @@ function updateMirrorInputState() {
   const inputArea = document.querySelector(".input-area");
   if (viewingActiveSession) {
     messageInput.disabled = false;
-    messageInput.placeholder = "Message…";
+    messageInput.placeholder = COMPOSER_PLACEHOLDER;
     inputArea?.classList.remove("mirror-readonly");
   } else {
     messageInput.disabled = true;
@@ -3552,7 +3554,7 @@ function updateUI() {
     abortBtn.classList.add("hidden");
     messageInput.placeholder = "Waiting for current session to finish…";
   } else if (onboarding.canQuery) {
-    messageInput.placeholder = "Type a message…";
+    messageInput.placeholder = COMPOSER_PLACEHOLDER;
   }
 }
 
@@ -4156,12 +4158,42 @@ function buildThemeGrid() {
   }
 }
 
-async function openSettings() {
+function normalizeSettingsTabKey(tabKey) {
+  const rawTabKey = typeof tabKey === "string" ? tabKey : "general";
+  const decodedTabKey = decodeURIComponent(rawTabKey || "general");
+  const normalizedTabKey = decodedTabKey === "auth" ? "configuration" : decodedTabKey;
+  return settingsNavItems.some((item) => item.dataset.settingsTab === normalizedTabKey)
+    ? normalizedTabKey
+    : "general";
+}
+
+function settingsHashForTab(tabKey) {
+  return `#/settings/${encodeURIComponent(normalizeSettingsTabKey(tabKey))}`;
+}
+
+function updateSettingsHash(tabKey) {
+  const nextHash = settingsHashForTab(tabKey);
+  if (window.location.hash === nextHash) return;
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${window.location.search}${nextHash}`,
+  );
+}
+
+function clearSettingsHash() {
+  if (!window.location.hash.startsWith("#/settings")) return;
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+}
+
+async function openSettings(tabKey = "general", options = {}) {
+  const targetTabKey = normalizeSettingsTabKey(tabKey);
+  if (options.updateHash !== false) updateSettingsHash(targetTabKey);
   settingsPanel.classList.remove("hidden");
   messagesContainer.style.display = "none";
   document.querySelector(".input-area").style.display = "none";
   document.querySelector(".mode-link:first-child")?.classList.remove("active");
-  selectSettingsTab("general");
+  selectSettingsTab(targetTabKey);
   buildThemeGrid();
   if (piVersionValue) {
     piVersionValue.textContent = piVersionCache || "Loading…";
@@ -4206,18 +4238,33 @@ async function openSettings() {
   }
 }
 
-function closeSettings() {
+function closeSettings(options = {}) {
+  if (options.clearHash !== false) clearSettingsHash();
   settingsPanel.classList.add("hidden");
   messagesContainer.style.display = "";
   document.querySelector(".input-area").style.display = "";
   document.querySelector(".mode-link:first-child")?.classList.add("active");
 }
 
+function restorePageFromHash() {
+  const route = window.location.hash.slice(1);
+  if (route === "/settings" || route.startsWith("/settings/")) {
+    const tabKey = route.split("/")[2] || "general";
+    void openSettings(tabKey, { updateHash: false });
+    return;
+  }
+  if (!settingsPanel.classList.contains("hidden")) {
+    closeSettings({ clearHash: false });
+  }
+}
+
 async function openUpdatesFromSidebar() {
   await updater.openUpdatesFromSidebar();
 }
 
-settingsBtn.addEventListener("click", openSettings);
+settingsBtn.addEventListener("click", () => {
+  void openSettings();
+});
 sidebarUpdateBtn?.addEventListener("click", () => {
   openUpdatesFromSidebar().catch((err) => {
     console.warn("[updater] unable to open updates from sidebar:", err);
@@ -4227,7 +4274,9 @@ settingsClose.addEventListener("click", closeSettings);
 settingsOverlay?.addEventListener("click", closeSettings);
 settingsNavItems.forEach((item) => {
   item.addEventListener("click", () => {
-    selectSettingsTab(item.dataset.settingsTab || "general");
+    const tabKey = item.dataset.settingsTab || "general";
+    selectSettingsTab(tabKey);
+    updateSettingsHash(tabKey);
   });
 });
 
@@ -4329,6 +4378,9 @@ async function handleOpenFolder() {
 }
 
 openFolderBtn?.addEventListener("click", handleOpenFolder);
+
+window.addEventListener("hashchange", restorePageFromHash);
+restorePageFromHash();
 
 wsClient.connect();
 dismissBootSwapOverlayWhenReady();

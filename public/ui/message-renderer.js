@@ -127,12 +127,20 @@ export class MessageRenderer {
     return matchCount;
   }
 
-  renderWelcome(projectName = "") {
-    const nameHtml = projectName ? `<div class="welcome-project-name">${projectName}</div>` : "";
+  renderWelcome({ workspacePath } = {}) {
+    const workspaceHtml = workspacePath
+      ? `<p class="hint welcome-workspace">Current workspace: <code>${this.escapeHtml(workspacePath)}</code></p>`
+      : "";
     this.container.innerHTML = `
       <div class="welcome">
         <div class="welcome-icon"><img src="icons/logo-dark.svg" alt="Picot logo" class="tau-icon-welcome"></div>
-        ${nameHtml}
+        <p>Welcome to Picot</p>
+        <p class="hint">Type a message below to start chatting with Pi, or select a session from the sidebar.</p>
+        ${workspaceHtml}
+        <div class="shortcuts-hint">
+          <span>/ Focus input</span>
+          <span>Esc Abort</span>
+        </div>
       </div>
     `;
   }
