@@ -940,9 +940,13 @@ function showNavTooltip(dotEl, turn) {
   convNavTooltip.classList.remove("animating");
   void convNavTooltip.offsetWidth; // reflow so animation re-fires
   convNavTooltip.classList.add("animating");
-  convNavTooltip.addEventListener("animationend", () => convNavTooltip.classList.remove("animating"), {
-    once: true,
-  });
+  convNavTooltip.addEventListener(
+    "animationend",
+    () => convNavTooltip.classList.remove("animating"),
+    {
+      once: true,
+    },
+  );
 }
 
 function hideNavTooltip() {

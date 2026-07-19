@@ -4944,7 +4944,9 @@ body.hide-thinking .thinking-block {
   max-height: calc(100% - var(--messages-top-inset) - var(--messages-bottom-inset) - 24px);
   overflow: visible;
   animation: convNavIn 0.3s var(--spring);
-  transition: opacity 0.2s var(--ease), transform 0.2s var(--ease);
+  transition:
+    opacity 0.2s var(--ease),
+    transform 0.2s var(--ease);
 }
 
 .conv-nav.hidden {
@@ -4979,7 +4981,10 @@ body.hide-thinking .thinking-block {
   padding: 0;
   flex-shrink: 0;
   opacity: 0.5;
-  transition: opacity 0.15s var(--ease), transform 0.15s var(--ease), color 0.15s var(--ease);
+  transition:
+    opacity 0.15s var(--ease),
+    transform 0.15s var(--ease),
+    color 0.15s var(--ease);
 }
 
 .conv-nav-arrow:hover {
