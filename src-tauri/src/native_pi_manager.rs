@@ -555,7 +555,7 @@ mod tests {
             cwd: PathBuf::from("/workspace"),
             session_path: Some(PathBuf::from("/sessions/a.jsonl")),
             extensions: vec![PathBuf::from("/extensions/picot-bridge.mjs")],
-            pi_version: "0.80.7".into(),
+            pi_version: "0.80.10".into(),
             path_env: "/usr/bin".into(),
         };
         let launch = spec.command_description();

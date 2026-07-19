@@ -314,7 +314,6 @@ body {
 .infobar-subsection-head h3,
 .infobar-subsection-head h4 {
   margin: 0;
-  font-size: var(--font-size-md);
   letter-spacing: 0.01em;
 }
 

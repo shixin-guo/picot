@@ -380,8 +380,7 @@ const scrollBottomBadge = document.getElementById("scroll-bottom-badge");
 const _scrollPrevBtn = document.getElementById("scroll-prev-btn"); // hidden legacy stub, unused
 const convNavEl = document.getElementById("conv-nav");
 const convNavTrack = document.getElementById("conv-nav-track");
-const convNavUp = document.getElementById("conv-nav-up");
-const convNavDown = document.getElementById("conv-nav-down");
+
 const convNavTooltip = document.getElementById("conv-nav-tooltip");
 const convNavTooltipQ = document.getElementById("conv-nav-tooltip-q");
 const convNavTooltipA = document.getElementById("conv-nav-tooltip-a");
@@ -822,6 +821,7 @@ function getConversations() {
 // partially-visible one. The header floats above the scroller, so the true
 // visible top is the header's bottom edge.
 function getActiveConvIndex(turns) {
+  if (_navLockedIdx >= 0 && _navLockedIdx < turns.length) return _navLockedIdx;
   const visibleTop = Math.max(
     messagesContainer.getBoundingClientRect().top,
     headerEl?.getBoundingClientRect().bottom || 0,
@@ -841,16 +841,27 @@ function flashJumpHighlight(target) {
   });
 }
 
-function jumpToConversation(turn) {
+function jumpToConversation(turn, idx) {
+  // Lock active index immediately so dot highlights right away, even before
+  // the smooth scroll settles (or if scrollIntoView doesn't scroll at all).
+  if (idx !== undefined) {
+    _navLockedIdx = idx;
+    clearTimeout(_navLockTimer);
+    _navLockTimer = setTimeout(() => {
+      _navLockedIdx = -1;
+      rebuildNavDots();
+    }, 800);
+  }
   turn.user.scrollIntoView({ block: "start", behavior: "smooth" });
   flashJumpHighlight(turn.user);
+  rebuildNavDots();
 }
 
 function jumpToPreviousUserMessage() {
   const turns = getConversations();
   if (!turns.length) return;
   const idx = getActiveConvIndex(turns);
-  if (idx > 0) jumpToConversation(turns[idx - 1]);
+  if (idx > 0) jumpToConversation(turns[idx - 1], idx - 1);
 }
 
 // Jumps to the next conversation's user message. If that next conversation
@@ -862,7 +873,7 @@ function jumpToNextConversationOrBottom() {
   const idx = getActiveConvIndex(turns);
   const nextIdx = idx + 1;
   if (nextIdx <= lastIdx - 1) {
-    jumpToConversation(turns[nextIdx]);
+    jumpToConversation(turns[nextIdx], nextIdx);
   } else {
     messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: "smooth" });
     scrollBottomBadge.classList.add("hidden");
@@ -871,21 +882,19 @@ function jumpToNextConversationOrBottom() {
 
 // ── Dot track ──────────────────────────────────────────
 let _tooltipHideTimer = null;
+let _navLockedIdx = -1;
+let _navLockTimer = null;
+
+// Minimum height (px) the nav needs to be useful:
+const CONV_NAV_MAX_HEIGHT = 560;
 
 function rebuildNavDots() {
   const turns = getConversations();
-  const hasConvs = turns.length > 1; // no point showing a 1-turn rail
+  const hasConvs = turns.length > 1;
   convNavEl.classList.toggle("hidden", !hasConvs);
   if (!hasConvs) return;
 
   const activeIdx = getActiveConvIndex(turns);
-  convNavUp.disabled = activeIdx === 0;
-  // Down is only disabled when already at the very bottom of the scroll container
-  const atBottom =
-    messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight <
-    8;
-  convNavDown.disabled = atBottom;
-
   // Diff-update dots to avoid full rebuild on each scroll tick
   const existing = [...convNavTrack.children];
   // Add missing dots
@@ -903,16 +912,28 @@ function rebuildNavDots() {
   // Update active state and wire events only when the dot count changed
   if (existing.length !== turns.length) {
     [...convNavTrack.children].forEach((dot, i) => {
-      dot.onclick = () => jumpToConversation(turns[i]);
+      dot.onclick = () => jumpToConversation(turns[i], i);
       dot.onmouseenter = () => showNavTooltip(dot, turns[i]);
       dot.onmouseleave = () => hideNavTooltip();
     });
   }
 
+  const waveWidths = [30, 26, 22, 19, 17];
   [...convNavTrack.children].forEach((dot, i) => {
     dot.classList.toggle("active", i === activeIdx);
     dot.setAttribute("aria-label", `Jump to conversation ${i + 1}`);
+    const dist = Math.abs(i - activeIdx);
+    const w = waveWidths[Math.min(dist, waveWidths.length - 1)];
+    dot.style.setProperty("--nav-w", w + "px");
   });
+
+  // Scale the track down if all dots would exceed the max height.
+  const naturalHeight = convNavTrack.scrollHeight;
+  const scale = naturalHeight > CONV_NAV_MAX_HEIGHT ? CONV_NAV_MAX_HEIGHT / naturalHeight : 1;
+  convNavTrack.style.transform = scale < 1 ? `scale(${scale})` : "";
+  convNavTrack.style.transformOrigin = scale < 1 ? "top right" : "";
+  // Keep the nav's layout height in sync with the scaled visual size.
+  convNavEl.style.height = scale < 1 ? `${naturalHeight * scale}px` : "";
 }
 
 function showNavTooltip(dotEl, turn) {
@@ -955,8 +976,6 @@ function hideNavTooltip() {
 
 convNavTooltip.onmouseenter = () => clearTimeout(_tooltipHideTimer);
 convNavTooltip.onmouseleave = () => hideNavTooltip();
-convNavUp.addEventListener("click", jumpToPreviousUserMessage);
-convNavDown.addEventListener("click", jumpToNextConversationOrBottom);
 
 // ── Scroll + mutation wiring ────────────────────────────
 messagesContainer.addEventListener("scroll", () => {
@@ -973,6 +992,9 @@ messagesContainer.addEventListener("scroll", () => {
 // streaming new assistant message, etc.) without threading a callback into every
 // call-site in MessageRenderer.
 new MutationObserver(rebuildNavDots).observe(messagesContainer, { childList: true });
+
+// Re-evaluate space availability whenever the window is resized.
+window.addEventListener("resize", rebuildNavDots);
 
 // ── Session fork via "Fork from here" button on user messages ──────────────
 messagesContainer.addEventListener("messagefork", async (e) => {

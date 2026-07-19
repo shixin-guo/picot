@@ -1,5 +1,5 @@
 {
-  "version": "0.80.7",
+  "version": "0.80.10",
   "commands": [
     "get_state",
     "get_commands",

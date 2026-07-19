@@ -10,7 +10,7 @@ const binary = join(
   "pi",
   process.platform === "win32" ? "pi.exe" : "pi",
 );
-const fixtureDir = join(root, "tests", "fixtures", "pi-rpc", "0.80.7");
+const fixtureDir = join(root, "tests", "fixtures", "pi-rpc", "0.80.10");
 const update = process.argv.includes("--update");
 const temp = await mkdtemp(join(tmpdir(), "picot-rpc-smoke-"));
 const extension = join(temp, "smoke-extension.ts");
@@ -101,7 +101,7 @@ try {
   }
 
   const contract = {
-    version: "0.80.7",
+    version: "0.80.10",
     commands: [
       "get_state",
       "get_commands",
