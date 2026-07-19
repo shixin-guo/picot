@@ -4,6 +4,9 @@
 
 本地桌面 GUI，专为 [Pi](https://github.com/badlogic/pi-mono) 编程 Agent 打造。无需云端，无需账号，完全在本机运行。
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/shixin-guo/picot?include_prereleases&label=release)](https://github.com/shixin-guo/picot/releases)
+[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#%E5%AE%89%E8%A3%85)
 
 Picot 将 `pi` 运行时**直接打包进 .app**，无需单独安装 `pi`，无需配置 PATH，也不存在版本不一致的问题。
 
