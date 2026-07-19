@@ -6,6 +6,31 @@ export class ToolCardRenderer {
   constructor(container) {
     this.container = container;
     this.toolCards = new Map(); // toolCallId -> element
+
+    // Toggle header expand/collapse via event delegation
+    this.container.addEventListener("click", (e) => {
+      const header = e.target.closest(".tool-card-header");
+      if (!header) return;
+      // Don't toggle when clicking action buttons inside the header
+      if (e.target.closest(".tool-action-btn")) return;
+      const card = header.closest(".tool-card");
+      if (!card) return;
+      card.querySelector(".tool-card-body")?.classList.toggle("expanded");
+      header.querySelector(".tool-card-chevron")?.classList.toggle("expanded");
+    });
+
+    // Copy output via event delegation
+    this.container.addEventListener("click", (e) => {
+      const btn = e.target.closest(".copy-output-btn");
+      if (!btn) return;
+      e.stopPropagation();
+      const output = btn.closest(".tool-card")?.querySelector(".tool-output");
+      if (!output?.textContent.trim()) return;
+      navigator.clipboard.writeText(output.textContent).then(() => {
+        btn.classList.add("copied");
+        setTimeout(() => btn.classList.remove("copied"), 1500);
+      });
+    });
   }
 
   createToolCard(toolExecution) {
@@ -26,14 +51,14 @@ export class ToolCardRenderer {
       (args.newText || args.new_text);
 
     card.innerHTML = `
-      <div class="tool-card-header" onclick="this.parentElement.querySelector('.tool-card-body').classList.toggle('expanded'); this.querySelector('.tool-card-chevron').classList.toggle('expanded')">
+      <div class="tool-card-header">
         <div class="tool-header-left">
           <span class="tool-card-chevron${isExpanded ? " expanded" : ""}"><svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M2 1l4 3-4 3z"/></svg></span>
           <span class="tool-name">${this.escapeHtml(toolName)}</span>
           ${argsPreview ? `<span class="tool-args-preview">${this.escapeHtml(argsPreview)}</span>` : ""}
         </div>
         <div class="tool-header-right">
-          <button class="tool-action-btn copy-output-btn" title="Copy output" onclick="event.stopPropagation(); var t=this.closest('.tool-card').querySelector('.tool-output'); if(!t||!t.textContent.trim())return; var s=t.textContent,b=this; (navigator.clipboard?navigator.clipboard.writeText(s):new Promise(function(r){var a=document.createElement('textarea');a.value=s;a.style.cssText='position:fixed;left:-9999px';document.body.appendChild(a);a.select();document.execCommand('copy');document.body.removeChild(a);r()})).then(function(){b.classList.add('copied');setTimeout(function(){b.classList.remove('copied')},1500)})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
+          <button class="tool-action-btn copy-output-btn" title="Copy output" aria-label="Copy output"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
           <div class="tool-status ${status}">${status}</div>
         </div>
       </div>

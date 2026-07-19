@@ -38,11 +38,11 @@ class ChatSettingsPanel extends HTMLElement {
             <div class="telegram-token-row">
               <input id="telegram-bot-token" class="ui-input telegram-token-input"
                 data-token-input type="password" autocomplete="off" spellcheck="false"
-                placeholder="123456:ABCDEF..." />
+                placeholder="123456:ABCDEF…" />
               <button class="ui-button ui-button--primary" data-action="connect-telegram">Connect Telegram</button>
               <button class="ui-button ui-button--secondary" data-action="cancel-telegram" hidden>Cancel</button>
             </div>
-            <div class="settings-save-status hidden" data-status></div>
+            <div class="settings-save-status hidden" data-status aria-live="polite" role="status"></div>
             <div class="telegram-bind-instructions hidden" data-bind-instructions></div>
           </div>
           <div class="telegram-doctor-card" data-telegram-doctor>

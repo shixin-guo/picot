@@ -18,7 +18,7 @@ describe("model selection", () => {
     expect(result).toEqual({ success: true });
     expect(rpcCommand).toHaveBeenCalledWith(
       { type: "set_model", provider: "anthropic", modelId: "claude-sonnet-5" },
-      "Switching to sonnet-5...",
+      "Switching to sonnet-5…",
     );
     expect(applySelectedModel).toHaveBeenCalledWith(model);
     expect(refreshModelInfo).not.toHaveBeenCalled();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appRoutePath, parseAppRoute, replaceTemporarySessionRoute } from "./app-router.js";
+import { appRoutePath, parseAppRoute, replaceTemporarySessionRoute } from "./router.js";
 
 describe("app router", () => {
   it("round-trips opaque launcher and session routes", () => {

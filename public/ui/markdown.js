@@ -106,7 +106,7 @@ export function renderMarkdown(text) {
       const block = codeBlocks[parseInt(codeMatch[1], 10)];
       const langLabel = block.lang || "code";
       html += `<div class="code-block-wrapper">`;
-      html += `<div class="code-block-header"><span>${escapeHtml(langLabel)}</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>`;
+      html += `<div class="code-block-header"><span>${escapeHtml(langLabel)}</span><button class="copy-btn" data-copy-code>Copy</button></div>`;
       html += `<pre><code>${escapeHtml(block.code)}</code></pre></div>`;
       continue;
     }
@@ -338,16 +338,25 @@ function escapeHtml(text) {
     .replace(/"/g, "&quot;");
 }
 
-// Global copy function for code blocks
-window.copyCode = (btn) => {
-  const codeBlock = btn.closest(".code-block-wrapper").querySelector("code");
-  const text = codeBlock.textContent;
-  navigator.clipboard.writeText(text).then(() => {
-    btn.textContent = "Copied!";
-    btn.classList.add("copied");
-    setTimeout(() => {
-      btn.textContent = "Copy";
-      btn.classList.remove("copied");
-    }, 2000);
+/**
+ * Wire up code-block copy buttons via event delegation.
+ * Call once on the messages container so all current and future
+ * code blocks (including streamed ones) are handled without
+ * inline onclick handlers or global functions.
+ */
+export function initCodeCopyDelegation(container) {
+  container.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-copy-code]");
+    if (!btn) return;
+    const codeBlock = btn.closest(".code-block-wrapper")?.querySelector("code");
+    if (!codeBlock) return;
+    navigator.clipboard.writeText(codeBlock.textContent).then(() => {
+      btn.textContent = "Copied!";
+      btn.classList.add("copied");
+      setTimeout(() => {
+        btn.textContent = "Copy";
+        btn.classList.remove("copied");
+      }, 2000);
+    });
   });
-};
+}

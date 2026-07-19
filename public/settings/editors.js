@@ -535,7 +535,7 @@ export function setupSettingsEditors({
     if (!inlineConfigTextarea) return;
     inlineConfigError?.classList.add("hidden");
     inlineConfigTextarea.value = "";
-    if (inlineConfigPath) inlineConfigPath.textContent = "Loading...";
+    if (inlineConfigPath) inlineConfigPath.textContent = "Loading…";
     try {
       const resp = await fetch("/api/agent-config");
       const data = await resp.json();
@@ -658,7 +658,7 @@ export function setupSettingsEditors({
     if (!inlineModelsTextarea) return;
     clearInlineModelsError();
     inlineModelsTextarea.value = "";
-    if (inlineModelsPath) inlineModelsPath.textContent = "Loading...";
+    if (inlineModelsPath) inlineModelsPath.textContent = "Loading…";
     try {
       const resp = await fetch("/api/models-config");
       const data = await resp.json();
@@ -738,7 +738,7 @@ export function setupSettingsEditors({
         if (!r.ok) throw new Error("open failed");
       })
       .catch(() => {
-        window.open(url, "_blank");
+        window.open(url, "_blank", "noopener,noreferrer");
       });
   });
 

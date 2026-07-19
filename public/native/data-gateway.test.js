@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HostDataGateway } from "./host-data-gateway.js";
+import { HostDataGateway } from "./data-gateway.js";
 import { createInMemoryRuntimeAdapter } from "./runtime-gateway.js";
 
 describe("HostDataGateway", () => {

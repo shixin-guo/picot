@@ -94,7 +94,7 @@ export class DialogHandler {
       this.respond(id, value ? { value } : { cancelled: true });
     };
 
-    input.addEventListener("keypress", (e) => {
+    input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") submit();
     });
 

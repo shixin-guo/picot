@@ -177,8 +177,8 @@
                             aria-label="Settings"
                         >
                             <svg
-                                width="18"
-                                height="18"
+                                width="14"
+                                height="14"
                                 viewBox="0 0 24 24"
                                 fill="none"
                                 stroke="currentColor"
@@ -383,40 +383,38 @@
                     </div>
                 </div>
 
-                <!-- Scroll to bottom + new message indicator -->
-                <button class="ui-icon-button ui-button--secondary scroll-bottom-btn hidden" id="scroll-bottom-btn">
-                    <span
-                        class="scroll-bottom-badge hidden"
-                        id="scroll-bottom-badge"
-                        >New
-                        <svg
-                            width="10"
-                            height="10"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <line x1="12" y1="5" x2="12" y2="19" />
-                            <polyline points="19 12 12 19 5 12" /></svg
-                    ></span>
-                    <span class="scroll-bottom-icon"
-                        ><svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2.5"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <line x1="12" y1="5" x2="12" y2="19" />
-                            <polyline points="19 12 12 19 5 12" /></svg
-                    ></span>
-                </button>
+                <!-- Conversation navigator rail (Codex-style) -->
+                <div class="conv-nav hidden" id="conv-nav" aria-label="Conversation navigator">
+                    <!-- Up arrow -->
+                    <button class="conv-nav-arrow conv-nav-arrow--up" id="conv-nav-up" aria-label="Previous conversation (Cmd/Ctrl+Up)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="18 15 12 9 6 15"/>
+                        </svg>
+                    </button>
+                    <!-- Dot track — populated by JS -->
+                    <div class="conv-nav-track" id="conv-nav-track"></div>
+                    <!-- Down arrow -->
+                    <button class="conv-nav-arrow conv-nav-arrow--down" id="conv-nav-down" aria-label="Next conversation (Cmd/Ctrl+Down)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Tooltip floated next to the rail — fixed-position, outside the rail
+                     so it isn't clipped by any stacking context on the rail itself -->
+                <div class="conv-nav-tooltip hidden" id="conv-nav-tooltip" aria-hidden="true">
+                    <div class="conv-nav-tooltip-q" id="conv-nav-tooltip-q"></div>
+                    <div class="conv-nav-tooltip-sep" id="conv-nav-tooltip-sep"></div>
+                    <div class="conv-nav-tooltip-a" id="conv-nav-tooltip-a"></div>
+                </div>
+
+                <!-- New-message badge kept separate so badge logic still works -->
+                <div class="conv-nav-new-badge hidden" id="scroll-bottom-badge">New ↓</div>
+
+                <!-- Legacy IDs kept as invisible references so existing JS bindings don't break -->
+                <button id="scroll-prev-btn" hidden aria-hidden="true"></button>
+                <button id="scroll-bottom-btn" hidden aria-hidden="true"></button>
 
                 <!-- Typing indicator (hidden, kept for JS reference) -->
                 <div
@@ -1134,6 +1132,8 @@
                                 <div
                                     class="config-editor-error settings-save-status hidden"
                                     id="inline-config-error"
+                                    aria-live="polite"
+                                    role="status"
                                 ></div>
                                 <div class="settings-config-button-group">
                                     <button
@@ -1183,6 +1183,8 @@
                                 <div
                                     class="config-editor-error settings-save-status hidden"
                                     id="inline-models-error"
+                                    aria-live="polite"
+                                    role="status"
                                 ></div>
                                 <div class="settings-config-button-group">
                                     <button

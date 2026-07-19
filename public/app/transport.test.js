@@ -44,6 +44,15 @@ describe("WsTransport", () => {
     );
   });
 
+  test("fork sends a fork control command with the entry id", async () => {
+    const ws = fakeWsClient();
+    const transport = new WsTransport(ws, {});
+
+    await transport.fork("entry-123", 47822);
+
+    expect(ws.sendControl).toHaveBeenCalledWith("fork", { entryId: "entry-123", port: 47822 }, {});
+  });
+
   test("native ops map to their control commands", async () => {
     const ws = fakeWsClient();
     const transport = createTransport({ wsClient: ws, env: { location: { port: "47821" } } });

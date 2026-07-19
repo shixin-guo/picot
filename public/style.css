@@ -33,6 +33,18 @@ select:focus-visible {
 
 /* Theme variables moved to style-theme.css */
 
+/* touch-action: manipulation on all interactive elements prevents 300ms tap
+   delay on mobile and disables double-tap-to-zoom on buttons/links. */
+button,
+a,
+[role="button"],
+[role="tab"],
+[role="radio"],
+[role="option"],
+[role="menuitem"] {
+  touch-action: manipulation;
+}
+
 body {
   font-family:
     -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
@@ -104,13 +116,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
+  width: 26px;
   height: 26px;
   border-radius: var(--radius-md);
   text-decoration: none;
   font-size: var(--font-size-md);
   color: var(--text-dim);
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
 }
 
 .tau-icon {
@@ -156,7 +170,10 @@ body {
   color: var(--text-primary);
   font-size: var(--font-size-sm);
   outline: none;
-  transition: all var(--duration) var(--ease);
+  transition:
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease),
+    background var(--duration) var(--ease);
   -webkit-app-region: no-drag;
 }
 
@@ -186,7 +203,9 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
   -webkit-app-region: no-drag;
 }
 
@@ -221,7 +240,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
 }
 
 .icon-btn:hover,
@@ -255,12 +276,12 @@ body {
   flex: 1;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: var(--space-1-5) var(--space-2) var(--space-2);
+  padding: var(--space-1-5) var(--space-3);
 }
 
 .sidebar-footer {
-  padding: var(--space-1) var(--space-2);
-  margin-bottom: 4px;
+  padding: var(--space-1) var(--space-3);
+  margin-bottom: var(--space-1);
 }
 
 .sidebar-settings-row {
@@ -305,7 +326,10 @@ body {
   background: #0a84ff;
   color: #fff;
   cursor: pointer;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
   margin-right: 4px;
 }
 
@@ -435,16 +459,20 @@ body {
 .project-header {
   display: flex;
   align-items: center;
-  gap: var(--space-1-5);
-  padding: var(--space-1-5) var(--space-2);
-  margin-top: 10px;
-  font-size: var(--font-size-sm);
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-1-5);
+  margin-top: 8px;
+  font-size: var(--font-size-md);
   color: var(--accent-text);
   text-transform: none;
   letter-spacing: 0.02em;
   cursor: pointer;
   user-select: none;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease);
   border-top: none;
   border-radius: var(--radius-md);
 }
@@ -458,13 +486,27 @@ body {
 }
 
 .project-header .chevron {
-  font-size: var(--font-size-sm);
-  transition: transform var(--duration) var(--ease);
-  opacity: 0.4;
+  font-size: var(--font-size-md);
+  opacity: 0.5;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
-.project-header.collapsed .chevron {
-  transform: rotate(-90deg);
+.project-header .folder-icon .folder-closed-icon {
+  display: none;
+}
+
+.project-header .folder-icon .folder-open-icon {
+  display: block;
+}
+
+.project-header.collapsed .folder-icon .folder-closed-icon {
+  display: block;
+}
+
+.project-header.collapsed .folder-icon .folder-open-icon {
+  display: none;
 }
 
 .project-count {
@@ -588,7 +630,9 @@ body {
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
   font-size: var(--font-size-md);
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
 }
 
 .sidebar-confirm-actions button:hover {
@@ -612,7 +656,6 @@ body {
   max-height: 2400px;
   overflow: hidden;
   opacity: 1;
-  padding-left: var(--space-1-5);
   transition:
     max-height 0.2s var(--ease),
     opacity 0.16s var(--ease);
@@ -622,7 +665,7 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 0 var(--space-2) 0;
+  padding: 0 var(--space-6) 0;
 }
 
 .project-sessions-toggle {
@@ -650,7 +693,7 @@ body {
 .session-item {
   display: flex;
   flex-direction: column;
-  padding: var(--space-2) 0;
+  padding: var(--space-1) 0;
   cursor: pointer;
   border-radius: var(--radius-md);
   transition:
@@ -678,7 +721,7 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-1-5);
-  margin: 0 6px;
+  margin: 0 8px;
   position: relative;
 }
 
@@ -854,7 +897,6 @@ body {
   line-height: 1.3;
   flex: 1;
   min-width: 0;
-  padding-left: var(--space-2);
 }
 
 .session-item.active .session-title {
@@ -863,16 +905,14 @@ body {
 
 /* Status dot shared by mirror-live, unread and streaming indicators.
    Unread overrides mirror-live's dot in the same slot; streaming overrides both. */
-.session-item:is(.mirror-live, .unread, .streaming) .session-title::before {
+.session-item .session-title::before {
   content: "";
   display: inline-block;
-  position: absolute;
-  left: 0px;
-  top: 8px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  margin-right: 6px;
+  margin-right: 11px;
+  margin-left: 1px;
   vertical-align: middle;
   animation: pulse 2s infinite;
 }
@@ -886,10 +926,7 @@ body {
 }
 
 .session-item.streaming .session-title::before {
-  width: 7px;
-  height: 7px;
   background: var(--success, #34d399);
-  animation: session-streaming-pulse 1.2s ease-in-out infinite;
 }
 
 @keyframes session-streaming-pulse {
@@ -927,7 +964,10 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    opacity var(--duration) var(--ease);
 }
 
 .session-item:hover .session-rename-btn {
@@ -1054,7 +1094,9 @@ body {
   cursor: pointer;
   font-size: var(--font-size-sm);
   line-height: 1;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
 }
 
 .header-open-app-toggle {
@@ -1151,7 +1193,10 @@ body {
   padding: var(--space-1-5);
   line-height: 1;
   border-radius: var(--radius-md);
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    opacity var(--duration) var(--ease);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1180,13 +1225,18 @@ body {
   background: var(--bg-glass);
   border: 1px solid var(--border);
   white-space: nowrap;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    border-color var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease);
 }
 
 /* Session cost pill */
 .session-cost {
   color: var(--header-pill-text, var(--text-dim));
   display: none;
+  font-variant-numeric: tabular-nums;
 }
 
 .session-cost.visible {
@@ -1197,8 +1247,11 @@ body {
 .token-usage {
   color: var(--header-pill-text, var(--text-dim));
   display: none;
-  transition: all 0.3s var(--ease);
+  transition:
+    color 0.3s var(--ease),
+    opacity 0.3s var(--ease);
   cursor: pointer;
+  font-variant-numeric: tabular-nums;
 }
 
 .workspace-indicator {
@@ -1396,7 +1449,11 @@ body {
   border-radius: var(--radius-pill);
   color: var(--error);
   cursor: pointer;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease);
   animation: fadeIn 0.3s var(--ease);
   margin-left: 6px;
 }
@@ -1451,7 +1508,10 @@ body {
   font-size: var(--font-size-sm);
   color: var(--text-primary);
   cursor: pointer;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
   white-space: nowrap;
 }
 
@@ -1565,7 +1625,10 @@ body {
   color: var(--text-dim);
   font-size: var(--font-size-sm);
   cursor: pointer;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
   white-space: nowrap;
 }
 
@@ -1592,7 +1655,7 @@ body {
   height: 6px;
   border-radius: 50%;
   background: var(--text-dim);
-  transition: all 0.4s var(--ease);
+  transition: background 0.4s var(--ease);
 }
 
 .status-indicator.connected {
@@ -1683,7 +1746,9 @@ body {
   font-size: var(--font-size-md);
   padding: var(--space-2) var(--space-2);
   cursor: pointer;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
 }
 
 .settings-nav-item:hover,
@@ -1748,7 +1813,10 @@ body {
   cursor: pointer;
   padding: var(--space-1);
   border-radius: var(--radius-md);
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    opacity var(--duration) var(--ease);
 }
 
 .settings-close:hover {
@@ -1847,7 +1915,10 @@ body {
   background: var(--bg-glass-strong, var(--bg-glass));
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease);
 }
 
 .settings-extension-row:hover {
@@ -1966,7 +2037,10 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
 }
 
 .pkg-browse-pill:hover {
@@ -2148,7 +2222,10 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
 }
 
 .pkg-browse-link:hover {
@@ -2304,7 +2381,10 @@ body {
   color: var(--text-primary);
   font-size: var(--font-size-sm);
   cursor: pointer;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
 }
 
 .api-key-row-actions button:hover {
@@ -2536,7 +2616,9 @@ body {
   background: var(--bg-glass-strong);
   cursor: pointer;
   position: relative;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
   padding: 0;
 }
 
@@ -2549,7 +2631,9 @@ body {
   height: 16px;
   border-radius: 50%;
   background: var(--text-dim);
-  transition: all 0.25s var(--spring);
+  transition:
+    left 0.25s var(--spring),
+    background 0.25s var(--spring);
 }
 
 .settings-toggle.on {
@@ -2570,7 +2654,10 @@ body {
   color: var(--text-primary);
   font-size: var(--font-size-sm);
   cursor: pointer;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
 }
 
 .settings-value-btn:hover {
@@ -2702,7 +2789,10 @@ body {
   font-size: var(--font-size-sm);
   outline: none;
   width: 140px;
-  transition: all var(--duration) var(--ease);
+  transition:
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease),
+    background var(--duration) var(--ease);
 }
 
 .settings-input:focus {
@@ -3085,7 +3175,10 @@ body {
   border-radius: var(--radius-md);
   font-size: var(--font-size-md);
   cursor: pointer;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
 }
 
 .config-editor-cancel:hover {
@@ -3111,7 +3204,10 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
   font-size: var(--font-size-md);
   color: var(--text-primary);
   text-align: center;
@@ -3275,6 +3371,14 @@ body {
 .welcome p {
   margin-bottom: 4px;
   font-size: var(--font-size-lg);
+}
+
+.welcome-project-name {
+  margin-top: var(--space-3);
+  font-size: var(--font-size-lg);
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
 }
 
 .welcome .hint {
@@ -3583,7 +3687,9 @@ body {
   font-size: var(--font-size-sm);
   padding: var(--space-0-5) var(--space-2);
   border-radius: var(--radius-sm);
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
 }
 
 .copy-btn:hover {
@@ -4373,7 +4479,10 @@ body.hide-thinking .thinking-block {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    opacity var(--duration) var(--ease);
   flex-shrink: 0;
 }
 
@@ -4411,7 +4520,10 @@ body.hide-thinking .thinking-block {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    opacity var(--duration) var(--ease);
 }
 
 .input-mic-btn:hover {
@@ -4452,7 +4564,10 @@ body.hide-thinking .thinking-block {
   background: var(--accent);
   border: none;
   cursor: pointer;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease),
+    opacity var(--duration) var(--ease);
   box-shadow:
     3px 3px 10px var(--accent-glow),
     -2px -2px 6px rgba(255, 255, 255, 0.15),
@@ -4490,7 +4605,10 @@ body.hide-thinking .thinking-block {
   border: none;
   cursor: pointer;
   color: white;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease),
+    color var(--duration) var(--ease);
   box-shadow: 0 4px 16px rgba(248, 113, 113, 0.3);
 }
 
@@ -4511,7 +4629,10 @@ body.hide-thinking .thinking-block {
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease),
+    color var(--duration) var(--ease);
   font-size: var(--font-size-md);
 }
 
@@ -4586,7 +4707,10 @@ body.hide-thinking .thinking-block {
   font-size: var(--font-size-md);
   margin-bottom: 16px;
   outline: none;
-  transition: all var(--duration) var(--ease);
+  transition:
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease),
+    background var(--duration) var(--ease);
 }
 
 .dialog-textarea {
@@ -4614,7 +4738,10 @@ body.hide-thinking .thinking-block {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   cursor: pointer;
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
   font-size: var(--font-size-md);
 }
 
@@ -4713,7 +4840,7 @@ body.hide-thinking .thinking-block {
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--duration) var(--ease);
+  transition: background var(--duration) var(--ease);
   font-size: var(--font-size-md);
   color: var(--text-primary);
 }
@@ -4784,69 +4911,213 @@ body.hide-thinking .thinking-block {
 }
 
 /* ═══════════════════════════════════════════════════════
-   Scroll-to-bottom + New message badge
+   Conversation navigator rail (Codex-style)
    ═══════════════════════════════════════════════════════ */
 
-.scroll-bottom-btn {
+/* Brief highlight flash on the message a jump lands on */
+.message-jump-highlight .message-content {
+  animation: messageJumpFlash 0.9s var(--ease);
+}
+
+@keyframes messageJumpFlash {
+  0% {
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* ── Rail — no background, just floating ticks on the right edge ── */
+.conv-nav {
   position: absolute;
-  bottom: calc(var(--messages-bottom-inset) + 12px);
-  right: max(24px, calc((100% - 960px) / 2 + 8px));
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--bg-glass-strong);
-  border: 1px solid var(--border-hover);
-  cursor: pointer;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 30;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 20;
-  transition:
-    all 0.25s var(--ease),
-    opacity 0.2s var(--ease),
-    transform 0.2s var(--ease);
-  box-shadow: var(--shadow-md);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  animation: popIn 0.25s var(--spring);
-  padding: 0;
-  opacity: 1;
+  flex-direction: column;
+  align-items: flex-end; /* ticks grow leftward */
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  /* No pill, no border, no backdrop — transparent rail */
+  max-height: calc(100% - var(--messages-top-inset) - var(--messages-bottom-inset) - 24px);
+  overflow: visible;
+  animation: convNavIn 0.3s var(--spring);
+  transition: opacity 0.2s var(--ease), transform 0.2s var(--ease);
 }
 
-.scroll-bottom-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-}
-
-/* Override global .hidden for smooth fade-out */
-.scroll-bottom-btn.hidden {
+.conv-nav.hidden {
   display: flex !important;
   opacity: 0;
   pointer-events: none;
-  transform: scale(0.8);
+  transform: translateY(-50%) translateX(8px);
 }
 
-.scroll-bottom-btn:hover {
-  transform: scale(1.12);
-  background: var(--bg-glass-active);
+@keyframes convNavIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+/* Arrow buttons — minimal, no background */
+.conv-nav-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: opacity 0.15s var(--ease), transform 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.conv-nav-arrow:hover {
+  opacity: 1;
   color: var(--text-primary);
-  border-color: var(--accent);
-  box-shadow:
-    0 0 0 2px var(--accent-glow),
-    var(--shadow-md);
+  transform: scale(1.1);
 }
 
-.scroll-bottom-btn:active {
-  transform: scale(0.92);
+.conv-nav-arrow:active {
+  transform: scale(0.88);
 }
 
-.scroll-bottom-badge {
-  position: absolute;
-  top: -10px;
-  left: 50%;
-  transform: translateX(-50%);
+.conv-nav-arrow:disabled {
+  opacity: 0.15;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Tick track */
+.conv-nav-track {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1-5);
+  overflow: hidden;
+  max-height: 280px;
+}
+
+/* Individual tick — short horizontal line, grows leftward on hover */
+.conv-nav-dot {
+  /* Start short */
+  width: 10px;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--border-hover);
+  cursor: pointer;
+  flex-shrink: 0;
+  /* grow from right → left */
+  transform-origin: right center;
+  transition:
+    width 0.22s var(--ease),
+    background 0.2s var(--ease),
+    height 0.2s var(--ease),
+    opacity 0.2s var(--ease);
+  opacity: 0.6;
+  border: none;
+  /* Expand hit target without growing visual size */
+  padding: var(--space-2) var(--space-2);
+  margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2));
+  display: block;
+}
+
+.conv-nav-dot:hover {
+  width: 22px;
+  background: var(--text-muted);
+  opacity: 1;
+}
+
+.conv-nav-dot.active {
+  width: 16px;
+  height: 3px;
+  background: var(--accent);
+  opacity: 1;
+  box-shadow: 2px 0 6px var(--accent-glow);
+}
+
+/* Tooltip — floated to the left of the rail */
+.conv-nav-tooltip {
+  position: fixed;
+  right: 28px; /* close to the ticks */
+  width: 260px;
+  background: var(--bg-glass-strong);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  z-index: 200;
+  pointer-events: auto; /* allow hovering tooltip to keep it open */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  transform-origin: right center;
+  /* animated via JS class swap */
+}
+
+.conv-nav-tooltip.hidden {
+  display: none;
+}
+
+/* Class added by JS on each fresh show — removed immediately after so repeat hovers re-animate */
+.conv-nav-tooltip.animating {
+  animation: convTooltipIn 0.16s var(--ease) both;
+}
+
+@keyframes convTooltipIn {
+  from {
+    opacity: 0;
+    transform: translateX(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.conv-nav-tooltip-q {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+  line-height: 1.5;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.conv-nav-tooltip-sep {
+  height: 1px;
+  background: var(--border);
+}
+
+.conv-nav-tooltip-a {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  line-height: 1.5;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+/* New-message badge */
+.conv-nav-new-badge {
+  position: fixed;
+  bottom: calc(var(--messages-bottom-inset, 128px) + 12px);
+  right: 48px;
   font-size: var(--font-size-sm);
   color: white;
   background: var(--accent);
@@ -4856,20 +5127,21 @@ body.hide-thinking .thinking-block {
   pointer-events: none;
   animation: badgePop 0.3s var(--spring);
   box-shadow: 0 2px 8px var(--accent-glow);
+  z-index: 31;
 }
 
-.scroll-bottom-badge.hidden {
+.conv-nav-new-badge.hidden {
   display: none;
 }
 
 @keyframes badgePop {
   from {
     opacity: 0;
-    transform: translateX(-50%) scale(0.6) translateY(4px);
+    transform: scale(0.6) translateY(4px);
   }
   to {
     opacity: 1;
-    transform: translateX(-50%) scale(1) translateY(0);
+    transform: scale(1) translateY(0);
   }
 }
 
@@ -4908,7 +5180,9 @@ body.hide-thinking .thinking-block {
   cursor: pointer;
   padding: var(--space-0-5) var(--space-1);
   font-size: var(--font-size-sm);
-  transition: all 0.15s var(--ease);
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease);
   white-space: nowrap;
 }
 
@@ -4932,6 +5206,40 @@ body.hide-thinking .thinking-block {
 .message-copy-btn.copied::after {
   content: "✓";
   font-size: var(--font-size-sm);
+}
+
+/* Fork session button (beside copy button on user messages) */
+
+.message-fork-btn {
+  opacity: 0.45;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: var(--space-0-5) var(--space-1);
+  font-size: var(--font-size-sm);
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease);
+  white-space: nowrap;
+}
+
+.message-fork-btn:hover {
+  opacity: 1;
+  color: var(--text-primary);
+}
+
+.message-fork-btn:active {
+  transform: scale(0.9);
+}
+
+.message-fork-btn.forking {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.message-fork-btn:disabled {
+  cursor: wait;
 }
 
 /* Error / system messages */
@@ -5577,7 +5885,10 @@ body.is-resizing-side-panel {
   font-size: var(--font-size-sm);
   cursor: pointer;
   border: 1px solid var(--border);
-  transition: all var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
 }
 
 .folder-picker-cancel {
@@ -6055,7 +6366,10 @@ body.super-agent-active .file-sidebar {
   color: var(--text-dim);
   font-size: var(--font-size-sm);
   cursor: pointer;
-  transition: all 0.15s;
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease),
+    border-color 0.15s var(--ease);
   white-space: nowrap;
 }
 
@@ -6709,4 +7023,19 @@ body.super-agent-active .file-sidebar {
   display: flex;
   justify-content: flex-end;
   margin-top: 10px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Reduced Motion — disable/simplify all animations for
+   users who have requested reduced motion (WCAG 2.3.3)
+   ═══════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

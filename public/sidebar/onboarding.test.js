@@ -1,6 +1,6 @@
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { SessionSidebar } from "./sidebar.js";
+import { SessionSidebar } from "./index.js";
 
 afterEach(() => {
   vi.restoreAllMocks();

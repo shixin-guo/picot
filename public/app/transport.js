@@ -79,6 +79,13 @@ export class WsTransport {
     return this._control("switch_session", { sessionPath, port: port ?? null });
   }
 
+  // Fork the active session from a specific user entry. pi forks in-place (same
+  // process/port) and emits `session_start { reason: "fork" }`, which flows back
+  // to the UI as a mirror_sync snapshot.
+  fork(entryId, port) {
+    return this._control("fork", { entryId, port: port ?? null });
+  }
+
   stopInstance(port) {
     return this._control("stop_instance", { port: port ?? null });
   }

@@ -19,17 +19,17 @@ describe("Telegram slash command menu", () => {
     expect(fetch.mock.calls[0][0]).toContain("/setMyCommands");
     const body = JSON.parse(fetch.mock.calls[0][1].body);
     expect(body.commands.map((command: { command: string }) => command.command)).toEqual([
-      "help",
+      "new",
+      "stop",
       "status",
-      "agents",
       "tasks",
+      "agents",
       "task",
+      "compact",
       "models",
       "health",
       "errors",
-      "new",
-      "compact",
-      "stop",
+      "help",
     ]);
   });
 });

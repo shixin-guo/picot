@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setSuperAgentEnabled } from "../super-agent/settings.js";
-import { SessionSidebar } from "./sidebar.js";
+import { SessionSidebar } from "./index.js";
 
 describe("SessionSidebar Super Agent pinned session", () => {
   beforeEach(() => {

@@ -1460,6 +1460,46 @@ export default function (pi: ExtensionAPI) {
           break;
         }
 
+        // NOTE: `fork` / `clone` are intentionally NOT handled here.
+        //
+        // pi's session-replacement API (`fork`) exists only on the
+        // command-handler ctx, never on the base ExtensionContext we capture as
+        // `latestCtx`; and slash-command dispatch happens in the TUI input
+        // layer, so `pi.sendUserMessage("/fork")` in `--mode rpc` is delivered
+        // to the model as literal text, not executed. The web UI therefore
+        // forks through the desktop broker instead (`transport.fork` →
+        // `send_rpc(port, { type: "fork", entryId })`), which reaches pi's
+        // native RPC `fork` handler over stdin. See `fork_session_core` in
+        // `src-tauri/src/main.rs`.
+
+        case "get_fork_messages": {
+          if (!ctx) {
+            sendTo(ws, error("get_fork_messages", "No context available"));
+            break;
+          }
+          const allEntries = ctx.sessionManager.getEntries();
+          const forkMessages = allEntries
+            .filter(
+              (e: { type?: string; message?: { role?: string; content?: unknown } }) =>
+                e.type === "message" && e.message?.role === "user",
+            )
+            .map((e: { id?: string; message?: { content?: unknown } }) => ({
+              entryId: e.id ?? "",
+              text:
+                typeof e.message?.content === "string"
+                  ? e.message.content
+                  : Array.isArray(e.message?.content)
+                    ? (e.message.content as Array<{ type?: string; text?: string }>)
+                        .filter((b) => b.type === "text")
+                        .map((b) => b.text ?? "")
+                        .join("")
+                    : "",
+            }))
+            .filter((m: { entryId: string }) => m.entryId);
+          sendTo(ws, success("get_fork_messages", { messages: forkMessages }));
+          break;
+        }
+
         case "new_session": {
           if (!ctx) {
             sendTo(ws, error("new_session", "No context available"));
@@ -2229,7 +2269,27 @@ export default function (pi: ExtensionAPI) {
               terminate: () => {},
               ping: () => {},
             };
-            handleCommand(fakeWs, command);
+            // Dispatch through `globalState.handleCommand` rather than the
+            // closure-captured `handleCommand` — this HTTP route handler is
+            // only ever registered once (on the first `startServer` call),
+            // so a direct reference would stay bound to that first session's
+            // `ctx` forever and start returning "No context available" as
+            // soon as that instance shuts down (e.g. after `new_session` /
+            // `switch_session` / `fork`). `globalState.handleCommand` is
+            // re-published on every session_start, so this always dispatches
+            // to whichever extension instance currently owns the live ctx.
+            const dispatch = globalState.handleCommand;
+            if (dispatch) {
+              dispatch(fakeWs, command);
+            } else {
+              resolve({
+                type: "response",
+                command: command?.type || "unknown",
+                success: false,
+                error: "No active session",
+                id: command?.id,
+              });
+            }
           });
           const response = await responsePromise;
           res.writeHead(200, { "Content-Type": "application/json" });

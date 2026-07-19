@@ -769,7 +769,7 @@ body {
 
 .infobar-sessions-table tbody tr {
   border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
-  transition: background 0.12s;
+  transition: background 0.12s var(--ease);
 }
 
 .infobar-sessions-table tbody tr:last-child {

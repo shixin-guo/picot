@@ -33,5 +33,5 @@ export function showSettingsSaveSuccess(messageEl, message = "Saved") {
 export function setSettingsSaveButtonSaving(button, isSaving) {
   if (!button) return;
   button.disabled = isSaving;
-  button.textContent = isSaving ? "Saving..." : "Save";
+  button.textContent = isSaving ? "Saving…" : "Save";
 }

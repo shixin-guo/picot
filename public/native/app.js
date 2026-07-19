@@ -1,16 +1,16 @@
-import { parseAppRoute, replaceTemporarySessionRoute } from "./app-router.js";
+import { reconcileSnapshotTarget } from "../session/bootstrap-target.js";
+import { applyTheme, getCurrentTheme } from "../themes.js";
+import { MessageRenderer } from "../ui/message-renderer.js";
+import { ToolCardRenderer } from "../ui/tool-card.js";
+import { HostDataGateway } from "./data-gateway.js";
+import { showNativeDialog } from "./dialog.js";
 import { ExtensionUiHost } from "./extension-ui-host.js";
-import { HostDataGateway } from "./host-data-gateway.js";
-import { HostRuntimeAdapter, resolveHostWebSocketUrl } from "./host-runtime-adapter.js";
-import { showNativeDialog } from "./native-dialog.js";
-import { NativeFileBrowser } from "./native-file-browser.js";
+import { NativeFileBrowser } from "./file-browser.js";
+import { parseAppRoute, replaceTemporarySessionRoute } from "./router.js";
+import { HostRuntimeAdapter, resolveHostWebSocketUrl } from "./runtime-adapter.js";
 import { RuntimeGateway } from "./runtime-gateway.js";
-import { reconcileSnapshotTarget } from "./session/bootstrap-target.js";
 import { createSessionStore, reduceSessionState } from "./session-store.js";
 import { buildCommandCatalog, resolveComposerInput } from "./slash-commands.js";
-import { applyTheme, getCurrentTheme } from "./themes.js";
-import { MessageRenderer } from "./ui/message-renderer.js";
-import { ToolCardRenderer } from "./ui/tool-card.js";
 
 const route = parseAppRoute(window.location.pathname);
 if (route.name !== "session") throw new Error("Native Picot requires a session route");

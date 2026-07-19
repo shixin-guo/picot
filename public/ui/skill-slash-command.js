@@ -174,7 +174,7 @@ export function setupSkillSlashCommand({ input, container, loadSkills }) {
   input.addEventListener("input", update);
   input.addEventListener("click", update);
   input.addEventListener("keydown", (event) => {
-    const isImeComposing = event.isComposing || event.keyCode === 229;
+    const isImeComposing = event.isComposing;
     if (isImeComposing) return;
     if (event.key === "Escape" && (open || activeSlashQuery(input))) {
       event.preventDefault();

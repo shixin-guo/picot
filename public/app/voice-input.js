@@ -9,7 +9,7 @@ export function setupVoiceInput({ micBtn, messageInput }) {
     recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = "en-AU";
+    recognition.lang = navigator.language || "en-US";
 
     let finalTranscript = "";
     let interimTranscript = "";
@@ -50,6 +50,7 @@ export function setupVoiceInput({ micBtn, messageInput }) {
       isRecording = true;
       micBtn.classList.add("recording");
       micBtn.title = "Stop recording";
+      micBtn.setAttribute("aria-label", "Stop recording");
       recognition.start();
       messageInput.focus();
     }
@@ -58,6 +59,7 @@ export function setupVoiceInput({ micBtn, messageInput }) {
       isRecording = false;
       micBtn.classList.remove("recording");
       micBtn.title = "Voice input";
+      micBtn.setAttribute("aria-label", "Voice input");
       try {
         recognition.stop();
       } catch {}

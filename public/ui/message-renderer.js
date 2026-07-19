@@ -2,7 +2,12 @@
  * Message Renderer - Renders chat messages with markdown support
  */
 
-import { renderMarkdown, renderStreamingMarkdown, renderUserMarkdown } from "./markdown.js";
+import {
+  initCodeCopyDelegation,
+  renderMarkdown,
+  renderStreamingMarkdown,
+  renderUserMarkdown,
+} from "./markdown.js";
 
 /**
  * Detect and clean up pi-chat transcript format.
@@ -38,6 +43,20 @@ export class MessageRenderer {
   constructor(container) {
     this.container = container;
     this.isNearBottom = true;
+
+    // Wire up code-block copy buttons via event delegation
+    initCodeCopyDelegation(this.container);
+
+    // Wire up thinking-block toggle buttons via event delegation
+    this.container.addEventListener("click", (e) => {
+      const toggle = e.target.closest("[data-thinking-toggle]");
+      if (!toggle) return;
+      const block = toggle.closest(".thinking-block");
+      if (!block) return;
+      const content = block.querySelector(".thinking-content");
+      if (content) content.classList.toggle("expanded");
+      toggle.classList.toggle("expanded");
+    });
 
     // Track scroll position for smart auto-scroll
     this.container.addEventListener("scroll", () => {
@@ -108,15 +127,17 @@ export class MessageRenderer {
     return matchCount;
   }
 
-  renderWelcome() {
+  renderWelcome(projectName = "") {
+    const nameHtml = projectName ? `<div class="welcome-project-name">${projectName}</div>` : "";
     this.container.innerHTML = `
       <div class="welcome">
         <div class="welcome-icon"><img src="icons/logo-dark.svg" alt="Picot logo" class="tau-icon-welcome"></div>
+        ${nameHtml}
       </div>
     `;
   }
 
-  renderUserMessage(message, isHistory = false) {
+  renderUserMessage(message, isHistory = false, { entryId = null } = {}) {
     // Remove welcome message if present
     const welcome = this.container.querySelector(".welcome");
     if (welcome) welcome.remove();
@@ -140,11 +161,16 @@ export class MessageRenderer {
     }
 
     const displayContent = cleanChatTranscript(message.content) ?? message.content;
+    if (entryId) div.dataset.entryId = entryId;
+    const forkBtnHtml = entryId
+      ? `<button class="message-fork-btn" aria-label="Fork session from here" title="Fork session from here"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></button>`
+      : "";
     div.innerHTML = `
       <div class="message-content">${imagesHtml}${renderUserMarkdown(displayContent)}</div>
-      <div class="message-footer"><button class="message-copy-btn" aria-label="Copy message"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+      <div class="message-footer"><button class="message-copy-btn" aria-label="Copy message"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>${forkBtnHtml}</div>
     `;
     this._setupCopyBtn(div);
+    if (entryId) this._setupForkBtn(div);
     this.container.appendChild(div);
     if (!isHistory) this.scrollToBottom();
   }
@@ -208,14 +234,11 @@ export class MessageRenderer {
   }
 
   renderThinkingBlock(thinking) {
-    const id = `thinking-${Math.random().toString(36).slice(2, 8)}`;
-    return `<div class="thinking-block">
-<div class="thinking-toggle" onclick="var c=document.getElementById('${id}');c.classList.toggle('expanded');this.classList.toggle('expanded')">
-<span class="chevron"><svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M2 1l4 3-4 3z"/></svg></span>
-<span class="thinking-label"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 5v13"/><path d="M6.5 9h11"/><path d="M7 13h10"/></svg> Thinking</span>
-</div>
-<div class="thinking-content" id="${id}">${this.escapeHtml(thinking)}</div>
-</div>`;
+    // Returns an HTML string — callers concatenate it into contentHtml.
+    // Click handling is wired via event delegation in initThinkingToggleDelegation.
+    const chevronSvg = `<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" aria-hidden="true"><path d="M2 1l4 3-4 3z"/></svg>`;
+    const brainSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px" aria-hidden="true"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 5v13"/><path d="M6.5 9h11"/><path d="M7 13h10"/></svg>`;
+    return `<div class="thinking-block"><div class="thinking-toggle" data-thinking-toggle><span class="chevron">${chevronSvg}</span><span class="thinking-label">${brainSvg} Thinking</span></div><div class="thinking-content">${this.escapeHtml(thinking)}</div></div>`;
   }
 
   updateStreamingThinking(messageElement, thinking) {
@@ -226,7 +249,7 @@ export class MessageRenderer {
       thinkingDiv = document.createElement("div");
       thinkingDiv.className = "thinking-block streaming-thinking";
       thinkingDiv.innerHTML = `
-        <div class="thinking-toggle expanded" onclick="var c=this.nextElementSibling;c.classList.toggle('expanded');this.classList.toggle('expanded')">
+        <div class="thinking-toggle expanded" data-thinking-toggle>
           <span class="chevron"><svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M2 1l4 3-4 3z"/></svg></span>
           <span class="thinking-label"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 5v13"/><path d="M6.5 9h11"/><path d="M7 13h10"/></svg> Thinking</span>
         </div>
@@ -333,6 +356,21 @@ export class MessageRenderer {
     div.textContent = `⚠️ ${errorMessage}`;
     this.container.appendChild(div);
     this.scrollToBottom();
+  }
+
+  _setupForkBtn(messageEl) {
+    const btn = messageEl.querySelector(".message-fork-btn");
+    if (!btn) return;
+    const entryId = messageEl.dataset.entryId;
+    if (!entryId) return;
+    btn.addEventListener("click", () => {
+      messageEl.dispatchEvent(
+        new CustomEvent("messagefork", {
+          bubbles: true,
+          detail: { entryId },
+        }),
+      );
+    });
   }
 
   _setupCopyBtn(messageEl) {

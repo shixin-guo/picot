@@ -64,6 +64,27 @@ fn switch_session_core(
     result
 }
 
+/// Fork the current session from a specific user entry within the workspace.
+/// pi handles `fork` natively over its RPC channel (it replaces the active
+/// session in-process and emits `session_start { reason: "fork" }`), so we just
+/// forward the command to the existing pi like new_session/switch_session do.
+/// The process/port is unchanged (fork is in-place), so the active port stays.
+fn fork_session_core(
+    port: u16,
+    entry_id: &str,
+    manager: &PiManager,
+    broker: &BrokerWs,
+) -> Result<(), String> {
+    let result = manager.send_rpc(
+        port,
+        serde_json::json!({ "type": "fork", "entryId": entry_id }),
+    );
+    if result.is_ok() {
+        broker.set_active_port(port);
+    }
+    result
+}
+
 /// Open a workspace directory by spawning a separate pi process.
 /// When `open_window` is true (default) a new OS window is opened for the new pi.
 /// When false, the pi process is spawned headlessly and the caller is expected to
@@ -943,6 +964,12 @@ fn install_control_handler(broker: &Arc<BrokerWs>, manager: Arc<PiManager>, app:
                             arg_str("sessionPath").ok_or("sessionPath is required")?;
                         let port = resolve_control_port(arg_u16("port"), &broker)?;
                         switch_session_core(port, &session_path, &manager, &broker)?;
+                        Ok(Value::Null)
+                    }
+                    "fork" => {
+                        let entry_id = arg_str("entryId").ok_or("entryId is required")?;
+                        let port = resolve_control_port(arg_u16("port"), &broker)?;
+                        fork_session_core(port, &entry_id, &manager, &broker)?;
                         Ok(Value::Null)
                     }
                     "stop_instance" => {

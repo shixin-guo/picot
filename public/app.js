@@ -31,9 +31,8 @@ import {
   renderThinkingEffort,
   setupSettingsToggles,
 } from "./settings/toggles.js";
+import { SessionSidebar } from "./sidebar/index.js";
 import { setupSidebarSearchControl } from "./sidebar/search-control.js";
-import { SessionSidebar } from "./sidebar/sidebar.js";
-import { setupSkillSlashCommand } from "./skill-slash-command.js";
 import { ensureSuperAgentSession } from "./super-agent/bootstrap.js";
 import { getRunningSuperAgentPorts, isSuperAgentSession } from "./super-agent/session.js";
 import { isSuperAgentEnabled } from "./super-agent/settings.js";
@@ -51,6 +50,7 @@ import { DialogHandler } from "./ui/dialogs.js";
 import { setupMessagesInsets } from "./ui/layout-insets.js";
 import { MessageRenderer } from "./ui/message-renderer.js";
 import { setupResizablePanel } from "./ui/resizable-panel.js";
+import { setupSkillSlashCommand } from "./ui/skill-slash-command.js";
 import { ToolCardRenderer } from "./ui/tool-card.js";
 import {
   buildWorkspaceUrl,
@@ -289,7 +289,7 @@ async function stopSuperAgentInstances() {
     ),
   );
   if (shutdown.navigateToPort) {
-    const dismiss = showSwapOverlay("Closing Agent Inbox...");
+    const dismiss = showSwapOverlay("Closing Agent Inbox…");
     try {
       const url = new URL(withBrokerWs(buildWorkspaceUrl(shutdown.navigateToPort), transport));
       if (shutdown.portsToStopAfterNavigation.length > 0) {
@@ -374,8 +374,17 @@ const typingIndicator = document.getElementById("typing-indicator");
 
 const sessionCostEl = document.getElementById("session-cost");
 const tokenUsageEl = document.getElementById("token-usage");
-const scrollBottomBtn = document.getElementById("scroll-bottom-btn");
+const _scrollBottomBtn = document.getElementById("scroll-bottom-btn"); // hidden legacy stub, unused
 const scrollBottomBadge = document.getElementById("scroll-bottom-badge");
+const _scrollPrevBtn = document.getElementById("scroll-prev-btn"); // hidden legacy stub, unused
+const convNavEl = document.getElementById("conv-nav");
+const convNavTrack = document.getElementById("conv-nav-track");
+const convNavUp = document.getElementById("conv-nav-up");
+const convNavDown = document.getElementById("conv-nav-down");
+const convNavTooltip = document.getElementById("conv-nav-tooltip");
+const convNavTooltipQ = document.getElementById("conv-nav-tooltip-q");
+const convNavTooltipA = document.getElementById("conv-nav-tooltip-a");
+const convNavTooltipSep = document.getElementById("conv-nav-tooltip-sep");
 const messagesContainer = document.getElementById("messages");
 const mainContainer = document.querySelector(".main");
 const headerEl = document.querySelector(".header");
@@ -397,6 +406,14 @@ setupMessagesInsets({
 // State tracking
 let currentStreamingElement = null;
 let currentStreamingText = "";
+// True while pi's auto-retry is re-hitting the same model after a transient
+// error (429/overload/5xx). During this window the session stays bound to the
+// failing model, so switching models won't take effect until the stuck run is
+// aborted. Tracked from `auto_retry_start` / `auto_retry_end` events.
+let isAutoRetrying = false;
+// True when the most recent assistant turn ended with stopReason "error"
+// (e.g. a rate-limit 429). Cleared once a fresh run starts or succeeds.
+let lastTurnErrored = false;
 let sessionTotalCost = 0;
 let lastInputTokens = 0;
 let contextWindowSize = 0; // fetched from model info
@@ -537,7 +554,8 @@ function renderWorkspaceWelcome({ force = false } = {}) {
   if (!force && welcomeVisible && lastRenderedWelcomeWorkspacePath === workspacePath) {
     return;
   }
-  messageRenderer.renderWelcome();
+  const projectName = workspacePath ? workspacePath.split("/").filter(Boolean).pop() : "";
+  messageRenderer.renderWelcome(projectName);
   lastRenderedWelcomeWorkspacePath = workspacePath;
 }
 
@@ -780,32 +798,213 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // ═══════════════════════════════════════
-// Scroll-to-bottom button + new message indicator
+// Conversation navigator rail (Codex-style)
 // ═══════════════════════════════════════
 
+// Build the list of conversations: each entry is the user message el + its
+// immediately following assistant message el (may be null mid-stream).
+function getConversations() {
+  const turns = [];
+  let node = messagesContainer.firstElementChild;
+  while (node) {
+    if (node.classList?.contains("message") && node.classList.contains("user")) {
+      const next = node.nextElementSibling;
+      const reply =
+        next?.classList?.contains("message") && next.classList.contains("assistant") ? next : null;
+      turns.push({ user: node, assistant: reply });
+    }
+    node = node.nextElementSibling;
+  }
+  return turns;
+}
+
+// Returns the index of the conversation whose user-message is the topmost
+// partially-visible one. The header floats above the scroller, so the true
+// visible top is the header's bottom edge.
+function getActiveConvIndex(turns) {
+  const visibleTop = Math.max(
+    messagesContainer.getBoundingClientRect().top,
+    headerEl?.getBoundingClientRect().bottom || 0,
+  );
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i].user.getBoundingClientRect().top <= visibleTop + 4) return i;
+  }
+  return 0;
+}
+
+function flashJumpHighlight(target) {
+  target.classList.remove("message-jump-highlight");
+  void target.offsetWidth; // force reflow so re-triggering the animation replays
+  target.classList.add("message-jump-highlight");
+  target.addEventListener("animationend", () => target.classList.remove("message-jump-highlight"), {
+    once: true,
+  });
+}
+
+function jumpToConversation(turn) {
+  turn.user.scrollIntoView({ block: "start", behavior: "smooth" });
+  flashJumpHighlight(turn.user);
+}
+
+function jumpToPreviousUserMessage() {
+  const turns = getConversations();
+  if (!turns.length) return;
+  const idx = getActiveConvIndex(turns);
+  if (idx > 0) jumpToConversation(turns[idx - 1]);
+}
+
+// Jumps to the next conversation's user message. If that next conversation
+// is the last one (or there's no next one at all), scroll all the way to the
+// bottom instead — so the full final reply is visible without an extra click.
+function jumpToNextConversationOrBottom() {
+  const turns = getConversations();
+  const lastIdx = turns.length - 1;
+  const idx = getActiveConvIndex(turns);
+  const nextIdx = idx + 1;
+  if (nextIdx <= lastIdx - 1) {
+    jumpToConversation(turns[nextIdx]);
+  } else {
+    messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: "smooth" });
+    scrollBottomBadge.classList.add("hidden");
+  }
+}
+
+// ── Dot track ──────────────────────────────────────────
+let _tooltipHideTimer = null;
+
+function rebuildNavDots() {
+  const turns = getConversations();
+  const hasConvs = turns.length > 1; // no point showing a 1-turn rail
+  convNavEl.classList.toggle("hidden", !hasConvs);
+  if (!hasConvs) return;
+
+  const activeIdx = getActiveConvIndex(turns);
+  convNavUp.disabled = activeIdx === 0;
+  // Down is only disabled when already at the very bottom of the scroll container
+  const atBottom =
+    messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight <
+    8;
+  convNavDown.disabled = atBottom;
+
+  // Diff-update dots to avoid full rebuild on each scroll tick
+  const existing = [...convNavTrack.children];
+  // Add missing dots
+  while (convNavTrack.children.length < turns.length) {
+    const dot = document.createElement("button");
+    dot.className = "conv-nav-dot";
+    dot.setAttribute("aria-label", `Jump to conversation ${convNavTrack.children.length + 1}`);
+    convNavTrack.appendChild(dot);
+  }
+  // Remove extra dots
+  while (convNavTrack.children.length > turns.length) {
+    convNavTrack.removeChild(convNavTrack.lastChild);
+  }
+
+  // Update active state and wire events only when the dot count changed
+  if (existing.length !== turns.length) {
+    [...convNavTrack.children].forEach((dot, i) => {
+      dot.onclick = () => jumpToConversation(turns[i]);
+      dot.onmouseenter = () => showNavTooltip(dot, turns[i]);
+      dot.onmouseleave = () => hideNavTooltip();
+    });
+  }
+
+  [...convNavTrack.children].forEach((dot, i) => {
+    dot.classList.toggle("active", i === activeIdx);
+    dot.setAttribute("aria-label", `Jump to conversation ${i + 1}`);
+  });
+}
+
+function showNavTooltip(dotEl, turn) {
+  clearTimeout(_tooltipHideTimer);
+  const q = turn.user.textContent.trim().slice(0, 120);
+  const a = turn.assistant
+    ? turn.assistant.textContent.trim().replace(/\s+/g, " ").slice(0, 180)
+    : "";
+  convNavTooltipQ.textContent = q;
+  convNavTooltipA.textContent = a;
+  convNavTooltipA.style.display = a ? "" : "none";
+  convNavTooltipSep.style.display = a ? "" : "none";
+
+  // Show first so offsetHeight is measurable, then position vertically on the dot
+  convNavTooltip.classList.remove("hidden");
+  const dotRect = dotEl.getBoundingClientRect();
+  const tipHeight = convNavTooltip.offsetHeight || 90;
+  const top = Math.max(
+    8,
+    Math.min(dotRect.top + dotRect.height / 2 - tipHeight / 2, window.innerHeight - tipHeight - 8),
+  );
+  convNavTooltip.style.top = `${top}px`;
+
+  // Trigger slide-in animation on every fresh hover
+  convNavTooltip.classList.remove("animating");
+  void convNavTooltip.offsetWidth; // reflow so animation re-fires
+  convNavTooltip.classList.add("animating");
+  convNavTooltip.addEventListener("animationend", () => convNavTooltip.classList.remove("animating"), {
+    once: true,
+  });
+}
+
+function hideNavTooltip() {
+  _tooltipHideTimer = setTimeout(() => convNavTooltip.classList.add("hidden"), 120);
+}
+
+convNavTooltip.onmouseenter = () => clearTimeout(_tooltipHideTimer);
+convNavTooltip.onmouseleave = () => hideNavTooltip();
+convNavUp.addEventListener("click", jumpToPreviousUserMessage);
+convNavDown.addEventListener("click", jumpToNextConversationOrBottom);
+
+// ── Scroll + mutation wiring ────────────────────────────
 messagesContainer.addEventListener("scroll", () => {
   const threshold = 150;
   const atBottom =
     messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight <
     threshold;
   isScrolledUp = !atBottom;
+  if (atBottom) scrollBottomBadge.classList.add("hidden");
+  rebuildNavDots();
+});
 
-  if (atBottom) {
-    scrollBottomBtn.classList.add("hidden");
-    scrollBottomBadge.classList.add("hidden");
-  } else {
-    scrollBottomBtn.classList.remove("hidden");
+// Rebuild whenever messages are added or removed (session switch, history load,
+// streaming new assistant message, etc.) without threading a callback into every
+// call-site in MessageRenderer.
+new MutationObserver(rebuildNavDots).observe(messagesContainer, { childList: true });
+
+// ── Session fork via "Fork from here" button on user messages ──────────────
+messagesContainer.addEventListener("messagefork", async (e) => {
+  const { entryId } = e.detail || {};
+  if (!entryId) return;
+  if (state.isStreaming) {
+    messageRenderer.renderError("Cannot fork while a response is streaming.");
+    return;
+  }
+  if (!canUseSessionControl()) {
+    messageRenderer.renderError("Fork requires the desktop app.");
+    return;
+  }
+  const btn = e.target.closest(".message-fork-btn");
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add("forking");
+  }
+  try {
+    // pi forks natively in-place (same process/port) and emits
+    // `session_start { reason: "fork" }`; the resulting mirror_sync snapshot
+    // re-renders the forked history and updates routing. We only nudge the
+    // sidebar so the new forked session file appears in the list.
+    await transport.fork(entryId, getActivePort());
+    refreshSidebarAfterUserPrompt();
+  } catch (err) {
+    messageRenderer.renderError(`Fork failed: ${err}`);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove("forking");
+    }
   }
 });
 
-scrollBottomBtn.addEventListener("click", () => {
-  messagesContainer.scrollTo({
-    top: messagesContainer.scrollHeight,
-    behavior: "smooth",
-  });
-  scrollBottomBtn.classList.add("hidden");
-  scrollBottomBadge.classList.add("hidden");
-});
+// scrollBottomBtn is now a hidden legacy stub; navigation handled by convNavDown.
 
 function showNewMessageBadge() {
   if (isScrolledUp) {
@@ -973,6 +1172,12 @@ function handleRPCEvent(event) {
       break;
     case "auto_compaction_end":
       handleCompactionEnd(event);
+      break;
+    case "auto_retry_start":
+      handleAutoRetryStart(event);
+      break;
+    case "auto_retry_end":
+      handleAutoRetryEnd(event);
       break;
     case "extension_ui_request":
       handleExtensionUIRequest(event);
@@ -1210,9 +1415,38 @@ function getCurrentLiveSessionFile(event = null) {
 function handleAgentStart(event = null) {
   state.setStreaming(true);
   showTypingIndicator(true);
+  // A fresh run is under way — clear any prior error latch so a normal turn
+  // isn't treated as "stuck on a failed model" by the model switcher.
+  lastTurnErrored = false;
   updateUI();
   const live = getCurrentLiveSessionFile(event);
   if (live) sidebar.setStreaming(live, true);
+}
+
+// pi's auto-retry is re-hitting the SAME model after a transient error. The
+// session is busy on the failing model during the backoff; surface that so the
+// UI doesn't look idle and the model switcher knows to abort before switching.
+function handleAutoRetryStart(event = null) {
+  isAutoRetrying = true;
+  lastTurnErrored = true;
+  state.setStreaming(true);
+  showTypingIndicator(true);
+  const attempt = event?.attempt;
+  const maxAttempts = event?.maxAttempts;
+  if (attempt && maxAttempts) {
+    statusText.textContent = `Retrying (${attempt}/${maxAttempts})...`;
+  } else {
+    statusText.textContent = "Retrying…";
+  }
+  updateUI();
+}
+
+function handleAutoRetryEnd(event = null) {
+  isAutoRetrying = false;
+  // Success clears the error latch; a final failure keeps it so the next model
+  // switch aborts the dead run.
+  if (event?.success) lastTurnErrored = false;
+  updateUI();
 }
 
 function handleAgentEnd(event = null) {
@@ -1345,6 +1579,11 @@ function handleMessageEnd(message) {
       ? String(message.errorMessage)
       : "Model request failed";
     messageRenderer.renderError(`[${provider}/${model}] ${errorMessage}`);
+    // Latch the error so a subsequent model switch aborts the stuck run
+    // (pi may still be auto-retrying this same failing model).
+    lastTurnErrored = true;
+  } else if (message?.role === "assistant") {
+    lastTurnErrored = false;
   }
   if (!currentStreamingElement && message?.role === "assistant") {
     ensureStreamingAssistantElement(message);
@@ -1460,7 +1699,7 @@ chatForm.addEventListener("submit", (e) => {
 
 messageInput.addEventListener("keydown", (e) => {
   // IME composition uses Enter to confirm candidates; never send during composition.
-  const isImeComposing = e.isComposing || e.keyCode === 229;
+  const isImeComposing = e.isComposing;
   if (isImeComposing) return;
 
   // Enter sends, Shift+Enter inserts newline
@@ -1734,7 +1973,7 @@ const commands = [
     icon: "🗜️",
     label: "Compact",
     desc: "Compact context to save tokens",
-    action: () => rpcCommand({ type: "compact" }, "Compacting..."),
+    action: () => rpcCommand({ type: "compact" }, "Compacting…"),
   },
   {
     icon: "📋",
@@ -1806,14 +2045,18 @@ async function rpcCommand(cmd, statusMsg, silent = false) {
       setTimeout(() => {
         statusText.textContent = "Connected";
       }, 2000);
-    } else if (!data.success && !silent) {
-      statusText.textContent = data.error || "Failed";
-      setTimeout(() => {
-        statusText.textContent = "Connected";
-      }, 3000);
+    } else if (!data.success) {
+      console.error("rpcCommand failed:", cmd.type, data.error);
+      if (!silent) {
+        statusText.textContent = data.error || "Failed";
+        setTimeout(() => {
+          statusText.textContent = "Connected";
+        }, 3000);
+      }
     }
     return data;
-  } catch (_e) {
+  } catch (e) {
+    console.error("rpcCommand error:", cmd.type, e);
     if (!silent) {
       statusText.textContent = "Error";
       setTimeout(() => {
@@ -1824,7 +2067,7 @@ async function rpcCommand(cmd, statusMsg, silent = false) {
 }
 
 async function rpcExportHtml() {
-  const data = await rpcCommand({ type: "export_html" }, "Exporting...");
+  const data = await rpcCommand({ type: "export_html" }, "Exporting…");
   if (data?.success && data.data?.path) {
     statusText.textContent = `Exported: ${data.data.path}`;
     setTimeout(() => {
@@ -1834,7 +2077,7 @@ async function rpcExportHtml() {
 }
 
 async function showSessionStats() {
-  const data = await rpcCommand({ type: "get_session_stats" }, "Loading stats...");
+  const data = await rpcCommand({ type: "get_session_stats" }, "Loading stats…");
   if (data?.success && data.data) {
     const s = data.data;
     const lines = [
@@ -2050,7 +2293,25 @@ function openModelDropdown() {
       el.innerHTML = `<span>${shortName}${providerLabel}</span><span class="model-dropdown-item-ctx">${ctxK}</span>`;
       el.addEventListener("click", async () => {
         closeModelDropdown();
-        await selectModel({
+        // If the session is stuck auto-retrying the current (failing) model, or
+        // the last turn errored out, the in-flight run stays bound to the old
+        // model and the switch would have no visible effect. Abort the dead run
+        // first so the new model applies to the next prompt immediately. A
+        // healthy stream is left untouched — we only interrupt retry/error runs.
+        if (isAutoRetrying || lastTurnErrored) {
+          wsClient.send({ type: "abort" });
+          isAutoRetrying = false;
+          lastTurnErrored = false;
+          showTypingIndicator(false);
+          if (state.isStreaming) {
+            state.setStreaming(false);
+            currentStreamingElement = null;
+            currentStreamingText = "";
+            currentStreamingThinking = "";
+            updateUI();
+          }
+        }
+        const result = await selectModel({
           model: m,
           rpcCommand,
           refreshModelInfo: fetchModelInfo,
@@ -2063,6 +2324,9 @@ function openModelDropdown() {
             }
           },
         });
+        if (!result?.success) {
+          messageRenderer.renderError(`Model switch failed: ${result?.error || "unknown error"}`);
+        }
       });
       itemsContainer.appendChild(el);
     });
@@ -2103,7 +2367,7 @@ document.addEventListener("click", (e) => {
 
 // Thinking level button — cycles through levels
 thinkingBtn.addEventListener("click", async () => {
-  const data = await rpcCommand({ type: "cycle_thinking_level" }, "Cycling thinking...");
+  const data = await rpcCommand({ type: "cycle_thinking_level" }, "Cycling thinking…");
   if (data?.success && data.data?.level) {
     currentThinkingLevel = data.data.level;
     updateThinkingBtn();
@@ -2164,6 +2428,19 @@ document.addEventListener("keydown", (e) => {
         messageRenderer.renderError(`Failed to open inspector: ${err}`);
       });
     }
+  }
+
+  // Cmd/Ctrl+Up — Jump to the previous conversation (skip typing in inputs).
+  if (e.key === "ArrowUp" && (e.metaKey || e.ctrlKey) && !isInInput()) {
+    e.preventDefault();
+    jumpToPreviousUserMessage();
+  }
+
+  // Cmd/Ctrl+Down — Jump to the next conversation, or the bottom if this is
+  // already the last one.
+  if (e.key === "ArrowDown" && (e.metaKey || e.ctrlKey) && !isInInput()) {
+    e.preventDefault();
+    jumpToNextConversationOrBottom();
   }
 
   // Cmd+Shift+T (macOS) / Ctrl+Shift+T — Toggle Agent Inbox (Runtime panel).
@@ -2384,7 +2661,7 @@ async function newSession() {
   lastInputTokens = 0;
   updateCostDisplay();
   updateTokenUsage();
-  const data = await rpcCommand({ type: "new_session" }, "Starting new session...");
+  const data = await rpcCommand({ type: "new_session" }, "Starting new session…");
   if (data?.success === false || data?.data?.cancelled) {
     messageRenderer.renderError(data?.error || "New session was cancelled");
     return;
@@ -2680,7 +2957,7 @@ async function switchSession(sessionFile, session = null, project = null) {
     toolCardRenderer.clear();
 
     if (sessionFile && session) {
-      messageRenderer.renderSystemMessage("Loading session...");
+      messageRenderer.renderSystemMessage("Loading session…");
 
       const dirName = project?.dirName;
       const file = session.file;
@@ -2903,7 +3180,7 @@ function updateMirrorInputState() {
   const inputArea = document.querySelector(".input-area");
   if (viewingActiveSession) {
     messageInput.disabled = false;
-    messageInput.placeholder = "Message...";
+    messageInput.placeholder = "Message…";
     inputArea?.classList.remove("mirror-readonly");
   } else {
     messageInput.disabled = true;
@@ -2954,6 +3231,7 @@ function renderSessionHistory(entries, { searchQuery = "" } = {}) {
             images: images.length > 0 ? images : undefined,
           },
           true,
+          { entryId: entry.id || null },
         );
       }
     } else if (msg.role === "assistant") {
@@ -3104,7 +3382,7 @@ function showCompactButton() {
   btn.textContent = "Compact";
   btn.title = "Context is over 80% — compact to save tokens";
   btn.addEventListener("click", () => {
-    rpcCommand({ type: "compact" }, "Compacting...");
+    rpcCommand({ type: "compact" }, "Compacting…");
     hideCompactButton();
   });
   // Insert next to token usage in header
@@ -3243,7 +3521,7 @@ function updateUI() {
   if (isStreaming) {
     statusIndicator.classList.add("streaming");
     statusIndicator.classList.remove("connected");
-    statusText.textContent = "Working...";
+    statusText.textContent = "Working…";
   } else {
     statusIndicator.classList.remove("streaming");
     statusIndicator.classList.add("connected");
@@ -3270,7 +3548,7 @@ function updateUI() {
     abortBtn.classList.add("hidden");
     messageInput.placeholder = "Waiting for current session to finish…";
   } else if (onboarding.canQuery) {
-    messageInput.placeholder = "Type a message...";
+    messageInput.placeholder = "Type a message…";
   }
 }
 
@@ -3750,10 +4028,10 @@ function createBrowseRow(pkg) {
       button.disabled = true;
       button.classList.add("loading");
       const previous = installed ? "Uninstall" : "Install";
-      setExtensionActionButton(button, installed ? "Uninstalling..." : "Installing...", true);
+      setExtensionActionButton(button, installed ? "Uninstalling…" : "Installing…", true);
       status.hidden = false;
       status.classList.remove("is-error");
-      status.textContent = installed ? "Removing..." : "Installing...";
+      status.textContent = installed ? "Removing…" : "Installing…";
       status.title = status.textContent;
       try {
         if (installed) {
@@ -3882,7 +4160,7 @@ async function openSettings() {
   selectSettingsTab("general");
   buildThemeGrid();
   if (piVersionValue) {
-    piVersionValue.textContent = piVersionCache || "Loading...";
+    piVersionValue.textContent = piVersionCache || "Loading…";
   }
   setTimeout(() => {
     if (!settingsPanel.classList.contains("hidden")) loadPiVersion();

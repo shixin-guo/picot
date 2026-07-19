@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HostRuntimeAdapter } from "./host-runtime-adapter.js";
+import { HostRuntimeAdapter } from "./runtime-adapter.js";
 import { RuntimeGateway } from "./runtime-gateway.js";
 
 class FakeWebSocket {
