@@ -634,11 +634,11 @@ Each workspace window owns at most one Quick Chat. Its dialog:
   outside the Picot content area; and
 - remembers geometry only for the current workspace-window lifetime.
 
-The title remains "Quick Chat". The title bar contains compact context and cost
-information plus New Chat, minimize, and close controls. The body reuses the
-main chat's messages, Markdown, thinking, image attachment, prompt templates,
-skills, commands, model, thinking-level, and voice controls. Tool controls and
-tool cards are absent because all tools are disabled.
+The title remains "Quick Chat". Its title bar contains New Chat, minimize, and
+close controls; temporary cost and token usage stay out of the title bar. The
+body reuses the main chat's messages, Markdown, thinking, image attachment,
+prompt templates, skills, commands, model, thinking-level, and voice controls.
+Tool controls and tool cards are absent because all tools are disabled.
 
 The Quick Chat prototype's Recent chats column is deliberately omitted.
 
