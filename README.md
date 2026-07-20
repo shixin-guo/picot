@@ -71,6 +71,13 @@ Picot gives you a full visual interface for Pi. Open any project folder, start c
 - Scroll-to-bottom button with unread indicator
 - **Message queuing** — type while the agent is working; messages queue as pills and auto-send when ready
 
+
+### ⚡ Temporary chats
+
+- **Side Chat** keeps tools available in an isolated, unsaved Pi process for the current workspace; open up to five in the file-panel tab strip.
+- **Quick Chat** is a single non-modal, tool-free, unsaved chat. Open it from the icon directly after the sidebar search field.
+- Both compose with the same model selector, thinking-level control, voice input, and icon controls as the primary chat. They are available only in authenticated desktop windows, never through mobile or LAN access.
+
 ### 🗂️ Multi-Session & Multi-Agent
 
 - **Multiple agents in parallel** — each session spawns its own headless pi process; no new OS window, no interruption of running sessions

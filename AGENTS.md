@@ -133,6 +133,11 @@ feature-specific invariants, module indexes, and design links in
 `ARCHITECTURE.md`, then update that document whenever the implementation
 materially changes.
 
+For Quick Chat or Side Chat changes, read the corresponding
+[`docs/superpowers/specs/2026-07-15-quick-and-side-chat-design.md`](docs/superpowers/specs/2026-07-15-quick-and-side-chat-design.md)
+and the temporary-chat section of `ARCHITECTURE.md` before choosing an entry
+point, transport path, or lifecycle behavior.
+
 ## Cross-boundary and prototype verification
 
 Before changing a browser/server adapter, a popup/overlay, or shared-state
