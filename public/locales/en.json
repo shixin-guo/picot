@@ -548,6 +548,7 @@
     "abort": "Abort",
     "newChat": "New chat",
     "startingSideChat": "Starting Side Chat…",
+    "startingQuickChat": "Starting Quick Chat…",
     "tokens": "tokens",
     "sideChat": "Side Chat",
     "sideChatLimit": "Side Chat limit reached",

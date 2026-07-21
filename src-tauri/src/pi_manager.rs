@@ -1,7 +1,7 @@
 // ABOUTME: Owns embedded Pi child processes, ports, identities, and RPC pipes.
 // ABOUTME: Provides safe spawn, routing, exit observation, and exact cleanup.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Write};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -80,6 +80,18 @@ pub struct PiManager {
     /// sessions populate their dropdowns instantly without re-querying Pi.
     /// Invalidated when API keys or package extensions change.
     model_cache: Arc<Mutex<Option<CachedModels>>>,
+    /// Pre-spawned pi processes waiting to be adopted by a Side Chat or
+    /// Quick Chat request. Keyed by (cwd, no_tools) so a Side Chat standby
+    /// (workspace cwd, tools enabled) is never handed to a Quick Chat
+    /// (temp cwd, no tools) and vice versa.
+    standby_pool: Arc<Mutex<Vec<StandbyEntry>>>,
+    /// Ports reserved between allocation and child registration so concurrent
+    /// spawns cannot claim the same listener.
+    reserved_ports: Arc<Mutex<HashSet<u16>>>,
+    /// One active warm-up per standby key. A canceled lease may not park its
+    /// child, so a workspace transition cannot resurrect an old standby.
+    standby_warming: Arc<Mutex<HashMap<StandbyWarmKey, u64>>>,
+    next_standby_warm: AtomicU64,
 }
 
 /// Snapshot of `get_available_models` output, captured once per Pi process
@@ -90,6 +102,44 @@ pub struct CachedModels {
     pub source_port: u16,
     pub payload: serde_json::Value,
     pub cached_at: std::time::Instant,
+}
+
+/// A pre-spawned pi process held in the standby pool, waiting to be adopted
+/// by a Side Chat or Quick Chat request. The cwd and no_tools flags are the
+/// match key: a Side Chat standby (workspace cwd, tools enabled) cannot serve
+/// a Quick Chat (temp cwd, no tools) and vice versa, because cwd is fixed at
+/// spawn time and tools are baked into the process.
+#[derive(Clone, Debug)]
+struct StandbyEntry {
+    cwd: PathBuf,
+    no_tools: bool,
+    spawned: SpawnedPi,
+    /// Quick Chat standbys carry their pre-created temp directory so the
+    /// caller can record it for later cleanup. Side Chat standbys set None.
+    temp_dir: Option<(PathBuf, String)>,
+    created_at: std::time::Instant,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct StandbyWarmKey {
+    cwd: Option<PathBuf>,
+    no_tools: bool,
+}
+
+/// A single in-flight standby warm-up. The generation prevents a canceled
+/// worker from parking a child after another warm-up has replaced it.
+#[derive(Clone, Debug)]
+pub struct StandbyWarmLease {
+    key: StandbyWarmKey,
+    generation: u64,
+}
+
+fn standby_matches(entry: &StandbyEntry, cwd: &Path, no_tools: bool) -> bool {
+    if no_tools {
+        entry.no_tools
+    } else {
+        !entry.no_tools && entry.cwd == cwd
+    }
 }
 
 struct EmbeddedExtensionResolution {
@@ -394,6 +444,10 @@ impl PiManager {
             rpc_output_sender,
             next_process_identity: AtomicU64::new(1),
             model_cache: Arc::new(Mutex::new(None)),
+            standby_pool: Arc::new(Mutex::new(Vec::new())),
+            reserved_ports: Arc::new(Mutex::new(HashSet::new())),
+            standby_warming: Arc::new(Mutex::new(HashMap::new())),
+            next_standby_warm: AtomicU64::new(1),
         }
     }
 
@@ -547,6 +601,12 @@ impl PiManager {
     }
 
     pub fn spawn_with_spec(&self, spec: &PiSpawnSpec) -> Result<SpawnedPi, String> {
+        let result = self.spawn_with_spec_inner(spec);
+        self.reserved_ports.lock().unwrap().remove(&spec.port);
+        result
+    }
+
+    fn spawn_with_spec_inner(&self, spec: &PiSpawnSpec) -> Result<SpawnedPi, String> {
         let pi_bin = self.resolve_bundled_pi()?;
         // Tauri resolves resource paths as `\\?\`-prefixed extended-length
         // paths. Bun (the embedded pi runtime) segfaults on Windows arm64 when
@@ -827,6 +887,292 @@ impl PiManager {
         }
     }
 
+    // ── Standby pool ──────────────────────────────────────────────────────────
+    //
+    // Pre-spawned pi processes held in reserve so Side Chat / Quick Chat
+    // creation feels instant. The pool is keyed by (cwd, no_tools): a Side
+    // Chat standby (workspace cwd, tools enabled) cannot serve a Quick Chat
+    // (temp cwd, no tools) and vice versa.
+
+    pub fn begin_standby_warm(
+        &self,
+        cwd: Option<&Path>,
+        no_tools: bool,
+    ) -> Option<StandbyWarmLease> {
+        self.cleanup_expired_standby();
+        let key = StandbyWarmKey {
+            cwd: cwd.map(Path::to_path_buf),
+            no_tools,
+        };
+        let mut warming = self.standby_warming.lock().unwrap();
+        if warming.contains_key(&key) || self.has_matching_standby(&key) {
+            return None;
+        }
+        let generation = self.next_standby_warm.fetch_add(1, Ordering::Relaxed);
+        warming.insert(key.clone(), generation);
+        Some(StandbyWarmLease { key, generation })
+    }
+
+    pub fn cancel_standby_warm_for_cwd(&self, cwd: &Path) {
+        self.standby_warming
+            .lock()
+            .unwrap()
+            .retain(|key, _| key.cwd.as_deref() != Some(cwd));
+    }
+
+    pub fn cancel_standby_warm(&self, lease: &StandbyWarmLease) {
+        self.finish_standby_warm(lease);
+    }
+
+    /// Pre-spawn a pi process with the given cwd and flags, wait for it to
+    /// become healthy, then park it in the standby pool. A canceled lease
+    /// discards the child instead of reviving an obsolete workspace standby.
+    pub fn spawn_standby(
+        &self,
+        lease: StandbyWarmLease,
+        cwd: PathBuf,
+        no_tools: bool,
+        temp_dir: Option<(PathBuf, String)>,
+        environment: Vec<(String, String)>,
+    ) -> Result<(), String> {
+        let port = self.next_port();
+        let cleanup_temp_dir = temp_dir.clone();
+        let result = (|| {
+            let spec = PiSpawnSpec {
+                cwd: cwd.clone(),
+                port,
+                session_path: None,
+                no_session: true,
+                no_tools,
+                environment,
+            };
+            let spawned = self.spawn_with_spec(&spec)?;
+            let deadline = std::time::Instant::now() + Duration::from_secs(30);
+            loop {
+                if std::time::Instant::now() > deadline {
+                    return Err(format!(
+                        "Timed out waiting for standby health on port {}",
+                        port
+                    ));
+                }
+                if std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            if !self.process_is_live_identity(spawned) {
+                return Err("standby pi exited during startup".to_string());
+            }
+            let entry = StandbyEntry {
+                cwd,
+                no_tools,
+                spawned,
+                temp_dir,
+                created_at: std::time::Instant::now(),
+            };
+            if let Err(entry) = self.park_standby(&lease, entry) {
+                self.cleanup_standby_entry(entry);
+                return Err("standby warm was canceled".to_string());
+            }
+            Ok(())
+        })();
+        if result.is_err() {
+            self.finish_standby_warm(&lease);
+            self.cleanup_standby_resources(port, cleanup_temp_dir);
+        }
+        result
+    }
+
+    /// Adopt the oldest live standby matching the requested chat kind. Quick
+    /// Chat entries match by `no_tools` because each standby owns its own temp
+    /// directory; Side Chat entries also require the workspace cwd to match.
+    pub fn take_standby(
+        &self,
+        cwd: &Path,
+        no_tools: bool,
+    ) -> Option<(SpawnedPi, Option<(PathBuf, String)>)> {
+        self.cleanup_expired_standby();
+        loop {
+            let entry = {
+                let mut pool = self.standby_pool.lock().unwrap();
+                let pos = pool
+                    .iter()
+                    .position(|entry| standby_matches(entry, cwd, no_tools))?;
+                pool.remove(pos)
+            };
+            if self.process_is_live_identity(entry.spawned) {
+                log::info!(
+                    "[pi-desktop] standby pi adopted: port={}",
+                    entry.spawned.port
+                );
+                return Some((entry.spawned, entry.temp_dir));
+            }
+            log::warn!(
+                "[pi-desktop] standby pi died before adoption: port={}",
+                entry.spawned.port
+            );
+            self.cleanup_standby_entry(entry);
+        }
+    }
+
+    /// Kill all Side Chat standby processes for one workspace and invalidate
+    /// any in-flight warmer so it cannot repopulate the old workspace later.
+    pub fn kill_standby_for_cwd(&self, cwd: &Path) {
+        self.cancel_standby_warm_for_cwd(cwd);
+        let entries = self.drain_standby(|entry| entry.cwd == *cwd && !entry.no_tools);
+        for entry in entries {
+            self.cleanup_standby_entry(entry);
+        }
+    }
+
+    /// Kill the unowned Quick Chat standby when a workspace window closes. It
+    /// is only a latency optimization, so another window may warm a fresh one.
+    pub fn kill_quick_standby(&self) {
+        let key = StandbyWarmKey {
+            cwd: None,
+            no_tools: true,
+        };
+        self.standby_warming.lock().unwrap().remove(&key);
+        let entries = self.drain_standby(|entry| entry.no_tools);
+        for entry in entries {
+            self.cleanup_standby_entry(entry);
+        }
+    }
+
+    /// Remove a standby entry when its exact child exits naturally. This keeps
+    /// dead entries from blocking a replacement warm-up and releases any Quick
+    /// Chat temporary directory owned by the entry.
+    pub fn cleanup_exited_standby(&self, exit: ProcessExit) -> bool {
+        let entries = self.drain_standby(|entry| {
+            entry.spawned.port == exit.port
+                && entry.spawned.pid == exit.pid
+                && entry.spawned.identity == exit.identity
+        });
+        let removed = !entries.is_empty();
+        for entry in entries {
+            self.cleanup_standby_entry(entry);
+        }
+        removed
+    }
+
+    /// Kill every standby process and invalidate all in-flight warmers. Quick
+    /// Chat directories are deleted before the application exits.
+    pub fn kill_all_standby(&self) {
+        self.standby_warming.lock().unwrap().clear();
+        let entries = self.drain_standby(|_| true);
+        let count = entries.len();
+        for entry in entries {
+            self.cleanup_standby_entry(entry);
+        }
+        if count > 0 {
+            log::info!("[pi-desktop] killed {} standby pi(s) on shutdown", count);
+        }
+    }
+
+    fn finish_standby_warm(&self, lease: &StandbyWarmLease) {
+        let mut warming = self.standby_warming.lock().unwrap();
+        if warming.get(&lease.key) == Some(&lease.generation) {
+            warming.remove(&lease.key);
+        }
+    }
+
+    fn has_matching_standby(&self, key: &StandbyWarmKey) -> bool {
+        self.standby_pool.lock().unwrap().iter().any(|entry| {
+            if key.no_tools {
+                entry.no_tools
+            } else {
+                !entry.no_tools && key.cwd.as_ref().is_some_and(|cwd| entry.cwd == *cwd)
+            }
+        })
+    }
+
+    fn park_standby(
+        &self,
+        lease: &StandbyWarmLease,
+        entry: StandbyEntry,
+    ) -> Result<(), StandbyEntry> {
+        let mut warming = self.standby_warming.lock().unwrap();
+        if warming.get(&lease.key) != Some(&lease.generation) {
+            return Err(entry);
+        }
+        let mut pool = self.standby_pool.lock().unwrap();
+        warming.remove(&lease.key);
+        log::info!(
+            "[pi-desktop] standby pi parked: port={} pool_size={}",
+            entry.spawned.port,
+            pool.len() + 1
+        );
+        pool.push(entry);
+        Ok(())
+    }
+
+    fn cleanup_expired_standby(&self) {
+        let expired =
+            self.drain_standby(|entry| entry.created_at.elapsed() >= Duration::from_secs(300));
+        for entry in expired {
+            self.cleanup_standby_entry(entry);
+        }
+    }
+
+    fn drain_standby(&self, predicate: impl Fn(&StandbyEntry) -> bool) -> Vec<StandbyEntry> {
+        let mut pool = self.standby_pool.lock().unwrap();
+        let mut removed = Vec::new();
+        pool.retain(|entry| {
+            if predicate(entry) {
+                removed.push(entry.clone());
+                false
+            } else {
+                true
+            }
+        });
+        removed
+    }
+
+    fn cleanup_standby_entry(&self, entry: StandbyEntry) {
+        self.cleanup_standby_resources(entry.spawned.port, entry.temp_dir);
+    }
+
+    fn cleanup_standby_resources(&self, port: u16, temp_dir: Option<(PathBuf, String)>) {
+        self.kill(port);
+        if let Some((path, token)) = temp_dir {
+            let _ = cleanup_quick_chat_dir(&canonical_temp_root(), &path, &token);
+        }
+    }
+
+    fn process_is_live_identity(&self, spawned: SpawnedPi) -> bool {
+        let mut processes = self.processes.lock().unwrap();
+        let Some(process) = processes.get_mut(&spawned.port) else {
+            return false;
+        };
+        if process.pid != spawned.pid || process.identity != spawned.identity {
+            return false;
+        }
+        if matches!(process.child.try_wait(), Ok(Some(_))) {
+            processes.remove(&spawned.port);
+            return false;
+        }
+        true
+    }
+
+    /// Test-only: insert a fake standby entry without spawning a real process.
+    #[cfg(test)]
+    pub fn insert_standby_for_test(
+        &self,
+        cwd: PathBuf,
+        no_tools: bool,
+        spawned: SpawnedPi,
+        temp_dir: Option<(PathBuf, String)>,
+    ) {
+        let entry = StandbyEntry {
+            cwd,
+            no_tools,
+            spawned,
+            temp_dir,
+            created_at: std::time::Instant::now(),
+        };
+        self.standby_pool.lock().unwrap().push(entry);
+    }
+
     /// Spawn (or reuse) a dedicated pi process for a specific session file,
     /// so it can run concurrently with the workspace's primary process.
     /// Returns the port the dedicated process is listening on.
@@ -873,11 +1219,13 @@ impl PiManager {
     }
 
     pub fn next_port(&self) -> u16 {
-        let lock = self.processes.lock().unwrap();
+        let processes = self.processes.lock().unwrap();
+        let mut reserved = self.reserved_ports.lock().unwrap();
         let mut port = 47821u16;
-        while lock.contains_key(&port) || is_port_in_use(port) {
+        while processes.contains_key(&port) || reserved.contains(&port) || is_port_in_use(port) {
             port += 1;
         }
+        reserved.insert(port);
         port
     }
 
@@ -999,22 +1347,6 @@ fn build_pi_args(extension_path: &str, spec: &PiSpawnSpec) -> Result<Vec<String>
     }
     if spec.no_tools {
         args.push("--no-tools".to_string());
-    }
-    // Ephemeral chats (no_session) skip coding-assistant features that add
-    // seconds to startup: pi-lens, LSP diagnostics, autoformat, autofix,
-    // test runner, opengrep security scanner, read-before-edit guard, and
-    // AGENTS.md/CLAUDE.md context loading. This cuts cold-start from ~12s
-    // to ~3-5s. Side Chat keeps tools (read/bash/edit/write/grep/glob) but
-    // drops the assistant layers; Quick Chat already has --no-tools.
-    if spec.no_session {
-        args.push("--no-lens".to_string());
-        args.push("--no-lsp".to_string());
-        args.push("--no-autoformat".to_string());
-        args.push("--no-autofix".to_string());
-        args.push("--no-tests".to_string());
-        args.push("--no-opengrep".to_string());
-        args.push("--no-read-guard".to_string());
-        args.push("--no-context-files".to_string());
     }
     Ok(args)
 }
@@ -1206,6 +1538,27 @@ mod tests {
     }
 
     #[test]
+    fn next_port_reserves_its_result_until_spawn_claims_it() {
+        let manager = Arc::new(PiManager::new(PathBuf::from(".")));
+        let barrier = Arc::new(std::sync::Barrier::new(3));
+        let first_manager = manager.clone();
+        let first_barrier = barrier.clone();
+        let first = std::thread::spawn(move || {
+            first_barrier.wait();
+            first_manager.next_port()
+        });
+        let second_manager = manager.clone();
+        let second_barrier = barrier.clone();
+        let second = std::thread::spawn(move || {
+            second_barrier.wait();
+            second_manager.next_port()
+        });
+
+        barrier.wait();
+        assert_ne!(first.join().unwrap(), second.join().unwrap());
+    }
+
+    #[test]
     fn is_port_in_use_roundtrip() {
         // is_port_in_use probes 0.0.0.0:port, so bind on the unspecified
         // IPv4 address to mirror what production listeners do.
@@ -1329,16 +1682,6 @@ No packages installed.";
         assert!(args.contains(&"--no-session".to_string()));
         assert!(!args.contains(&"--no-tools".to_string()));
         assert!(!args.contains(&"--session".to_string()));
-        // Side Chat skips coding-assistant layers for faster startup but
-        // keeps its tools (read/bash/edit/write/grep/glob).
-        assert!(args.contains(&"--no-lens".to_string()));
-        assert!(args.contains(&"--no-lsp".to_string()));
-        assert!(args.contains(&"--no-autoformat".to_string()));
-        assert!(args.contains(&"--no-autofix".to_string()));
-        assert!(args.contains(&"--no-tests".to_string()));
-        assert!(args.contains(&"--no-opengrep".to_string()));
-        assert!(args.contains(&"--no-read-guard".to_string()));
-        assert!(args.contains(&"--no-context-files".to_string()));
     }
 
     #[test]
@@ -1466,5 +1809,177 @@ No packages installed.";
         let cached = manager.cached_models().expect("cached payload");
         assert_eq!(cached.source_port, 47822);
         assert_eq!(cached.payload["models"][0]["id"], "new");
+    }
+
+    #[test]
+    fn standby_pool_starts_empty() {
+        let manager = PiManager::new(PathBuf::from("."));
+        assert!(manager.take_standby(&PathBuf::from("/ws"), false).is_none());
+        assert!(manager.take_standby(&PathBuf::from("/ws"), true).is_none());
+    }
+
+    #[test]
+    fn standby_pool_rejects_an_unmanaged_process() {
+        let manager = PiManager::new(PathBuf::from("."));
+        let cwd = PathBuf::from("/workspace");
+        manager.insert_standby_for_test(
+            cwd.clone(),
+            false,
+            SpawnedPi {
+                port: 47850,
+                pid: 12345,
+                identity: 1,
+            },
+            None,
+        );
+
+        assert!(manager.take_standby(&cwd, false).is_none());
+    }
+
+    #[test]
+    fn standby_pool_rejects_mismatched_cwd() {
+        let manager = PiManager::new(PathBuf::from("."));
+        manager.insert_standby_for_test(
+            PathBuf::from("/workspace-a"),
+            false,
+            SpawnedPi {
+                port: 47850,
+                pid: 1,
+                identity: 1,
+            },
+            None,
+        );
+        // Different cwd → no match.
+        assert!(manager
+            .take_standby(&PathBuf::from("/workspace-b"), false)
+            .is_none());
+    }
+
+    #[test]
+    fn standby_pool_rejects_mismatched_tools_flag() {
+        let manager = PiManager::new(PathBuf::from("."));
+        manager.insert_standby_for_test(
+            PathBuf::from("/ws"),
+            false,
+            SpawnedPi {
+                port: 47850,
+                pid: 1,
+                identity: 1,
+            },
+            None,
+        );
+        // Same cwd but different no_tools → no match (Side Chat standby
+        // cannot serve Quick Chat which needs --no-tools, and vice versa).
+        assert!(manager.take_standby(&PathBuf::from("/ws"), true).is_none());
+    }
+
+    #[test]
+    fn standby_pool_cleans_expired_quick_chat_directory() {
+        let manager = PiManager::new(PathBuf::from("."));
+        let (path, token) = create_quick_chat_temp_dir().expect("temp dir");
+        manager.standby_pool.lock().unwrap().push(StandbyEntry {
+            cwd: path.clone(),
+            no_tools: true,
+            spawned: SpawnedPi {
+                port: 47851,
+                pid: 99,
+                identity: 2,
+            },
+            temp_dir: Some((path.clone(), token.clone())),
+            created_at: Instant::now() - Duration::from_secs(301),
+        });
+
+        assert!(manager.take_standby(&path, true).is_none());
+        let cleaned = !path.exists();
+        if path.exists() {
+            let _ = cleanup_quick_chat_dir(&canonical_temp_root(), &path, &token);
+        }
+        assert!(cleaned, "expired standby directory must be removed");
+    }
+
+    #[test]
+    fn standby_warming_is_single_flight_and_cancellable() {
+        let manager = PiManager::new(PathBuf::from("."));
+        let cwd = PathBuf::from("/workspace");
+
+        assert!(manager.begin_standby_warm(Some(&cwd), false).is_some());
+        assert!(manager.begin_standby_warm(Some(&cwd), false).is_none());
+        manager.cancel_standby_warm_for_cwd(&cwd);
+        assert!(manager.begin_standby_warm(Some(&cwd), false).is_some());
+    }
+
+    #[test]
+    fn canceled_warmer_cannot_park_a_late_side_chat() {
+        let manager = PiManager::new(PathBuf::from("."));
+        let cwd = PathBuf::from("/workspace");
+        let lease = manager
+            .begin_standby_warm(Some(&cwd), false)
+            .expect("warm lease");
+        manager.cancel_standby_warm_for_cwd(&cwd);
+        let entry = StandbyEntry {
+            cwd,
+            no_tools: false,
+            spawned: SpawnedPi {
+                port: 47852,
+                pid: 100,
+                identity: 3,
+            },
+            temp_dir: None,
+            created_at: Instant::now(),
+        };
+
+        assert!(manager.park_standby(&lease, entry).is_err());
+    }
+
+    #[test]
+    fn natural_exit_cleans_a_quick_chat_standby_directory() {
+        let manager = PiManager::new(PathBuf::from("."));
+        let (path, token) = create_quick_chat_temp_dir().expect("temp dir");
+        manager.insert_standby_for_test(
+            path.clone(),
+            true,
+            SpawnedPi {
+                port: 47853,
+                pid: 101,
+                identity: 4,
+            },
+            Some((path.clone(), token.clone())),
+        );
+
+        manager.cleanup_exited_standby(ProcessExit {
+            port: 47853,
+            pid: 101,
+            identity: 4,
+        });
+
+        let cleaned = !path.exists();
+        if path.exists() {
+            let _ = cleanup_quick_chat_dir(&canonical_temp_root(), &path, &token);
+        }
+        assert!(cleaned, "natural exit must remove the standby directory");
+    }
+
+    #[test]
+    fn workspace_close_cleans_quick_chat_standby_directory() {
+        let manager = PiManager::new(PathBuf::from("."));
+        let (path, token) = create_quick_chat_temp_dir().expect("temp dir");
+        manager.insert_standby_for_test(
+            path.clone(),
+            true,
+            SpawnedPi {
+                port: 47854,
+                pid: 102,
+                identity: 5,
+            },
+            Some((path.clone(), token.clone())),
+        );
+
+        manager.kill_quick_standby();
+
+        let cleaned = !path.exists();
+        if path.exists() {
+            let _ = cleanup_quick_chat_dir(&canonical_temp_root(), &path, &token);
+        }
+        assert!(cleaned, "window close must remove the standby directory");
     }
 }

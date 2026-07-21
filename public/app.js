@@ -3992,6 +3992,10 @@ const savedTheme = getCurrentTheme();
 applyTheme(savedTheme);
 await initI18n();
 
+// Expose rpcCommand for modules that need to send Pi commands without a
+// circular import (e.g. the context-viz compact button).
+window.__picotRpcCommand = rpcCommand;
+
 setupContextViz({
   tokenUsageEl,
   contextViz: document.getElementById("context-viz"),

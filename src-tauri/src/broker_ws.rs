@@ -1129,6 +1129,7 @@ impl BrokerWs {
         };
         if let Some(key) = ephemeral_key {
             let owner = &key.0;
+            let payload = rekey_ephemeral_payload(payload, &key.1, key.2);
             let is_snapshot =
                 payload.get("type").and_then(Value::as_str) == Some("ephemeral_snapshot");
             // Hoist the producer's runtimeSequence to the envelope top level so
@@ -1215,6 +1216,19 @@ fn extract_session_id(payload: &Value) -> Option<&str> {
         .or_else(|| payload.get("sessionFile").and_then(Value::as_str))
 }
 
+/// The host-owned route is authoritative for an adopted standby. Its embedded
+/// runtime was intentionally started with a placeholder identity, so rewrite
+/// any identity fields before its frame reaches the owner-scoped frontend.
+fn rekey_ephemeral_payload(mut payload: Value, instance_id: &str, generation: u64) -> Value {
+    if payload.get("instanceId").is_some() {
+        payload["instanceId"] = json!(instance_id);
+    }
+    if payload.get("generation").is_some() {
+        payload["generation"] = json!(generation);
+    }
+    payload
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1228,6 +1242,21 @@ mod tests {
         });
 
         assert_eq!(extract_session_id(&payload), Some("session-id"));
+    }
+
+    #[test]
+    fn rekeys_standby_snapshot_to_its_adopted_route() {
+        let snapshot = json!({
+            "type": "ephemeral_snapshot",
+            "instanceId": "standby",
+            "generation": 0,
+            "runtimeSequenceWatermark": 0,
+        });
+
+        let rekeyed = rekey_ephemeral_payload(snapshot, "chat-42", 7);
+
+        assert_eq!(rekeyed["instanceId"], "chat-42");
+        assert_eq!(rekeyed["generation"], 7);
     }
 
     #[test]

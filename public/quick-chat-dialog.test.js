@@ -31,6 +31,7 @@ beforeEach(async () => {
               close: "Close",
               resize: "Resize Quick Chat",
               generating: "Generating",
+              startingQuickChat: "Starting Quick Chat…",
               unread: "Unread",
               tokens: "tokens",
             },
@@ -115,7 +116,9 @@ describe("QuickChatDialog lifecycle", () => {
     const opening = dialog.open();
 
     expect(dialogRoot.classList.contains("hidden")).toBe(false);
-    expect(dialogRoot.querySelector(".quick-chat-loading")?.textContent).toBe("Generating");
+    expect(dialogRoot.querySelector(".quick-chat-loading")?.textContent).toBe(
+      "Starting Quick Chat…",
+    );
     expect(dialogRoot.getAttribute("aria-busy")).toBe("true");
 
     resolveCreate({

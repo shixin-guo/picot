@@ -65,6 +65,54 @@ fn warm_model_cache(manager: &PiManager, port: u16) {
     }
 }
 
+/// Pre-spawn a Side Chat standby pi so the next "New Side Chat" feels
+/// instant. The standby uses the workspace cwd and keeps tools enabled.
+/// It's parked in the standby pool until adopted by ephemeral_create.
+/// Called after the main session registers; failures are logged but never
+/// surfaced — the synchronous fallback path still works if warming fails.
+fn warm_side_chat_standby(manager: Arc<PiManager>, cwd: PathBuf) {
+    let Some(lease) = manager.begin_standby_warm(Some(&cwd), false) else {
+        return;
+    };
+    tauri::async_runtime::spawn(async move {
+        let env = build_ephemeral_environment("side-chat", "standby", 0);
+        match manager.spawn_standby(lease, cwd.clone(), false, None, env) {
+            Ok(()) => log::info!("[pi-desktop] side-chat standby warmed"),
+            Err(e) => log::warn!("[pi-desktop] side-chat standby warm failed: {}", e),
+        }
+    });
+}
+
+/// Pre-spawn a Quick Chat standby pi. Quick Chat uses a throwaway temp dir
+/// as cwd (it has --no-tools, so the cwd is just an isolated scratch space).
+/// We pre-create the temp dir, spawn the standby against it, and store the
+/// dir alongside the standby so cleanup works after adoption. Warming a
+/// Quick Chat standby is best-effort: if it fails, ephemeral_create falls
+/// back to the synchronous spawn path.
+fn warm_quick_chat_standby(manager: Arc<PiManager>) {
+    let Some(lease) = manager.begin_standby_warm(None, true) else {
+        return;
+    };
+    tauri::async_runtime::spawn(async move {
+        // Pre-create the temp dir here so the standby's cwd matches the dir
+        // the caller would have created. If temp-dir creation fails we skip
+        // warming; the synchronous fallback will create its own.
+        let created = match create_quick_chat_temp_dir() {
+            Ok(c) => c,
+            Err(e) => {
+                manager.cancel_standby_warm(&lease);
+                log::warn!("[pi-desktop] quick-chat standby temp dir failed: {}", e);
+                return;
+            }
+        };
+        let cwd = created.0.clone();
+        let env = build_ephemeral_environment("quick-chat", "standby", 0);
+        match manager.spawn_standby(lease, cwd.clone(), true, Some(created), env) {
+            Ok(()) => log::info!("[pi-desktop] quick-chat standby warmed"),
+            Err(e) => log::warn!("[pi-desktop] quick-chat standby warm failed: {}", e),
+        }
+    });
+}
 /// Resume (switch to) an existing session file within the current workspace
 fn switch_session_core(
     port: u16,
@@ -1077,6 +1125,8 @@ fn install_control_handler(
                             Some(&app),
                         )
                         .await?;
+                        warm_side_chat_standby(manager.clone(), PathBuf::from(&cwd));
+                        warm_quick_chat_standby(manager.clone());
                         Ok(Value::from(port))
                     }
                     "new_session" => {
@@ -1260,32 +1310,95 @@ fn install_control_handler(
                         } else {
                             None
                         };
-                        let port = manager.next_port();
-                        let env = build_ephemeral_environment(
-                            &kind_str,
-                            &reservation.instance_id,
-                            reservation.generation,
-                        );
-                        let spec = PiSpawnSpec {
-                            cwd,
-                            port,
-                            session_path: None,
-                            no_session: true,
-                            no_tools: kind == EphemeralKind::QuickChat,
-                            environment: env,
+                        let no_tools = kind == EphemeralKind::QuickChat;
+                        // Try to adopt a pre-warmed standby pi first. The
+                        // standby was spawned with the same cwd and no_tools
+                        // flags but a placeholder ephemeral env; the broker
+                        // route (registered below) maps its port to the real
+                        // instance id, so the placeholder never leaks to the
+                        // frontend. If no standby matches, fall back to a
+                        // synchronous spawn + health-wait.
+                        let standby = manager.take_standby(&cwd, no_tools);
+                        let cwd_for_refill = cwd.clone();
+                        let descriptor = if let Some((spawned, standby_temp_dir)) = standby {
+                            log::info!(
+                                "[pi-desktop] adopting standby pi: port={} kind={}",
+                                spawned.port,
+                                kind_str
+                            );
+                            // Use the standby's pre-created temp dir for Quick
+                            // Chat; for Side Chat the temp_dir from the caller
+                            // is None and the standby also carries None. If
+                            // the standby carries its own temp dir (Quick Chat
+                            // standby), clean up the one the caller created to
+                            // avoid leaking it.
+                            let adopted_temp_dir = if standby_temp_dir.is_some() {
+                                if let Some((path, token)) = &temp_dir {
+                                    let _ =
+                                        cleanup_quick_chat_dir(&canonical_temp_root(), path, token);
+                                }
+                                standby_temp_dir
+                            } else {
+                                temp_dir
+                            };
+                            // The standby's cwd is what pi actually runs in.
+                            // Override the caller's cwd so the registry records
+                            // the real one.
+                            let adopted_cwd = if adopted_temp_dir.is_some() {
+                                adopted_temp_dir
+                                    .as_ref()
+                                    .map(|(p, _)| p.clone())
+                                    .unwrap_or(cwd.clone())
+                            } else {
+                                cwd.clone()
+                            };
+                            ephemeral_adopt_standby(
+                                &manager,
+                                &broker,
+                                &ephemeral_registry,
+                                &reservation,
+                                spawned,
+                                adopted_temp_dir,
+                                transition_generation,
+                                adopted_cwd.clone(),
+                                startup_profile,
+                            )
+                            .await?
+                        } else {
+                            let port = manager.next_port();
+                            let env = build_ephemeral_environment(
+                                &kind_str,
+                                &reservation.instance_id,
+                                reservation.generation,
+                            );
+                            let spec = PiSpawnSpec {
+                                cwd,
+                                port,
+                                session_path: None,
+                                no_session: true,
+                                no_tools,
+                                environment: env,
+                            };
+                            ephemeral_spawn_commit(
+                                &manager,
+                                &broker,
+                                &ephemeral_registry,
+                                &reservation,
+                                spec,
+                                port,
+                                temp_dir,
+                                transition_generation,
+                                startup_profile,
+                            )
+                            .await?
                         };
-                        let descriptor = ephemeral_spawn_commit(
-                            &manager,
-                            &broker,
-                            &ephemeral_registry,
-                            &reservation,
-                            spec,
-                            port,
-                            temp_dir,
-                            transition_generation,
-                            startup_profile,
-                        )
-                        .await?;
+                        // Refill the standby pool after consumption so the
+                        // next Side/Quick Chat is also instant.
+                        if kind == EphemeralKind::SideChat {
+                            warm_side_chat_standby(manager.clone(), cwd_for_refill);
+                        } else {
+                            warm_quick_chat_standby(manager.clone());
+                        }
                         Ok(serde_json::to_value(descriptor).map_err(|e| e.to_string())?)
                     }
                     "ephemeral_replace_quick" => {
@@ -1475,6 +1588,16 @@ fn install_control_handler(
                                 );
                             }
                         }
+                        // Also discard any Side Chat standby pre-warmed for
+                        // the old workspace cwd — they'd never be adopted now.
+                        if let Some((old_cwd, _)) = owner_registry.current_workspace(&owner) {
+                            manager.kill_standby_for_cwd(&old_cwd);
+                        }
+                        // Pre-warm a Side Chat standby for the new workspace
+                        // so the first Side Chat after the transition is instant.
+                        if let Some(target_cwd) = owner_registry.pending_target_cwd(&owner) {
+                            warm_side_chat_standby(manager.clone(), target_cwd);
+                        }
                         let target_origin = owner_registry
                             .pending_target_origin(&owner)
                             .ok_or("no pending workspace transition")?;
@@ -1656,6 +1779,56 @@ async fn ephemeral_spawn_commit(
     // model, not the inherited one. The 400ms delay lets the snapshot
     // settle first; the set_model then sticks and a later state refresh
     // picks up the new model.
+    apply_side_chat_startup_profile(manager, port, startup_profile);
+    Ok(descriptor)
+}
+
+/// Adopt a pre-warmed standby pi for an ephemeral chat. The standby is
+/// already spawned and healthy; we only register it with the broker and
+/// registry, then apply the startup profile. This is the fast path
+/// (~milliseconds) compared to spawn + health-wait (~seconds).
+#[allow(clippy::too_many_arguments)]
+async fn ephemeral_adopt_standby(
+    manager: &PiManager,
+    broker: &BrokerWs,
+    registry: &EphemeralRegistry,
+    reservation: &CreateReservation,
+    spawned: pi_manager::SpawnedPi,
+    temp_dir: Option<(PathBuf, String)>,
+    transition_generation: u64,
+    cwd: PathBuf,
+    startup_profile: Option<Value>,
+) -> Result<ephemeral_registry::EphemeralDescriptor, String> {
+    let owner = reservation.owner_id.clone();
+    let port = spawned.port;
+    let process = OwnedProcess {
+        port,
+        pid: spawned.pid,
+        child_identity: spawned.identity,
+        canonical_cwd: cwd,
+        transition_generation,
+        temporary_directory: temp_dir.clone(),
+    };
+    let descriptor = match registry.commit_ready(reservation, process) {
+        Ok(descriptor) => descriptor,
+        Err(e) => {
+            manager.kill(port);
+            cleanup_ephemeral_candidate(
+                registry,
+                &owner,
+                &reservation.instance_id,
+                reservation.generation,
+                temp_dir,
+            );
+            return Err(e);
+        }
+    };
+    let _ = broker.register_ephemeral_route(broker_ws::EphemeralRoute {
+        owner_id: owner,
+        instance_id: reservation.instance_id.clone(),
+        generation: reservation.generation,
+        port,
+    });
     apply_side_chat_startup_profile(manager, port, startup_profile);
     Ok(descriptor)
 }
@@ -1902,6 +2075,12 @@ fn handle_window_destroyed(window: &tauri::Window) {
     let Some(owner) = registry.owner_for_label(label) else {
         return;
     };
+    if let Some(manager) = window.try_state::<PiManagerState>() {
+        if let Some((cwd, _)) = registry.current_workspace(&owner) {
+            manager.kill_standby_for_cwd(&cwd);
+        }
+        manager.kill_quick_standby();
+    }
     if let Some(ephemeral) = window.try_state::<EphemeralRegistryState>() {
         for lease in ephemeral.owner_cleanup(&owner) {
             if let Some(broker) = window.try_state::<BrokerWsState>() {
@@ -2057,7 +2236,7 @@ fn main() {
                                     &ephemeral_for_exit,
                                     lease,
                                 );
-                            } else {
+                            } else if !manager_for_exit.cleanup_exited_standby(exit) {
                                 broker_for_exit.unregister_port(exit.port);
                             }
                         }
@@ -2158,6 +2337,8 @@ fn main() {
                         );
                         if let Some(manager) = app_handle.try_state::<PiManagerState>() {
                             warm_model_cache(&manager, initial_port);
+                            warm_quick_chat_standby(manager.inner().clone());
+                            warm_side_chat_standby(manager.inner().clone(), PathBuf::from(&cwd));
                         }
                         if let Err(e) =
                             open_workspace_window(&app_handle, initial_port, &cwd, &broker.url())
@@ -2191,6 +2372,7 @@ fn main() {
         .run(|app_handle: &tauri::AppHandle, event| {
             if let tauri::RunEvent::Exit = event {
                 if let Some(manager) = app_handle.try_state::<PiManagerState>() {
+                    manager.kill_all_standby();
                     manager.kill_all();
                 }
             }

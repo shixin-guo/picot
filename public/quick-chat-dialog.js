@@ -361,7 +361,7 @@ export class QuickChatDialog {
     const loading = this._dialog.ownerDocument.createElement("div");
     loading.className = "quick-chat-loading";
     loading.setAttribute("role", "status");
-    loading.textContent = t("ephemeral.generating");
+    loading.textContent = t("ephemeral.startingQuickChat");
     this._body.replaceChildren(loading);
     this._dialog.setAttribute("aria-busy", "true");
   }

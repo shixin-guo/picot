@@ -1353,13 +1353,13 @@ body {
   animation: pulse 2s infinite;
 }
 
-/* Context window visualiser popover */
+/* Context window visualiser popover — portaled to <body> at runtime so
+   it escapes the header's stacking context (z-index: 10). Position is
+   set via JS (fixed top + right) to track the token-usage pill. */
 .context-viz {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
+  position: fixed;
   width: 320px;
-  z-index: 1001;
+  z-index: 10000;
   background: var(--bg-solid);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -1484,6 +1484,30 @@ body {
   font-size: 10px;
   font-family: "SF Mono", "Menlo", "Monaco", monospace;
   color: var(--text-dim);
+}
+
+.context-viz-compact {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  background: var(--bg-glass-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+}
+
+.context-viz-compact:hover {
+  background: var(--bg-glass-active);
+  border-color: var(--border-hover);
+}
+
+.context-viz-compact:active {
+  transform: scale(0.98);
 }
 
 /* Compact button — appears at 80% context */
