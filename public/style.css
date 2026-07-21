@@ -1852,14 +1852,51 @@ body {
 }
 
 .settings-usage-embed {
+  height: calc(100dvh - 140px);
+  min-height: 460px;
   border-radius: var(--radius);
-  overflow: visible;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
   background: var(--bg-glass);
 }
 
-.settings-usage-embed > cost-dashboard {
+.settings-usage-iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
   display: block;
+  overflow: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
   background: var(--bg-solid);
+}
+
+@media (max-width: 920px) {
+  .settings-tab[data-settings-panel="usage"] {
+    min-height: 0;
+  }
+
+  .settings-usage-embed {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+  }
+
+  .settings-usage-iframe {
+    display: block;
+    height: 100%;
+  }
+}
+
+@media (max-width: 620px) {
+  .settings-usage-embed {
+    min-height: 0;
+  }
+
+  .settings-tab[data-settings-panel="usage"].active {
+    height: calc(100dvh - 136px);
+    min-height: 360px;
+  }
 }
 
 .settings-close {
@@ -4996,7 +5033,6 @@ body.hide-thinking .thinking-block {
 /* Tooltip — floated to the left of the rail */
 .conv-nav-tooltip {
   position: fixed;
-  right: 44px; /* close to the compact ticks */
   width: 260px;
   background: var(--bg-glass-strong);
   border: 1px solid var(--border-hover);
@@ -5005,7 +5041,7 @@ body.hide-thinking .thinking-block {
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  z-index: 200;
+  z-index: 10001;
   pointer-events: auto; /* allow hovering tooltip to keep it open */
   display: flex;
   flex-direction: column;

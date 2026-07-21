@@ -10,11 +10,21 @@ import { t } from "./i18n.js";
 const NEW_CHAT_ICON =
   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
 
+const FOLDER_CLOSED_ICON =
+  '<svg class="folder-closed-icon" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>';
+
+const FOLDER_OPEN_ICON =
+  '<svg class="folder-open-icon" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>';
+
 function createChevron() {
   const chevron = document.createElement("span");
-  chevron.className = "chevron";
-  chevron.textContent = "\u25BC";
+  chevron.className = "chevron folder-icon";
   chevron.setAttribute("aria-hidden", "true");
+  const doc = new DOMParser().parseFromString(
+    `${FOLDER_CLOSED_ICON}${FOLDER_OPEN_ICON}`,
+    "text/html",
+  );
+  chevron.append(...doc.body.childNodes);
   return chevron;
 }
 
@@ -214,7 +224,8 @@ export function buildSidebarWorkspaceGroup({
     newChatBtn.className = "project-new-chat-btn workspace-new-chat-btn";
     newChatBtn.title = label;
     newChatBtn.setAttribute("aria-label", label);
-    newChatBtn.innerHTML = NEW_CHAT_ICON;
+    const newChatIconDoc = new DOMParser().parseFromString(NEW_CHAT_ICON, "text/html");
+    newChatBtn.append(...newChatIconDoc.body.childNodes);
     newChatBtn.addEventListener("click", (event) => {
       event.stopPropagation();
       onNewChat(event);

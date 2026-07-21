@@ -12,7 +12,6 @@ import { initTransport } from "./app/transport.js";
 import { createAppUpdater } from "./app/updater.js";
 import { setupVoiceInput } from "./app/voice-input.js";
 import { resolveWebSocketUrl, WebSocketClient } from "./app/websocket-client.js";
-import { createChatHistoryNavigation } from "./chat-history-navigation.js";
 import { setupComposerCommandMenu } from "./composer-command-menu.js";
 import { setupComposerImageAttachments } from "./composer-image-attachments.js";
 import { EphemeralChatView } from "./ephemeral-chat-view.js";
@@ -216,10 +215,6 @@ const nativeAvailable = () => !mobileClientMode && transport.capabilities.native
 const canUseSessionControl = () => transport.capabilities.native;
 const state = new StateManager();
 const messagesElement = document.getElementById("messages");
-const chatHistoryNavigation = createChatHistoryNavigation({
-  host: document.querySelector(".main"),
-  messages: messagesElement,
-});
 const messageRenderer = new MessageRenderer(messagesElement);
 const toolCardRenderer = new ToolCardRenderer(messagesElement);
 const dialogHandler = new DialogHandler({
@@ -233,7 +228,6 @@ let superAgentAddonsActive = false;
 function clearConversationRenderers() {
   messageRenderer.clear();
   toolCardRenderer.clear();
-  chatHistoryNavigation.reset();
 }
 
 // Session sidebar
@@ -442,6 +436,12 @@ const convNavTooltipQ = document.getElementById("conv-nav-tooltip-q");
 const convNavTooltipA = document.getElementById("conv-nav-tooltip-a");
 const convNavTooltipSep = document.getElementById("conv-nav-tooltip-sep");
 const messagesContainer = document.getElementById("messages");
+
+// Reparent the nav tooltip to <body> so it escapes the main panel's stacking
+// context — otherwise the side-chat and file-browser panels render above it.
+if (convNavTooltip.parentElement && convNavTooltip.parentElement !== document.body) {
+  document.body.appendChild(convNavTooltip);
+}
 const mainContainer = document.querySelector(".main");
 const headerEl = document.querySelector(".header");
 const inputAreaEl = document.querySelector(".input-area");
@@ -1264,11 +1264,15 @@ function showNavTooltip(dotEl, turn) {
   convNavTooltip.classList.remove("hidden");
   const dotRect = dotEl.getBoundingClientRect();
   const tipHeight = convNavTooltip.offsetHeight || 90;
+  const tipWidth = convNavTooltip.offsetWidth || 260;
   const top = Math.max(
     8,
     Math.min(dotRect.top + dotRect.height / 2 - tipHeight / 2, window.innerHeight - tipHeight - 8),
   );
   convNavTooltip.style.top = `${top}px`;
+  // Anchor the tooltip to the left of the dot (which sits on the right rail),
+  // following the dot so side-chat/file-browser panels never displace or cover it.
+  convNavTooltip.style.left = `${Math.max(8, dotRect.left - tipWidth - 8)}px`;
 
   // Trigger slide-in animation on every fresh hover
   convNavTooltip.classList.remove("animating");
@@ -1771,7 +1775,6 @@ function handleAgentEnd(event = null) {
   state.setStreaming(false);
   showTypingIndicator(false);
   currentStreamingElement = null;
-  chatHistoryNavigation.completeAssistantMessage();
   currentStreamingText = "";
   updateUI();
 
@@ -1814,7 +1817,6 @@ function handleMessageStart(message) {
     currentStreamingText = "";
     currentStreamingThinking = "";
     currentStreamingElement = messageRenderer.renderAssistantMessage({ content: "" }, true);
-    chatHistoryNavigation.beginAssistantMessage();
   } else if (message.role === "user") {
     if (!lastSentMessage || getMessageText(message) !== lastSentMessage) {
       const content = getMessageText(message);
@@ -1848,11 +1850,6 @@ function getMessageImages(message) {
 
 function renderNavigableUserMessage({ content, images, isHistory = false }) {
   const element = messageRenderer.renderUserMessage({ content: content || "", images }, isHistory);
-  chatHistoryNavigation.addUserTurn({
-    element,
-    text: content || "",
-    hasImage: Array.isArray(images) && images.length > 0,
-  });
   return element;
 }
 
@@ -1905,7 +1902,6 @@ function handleMessageUpdate(event) {
     if (currentStreamingElement) {
       messageRenderer.updateStreamingMessage(currentStreamingElement, currentStreamingText);
     }
-    chatHistoryNavigation.updateAssistantMessage(currentStreamingText);
   }
 }
 
@@ -1952,7 +1948,6 @@ function handleMessageEnd(message) {
     updateTokenUsage();
     showNewMessageBadge();
   }
-  chatHistoryNavigation.completeAssistantMessage();
 }
 
 function handleToolExecutionStart(event) {
@@ -3550,7 +3545,6 @@ function renderSessionHistory(entries, { searchQuery = "" } = {}) {
         });
       }
     } else if (msg.role === "assistant") {
-      chatHistoryNavigation.beginAssistantMessage();
       const textBlocks = (msg.content || []).filter((b) => b.type === "text");
       const thinkingBlocks = (msg.content || []).filter((b) => b.type === "thinking");
       const toolCalls = (msg.content || []).filter((b) => b.type === "toolCall");
@@ -3564,8 +3558,6 @@ function renderSessionHistory(entries, { searchQuery = "" } = {}) {
       }
 
       const text = textBlocks.map((b) => b.text).join("\n");
-      if (text) chatHistoryNavigation.updateAssistantMessage(text);
-      chatHistoryNavigation.completeAssistantMessage();
 
       if (text || thinkingBlocks.length > 0) {
         assistantCount++;
@@ -3611,7 +3603,6 @@ function renderSessionHistory(entries, { searchQuery = "" } = {}) {
       );
     }
   }
-  chatHistoryNavigation.completeAssistantMessage();
 
   console.log(
     `[History] Done: ${userCount} users, ${assistantCount} assistants, ${toolCardCount} tools, ${toolResultCount} results`,
@@ -3935,12 +3926,6 @@ function selectSettingsTab(tabKey = "general") {
   }
   if (targetTabKey === "extensions") {
     loadBrowsePackages();
-  }
-  if (targetTabKey === "usage") {
-    const dashboard = document.getElementById("settings-cost-dashboard");
-    dashboard?.ensureLoaded?.().catch((error) => {
-      console.error("[Cost] Failed to load dashboard:", error);
-    });
   }
   if (targetTabKey === "chat") {
     toggleSuperAgent = document.getElementById("toggle-super-agent");
