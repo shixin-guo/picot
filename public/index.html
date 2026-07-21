@@ -1,568 +1,1807 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Picot</title>
-  <link rel="icon" type="image/svg+xml" href="icons/logo-dark.svg">
-  <meta name="theme-color" content="#f5f3ef">
-  <link rel="stylesheet" href="style-theme.css">
-  <link rel="stylesheet" href="design-system.css">
-  <link rel="stylesheet" href="style.css">
-  <script>
-    // Detect macOS for overlay title bar padding (TitleBarStyle::Overlay in Rust
-    // extends the WebView into the native title bar area; we add padding so
-    // app content clears the traffic-light buttons).
-    if (
-      ('__TAURI_INTERNALS__' in window) &&
-      (navigator.platform.startsWith('Mac') || navigator.userAgent.includes('Mac OS'))
-    ) {
-      document.documentElement.classList.add('macos-overlay');
-    }
-  </script>
-  <script>
-    // Boot-time instance-swap overlay gate.
-    // Set by workspace-actions.js right before window.location.href changes
-    // to a new pi instance's port. Read here synchronously (before <body>
-    // renders) so the new page's very first paint is the overlay, not a
-    // half-loaded chat UI. Cleared by app.js after the first WebSocket
-    // connection on the new page.
-    try {
-      if (sessionStorage.getItem('pi-studio:swapping-instance') === '1') {
-        document.documentElement.classList.add('swapping-instance-pending');
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>Picot</title>
+    <link rel="icon" type="image/svg+xml" href="icons/logo-dark.svg" />
+    <meta name="theme-color" content="#f5f3ef" />
+    <link rel="stylesheet" href="style-theme.css" />
+    <link rel="stylesheet" href="design-system.css" />
+    <link rel="stylesheet" href="style.css" />
+    <script>
+      // Detect macOS for overlay title bar padding (TitleBarStyle::Overlay in Rust
+      // extends the WebView into the native title bar area; we add padding so
+      // app content clears the traffic-light buttons).
+      if (
+        "__TAURI_INTERNALS__" in window &&
+        (navigator.platform.startsWith("Mac") ||
+          navigator.userAgent.includes("Mac OS"))
+      ) {
+        document.documentElement.classList.add("macos-overlay");
       }
-    } catch (_e) {}
-  </script>
-</head>
-<body class="">
-  <div class="instance-swap-overlay" id="instance-swap-overlay" aria-hidden="true">
-    <div class="instance-swap-overlay__spinner"></div>
-    <div class="instance-swap-overlay__label" id="instance-swap-overlay-label" data-i18n="sidebar.startingSession">Starting session…</div>
-  </div>
-  <script>
-    // Flip the body class as early as the body element exists. Done inline
-    // (rather than waiting for app.js) so we don't get a chat-UI flash
-    // between body parse and app.js executing.
-    if (document.documentElement.classList.contains('swapping-instance-pending')) {
-      document.body.classList.add('swapping-instance');
-      document.documentElement.classList.remove('swapping-instance-pending');
-      const overlay = document.getElementById('instance-swap-overlay');
-      if (overlay) overlay.setAttribute('data-visible', 'true');
-    }
-  </script>
-  <div class="app-layout">
-    <!-- Left Sidebar -->
-    <div class="sidebar" id="sidebar">
-      <div class="sidebar-header">
-        <div class="mode-toggle" id="mode-toggle">
-        <span class="mode-link active" title="Chat" data-i18n-title="nav.chat"><img src="icons/logo-dark.svg" alt="Picot logo" class="tau-icon"></span>
+    </script>
+    <script>
+      // Boot-time instance-swap overlay gate.
+      // Set by workspace-actions.js right before window.location.href changes
+      // to a new pi instance's port. Read here synchronously (before <body>
+      // renders) so the new page's very first paint is the overlay, not a
+      // half-loaded chat UI. Cleared by app.js after the first WebSocket
+      // connection on the new page.
+      try {
+        if (sessionStorage.getItem("pi-studio:swapping-instance") === "1") {
+          document.documentElement.classList.add("swapping-instance-pending");
+        }
+      } catch (_e) {}
+    </script>
+  </head>
+  <body class="">
+    <div
+      class="instance-swap-overlay"
+      id="instance-swap-overlay"
+      aria-hidden="true"
+    >
+      <div class="instance-swap-overlay__spinner"></div>
+      <div
+        class="instance-swap-overlay__label"
+        id="instance-swap-overlay-label"
+        data-i18n="sidebar.startingSession"
+      >
+        Starting session…
+      </div>
+    </div>
+    <script>
+      // Flip the body class as early as the body element exists. Done inline
+      // (rather than waiting for app.js) so we don't get a chat-UI flash
+      // between body parse and app.js executing.
+      if (
+        document.documentElement.classList.contains("swapping-instance-pending")
+      ) {
+        document.body.classList.add("swapping-instance");
+        document.documentElement.classList.remove("swapping-instance-pending");
+        const overlay = document.getElementById("instance-swap-overlay");
+        if (overlay) overlay.setAttribute("data-visible", "true");
+      }
+    </script>
+    <div class="app-layout">
+      <!-- Left Sidebar -->
+      <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="mode-toggle" id="mode-toggle">
+            <span
+              class="mode-link active"
+              title="Chat"
+              data-i18n-title="nav.chat"
+              ><img src="icons/logo-dark.svg" alt="Picot logo" class="tau-icon"
+            /></span>
+          </div>
+          <div class="sidebar-search-wrap">
+            <input
+              type="text"
+              id="session-search-input"
+              class="sidebar-search-input"
+              placeholder="Search..."
+              data-i18n-ph="sidebar.search"
+              autocomplete="off"
+            />
+            <button
+              type="button"
+              id="session-search-clear"
+              class="sidebar-search-clear hidden"
+              title="Clear search"
+              aria-label="Clear search"
+              data-i18n-title="sidebar.clearSearch"
+              data-i18n-aria-label="sidebar.clearSearch"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <div class="sidebar-actions">
+            <button
+              class="icon-btn"
+              id="open-folder-btn"
+              title="Open folder as workspace"
+              aria-label="Open folder"
+              data-i18n-title="sidebar.openFolder"
+              data-i18n-aria-label="sidebar.openFolderAria"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
+                />
+                <line x1="12" y1="12" x2="12" y2="18" />
+                <line x1="9" y1="15" x2="15" y2="15" />
+              </svg>
+            </button>
+            <button
+              class="icon-btn hidden"
+              id="quick-chat-btn"
+              title="Quick Chat"
+              aria-label="Quick Chat"
+              data-i18n-title="nav.quickChat"
+              data-i18n-aria-label="nav.quickChat"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+                />
+              </svg>
+            </button>
+            <button
+              class="icon-btn"
+              id="refresh-sessions-btn"
+              title="Refresh sessions"
+              aria-label="Refresh sessions"
+              data-i18n-title="sidebar.refreshSessions"
+              data-i18n-aria-label="sidebar.refreshSessions"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                <path d="M21 3v5h-5" />
+              </svg>
+            </button>
+          </div>
         </div>
-        <div class="sidebar-search-wrap">
-          <input type="text" id="session-search-input" class="sidebar-search-input" placeholder="Search..." data-i18n-ph="sidebar.search" autocomplete="off" />
-          <button
-            type="button"
-            id="session-search-clear"
-            class="sidebar-search-clear hidden"
-            title="Clear search"
-            aria-label="Clear search"
-            data-i18n-title="sidebar.clearSearch"
-            data-i18n-aria-label="sidebar.clearSearch"
+        <div class="session-list" id="session-list">
+          <div class="session-loading" data-i18n="sidebar.loadingSessions">
+            Loading sessions...
+          </div>
+        </div>
+        <div class="sidebar-footer">
+          <div class="sidebar-settings-row">
+            <button
+              class="sidebar-settings-btn"
+              id="settings-btn"
+              title="Settings"
+              aria-label="Settings"
+              data-i18n-title="sidebar.settings"
+              data-i18n-aria-label="sidebar.settings"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
+                />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <span data-i18n="sidebar.settings">Settings</span>
+            </button>
+            <button
+              class="sidebar-update-pill hidden"
+              id="sidebar-update-btn"
+              title="Update available"
+              aria-label="Open updates in settings"
+              data-i18n-title="sidebar.updateAvailable"
+              data-i18n-aria-label="updater.openInSettings"
+            >
+              <span data-i18n="updater.update">Update</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar overlay for mobile -->
+      <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+      <!-- Workspace -->
+      <div class="workspace">
+        <!-- Header -->
+        <div class="header">
+          <div class="header-left">
+            <button
+              class="sidebar-toggle"
+              id="sidebar-toggle"
+              title="Toggle sidebar"
+              aria-label="Toggle sidebar"
+              data-i18n-title="nav.toggleSidebar"
+              data-i18n-aria-label="nav.toggleSidebar"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+            <button
+              class="icon-btn lan-qr-btn hidden"
+              id="lan-qr-btn"
+              title="Show mobile QR code"
+              aria-label="Show mobile QR code"
+              data-i18n-title="nav.showMobileQR"
+              data-i18n-aria-label="nav.showMobileQR"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+                <line x1="12" y1="18" x2="12.01" y2="18" />
+              </svg>
+            </button>
+            <div class="status">
+              <span class="status-indicator" id="status-indicator"></span>
+              <span
+                class="status-text"
+                id="status-text"
+                data-i18n="status.connecting"
+                >Connecting...</span
+              >
+            </div>
+          </div>
+          <div class="header-right">
+            <span
+              class="pill session-cost"
+              id="session-cost"
+              title="Session cost"
+              data-i18n-title="usage.sessionCostTitle"
+            ></span>
+            <span
+              class="pill token-usage"
+              id="token-usage"
+              title="Context usage"
+              data-i18n-title="usage.contextTitle"
+            ></span>
+
+            <div class="context-viz hidden" id="context-viz">
+              <div class="context-viz-title" data-i18n="misc.contextWindow">
+                Context Window
+              </div>
+              <div class="context-bar" id="context-bar"></div>
+              <div class="context-legend" id="context-legend"></div>
+              <div class="context-viz-footer">
+                <span id="context-viz-used"></span>
+                <span id="context-viz-total"></span>
+              </div>
+              <button
+                type="button"
+                class="context-viz-compact"
+                id="context-viz-compact"
+                data-i18n="misc.compact"
+              >
+                Compact
+              </button>
+            </div>
+            <fieldset class="header-open-app hidden" id="header-open-app">
+              <button
+                class="header-open-app-btn"
+                id="header-open-app-btn"
+                title="Open workspace"
+                aria-label="Open workspace in app"
+                data-i18n-title="nav.openWorkspace"
+                data-i18n-aria-label="nav.openWorkspaceInApp"
+              >
+                <span
+                  class="header-open-app-logo"
+                  id="header-open-app-logo"
+                  aria-hidden="true"
+                  ><img
+                    src="icons/app-cursor.svg"
+                    alt=""
+                    class="header-open-app-logo-img"
+                /></span>
+              </button>
+              <button
+                class="header-open-app-toggle"
+                id="header-open-app-toggle"
+                title="Choose app"
+                aria-label="Choose app to open workspace"
+                data-i18n-title="nav.chooseApp"
+                data-i18n-aria-label="nav.chooseApp"
+              >
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              <div
+                class="header-open-app-menu hidden"
+                id="header-open-app-menu"
+              ></div>
+            </fieldset>
+            <button
+              class="icon-btn"
+              id="file-sidebar-toggle"
+              title="Files"
+              aria-label="Toggle file browser"
+              data-i18n-title="nav.files"
+              data-i18n-aria-label="nav.files"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
+                />
+              </svg>
+            </button>
+            <button
+              class="icon-btn hidden"
+              id="side-chat-btn"
+              title="Side Chat"
+              aria-label="Side Chat"
+              data-i18n-title="nav.sideChat"
+              data-i18n-aria-label="nav.sideChat"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="workspace-content">
+          <!-- Main Chat Area -->
+          <div class="main">
+            <div
+              class="quick-chat-dialog-root"
+              id="quick-chat-dialog-root"
+            ></div>
+            <div class="quick-chat-chip-root" id="quick-chat-chip-root"></div>
+
+            <!-- Super Agent Chat Header web component (shown when SA is active) -->
+            <sa-chat-header
+              class="super-agent-chat-header hidden"
+              id="super-agent-chat-header"
+            ></sa-chat-header>
+
+            <!-- Messages Container -->
+            <div class="messages" id="messages">
+              <div class="welcome">
+                <div class="welcome-icon">
+                  <img
+                    src="icons/logo-dark.svg"
+                    alt="Picot logo"
+                    class="tau-icon-welcome"
+                  />
+                </div>
+                <p data-i18n="app.welcome">Welcome to Picot</p>
+                <p class="hint" data-i18n="app.welcomeHint">
+                  Type a message below to start chatting with Pi, or select a
+                  session from the sidebar.
+                </p>
+                <div class="shortcuts-hint">
+                  <span
+                    ><kbd>/</kbd>
+                    <span data-i18n="shortcuts.focusInput"
+                      >Focus input</span
+                    ></span
+                  >
+                  <span
+                    ><kbd>Esc</kbd>
+                    <span data-i18n="shortcuts.abort">Abort</span></span
+                  >
+                </div>
+              </div>
+            </div>
+            <!-- Conversation navigator rail (Codex-style) -->
+            <nav
+              class="conv-nav hidden"
+              id="conv-nav"
+              aria-label="Conversation navigator"
+            >
+              <div class="conv-nav-track" id="conv-nav-track"></div>
+            </nav>
+            <div
+              class="conv-nav-tooltip hidden"
+              id="conv-nav-tooltip"
+              aria-hidden="true"
+            >
+              <div class="conv-nav-tooltip-q" id="conv-nav-tooltip-q"></div>
+              <div class="conv-nav-tooltip-sep" id="conv-nav-tooltip-sep"></div>
+              <div class="conv-nav-tooltip-a" id="conv-nav-tooltip-a"></div>
+            </div>
+            <!-- Legacy IDs kept as invisible references so existing JS bindings don't break -->
+            <button id="scroll-prev-btn" hidden></button>
+
+            <!-- Scroll to bottom + new message indicator -->
+            <button class="scroll-bottom-btn hidden" id="scroll-bottom-btn">
+              <span class="scroll-bottom-badge hidden" id="scroll-bottom-badge"
+                ><span data-i18n="misc.new">New</span>
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <polyline points="19 12 12 19 5 12" /></svg
+              ></span>
+              <span class="scroll-bottom-icon"
+                ><svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <polyline points="19 12 12 19 5 12" /></svg
+              ></span>
+            </button>
+
+            <!-- Typing indicator (hidden, kept for JS reference) -->
+            <div class="typing-indicator hidden" id="typing-indicator"></div>
+
+            <!-- Input Area -->
+            <div class="input-area">
+              <button class="mobile-context-toggle" id="mobile-context-toggle">
+                <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
+                  <path
+                    d="M1 5L5 1L9 5"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              <div class="mobile-model-bar" id="mobile-model-bar"></div>
+              <div class="queued-messages hidden" id="queued-messages"></div>
+              <form id="chat-form">
+                <div class="composer-card" id="composer-card">
+                  <div
+                    class="skill-slash-menu hidden"
+                    id="skill-slash-menu"
+                  ></div>
+                  <div class="image-previews hidden" id="image-previews"></div>
+                  <textarea
+                    id="message-input"
+                    placeholder="Type a message..."
+                    data-i18n-ph="input.typeMessage"
+                    autocomplete="off"
+                    rows="2"
+                  ></textarea>
+                  <div class="composer-toolbar">
+                    <div class="composer-toolbar-left">
+                      <button
+                        type="button"
+                        class="input-icon-btn"
+                        id="attach-btn"
+                        title="Attach image"
+                        aria-label="Attach image"
+                        data-i18n-title="input.attachImage"
+                        data-i18n-aria-label="input.attachImage"
+                        tabindex="-1"
+                      >
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <line x1="12" y1="5" x2="12" y2="19" />
+                          <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        class="input-icon-btn"
+                        id="command-btn"
+                        title="Commands"
+                        aria-label="Open commands"
+                        data-i18n-title="input.commands"
+                        data-i18n-aria-label="input.commands"
+                        tabindex="-1"
+                      >
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <path d="M12 22v-5" />
+                          <path d="M9 8V2" />
+                          <path d="M15 8V2" />
+                          <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
+                        </svg>
+                      </button>
+                      <input
+                        type="file"
+                        id="image-input"
+                        accept="image/*"
+                        multiple
+                        style="display: none"
+                      />
+                    </div>
+                    <div class="composer-toolbar-right">
+                      <div class="model-dropdown" id="model-dropdown">
+                        <button
+                          type="button"
+                          class="model-dropdown-btn"
+                          id="model-dropdown-btn"
+                          title="Switch model"
+                          data-i18n-title="input.switchModel"
+                          tabindex="-1"
+                        >
+                          <span
+                            class="model-dropdown-label"
+                            id="model-dropdown-label"
+                            data-i18n="misc.model"
+                            >model</span
+                          >
+                          <svg
+                            class="model-dropdown-chevron"
+                            width="10"
+                            height="6"
+                            viewBox="0 0 10 6"
+                            fill="none"
+                          >
+                            <path
+                              d="M1 1L5 5L9 1"
+                              stroke="currentColor"
+                              stroke-width="1.5"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                            />
+                          </svg>
+                        </button>
+                        <div
+                          class="model-dropdown-menu hidden"
+                          id="model-dropdown-menu"
+                        ></div>
+                      </div>
+                      <button
+                        type="button"
+                        class="thinking-tag off"
+                        id="thinking-btn"
+                        title="Thinking effort controls reasoning depth. Click to cycle."
+                        aria-label="Thinking effort: off. Click to cycle reasoning depth."
+                        data-i18n-title="settings.thinkingTitle"
+                        data-i18n-aria-label="settings.thinkingAriaLabel"
+                        tabindex="-1"
+                      >
+                        Think off
+                      </button>
+                      <button
+                        type="button"
+                        class="input-mic-btn"
+                        id="mic-btn"
+                        title="Voice input"
+                        data-i18n-title="voice.voiceInput"
+                        tabindex="-1"
+                      >
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <path
+                            d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"
+                          />
+                          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                          <line x1="12" x2="12" y1="19" y2="22" />
+                        </svg>
+                      </button>
+                      <button
+                        type="submit"
+                        id="send-btn"
+                        title="Send message"
+                        data-i18n-title="input.send"
+                        tabindex="-1"
+                      >
+                        <span class="send-icon"
+                          ><svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2.5"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <line x1="12" y1="19" x2="12" y2="5" />
+                            <polyline points="5 12 12 5 19 12" /></svg
+                        ></span>
+                      </button>
+                      <button
+                        type="button"
+                        id="abort-btn"
+                        class="hidden"
+                        title="Abort (Esc)"
+                        data-i18n-title="input.abort"
+                        tabindex="-1"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                        >
+                          <rect x="4" y="4" width="16" height="16" rx="2" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- File Preview Panel (between chat and file tree) -->
+          <hr
+            class="file-preview-resizer collapsed"
+            id="file-preview-resizer"
+            aria-orientation="vertical"
+            tabindex="0"
+            aria-valuenow="42"
+            aria-valuemin="20"
+            aria-valuemax="70"
+          />
+          <section
+            class="file-preview-panel collapsed"
+            id="file-preview-panel"
+            aria-label="File preview"
+            data-i18n-aria-label="files.preview.title"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
+            <div class="file-preview-tabs-bar" id="file-preview-tabs-bar">
+              <div class="file-preview-tabs" id="file-preview-tabs"></div>
+              <div class="file-preview-panel-controls">
+                <button
+                  type="button"
+                  class="icon-btn"
+                  id="file-preview-toolbar-toggle"
+                  title="Editor controls"
+                  data-i18n-title="files.preview.showControls"
+                  aria-label="Editor controls"
+                  data-i18n-aria-label="files.preview.showControls"
+                  aria-expanded="false"
+                  aria-controls="file-preview-toolbar"
+                >
+                  <svg
+                    aria-hidden="true"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                  >
+                    <line x1="4" y1="6" x2="20" y2="6" />
+                    <line x1="4" y1="12" x2="20" y2="12" />
+                    <line x1="4" y1="18" x2="20" y2="18" />
+                    <circle cx="8" cy="6" r="2" fill="currentColor" />
+                    <circle cx="16" cy="12" r="2" fill="currentColor" />
+                    <circle cx="10" cy="18" r="2" fill="currentColor" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="icon-btn"
+                  id="file-preview-open"
+                  title="Open in desktop app"
+                  data-i18n-title="files.preview.openDesktop"
+                  aria-label="Open in desktop app"
+                  data-i18n-aria-label="files.preview.openDesktop"
+                >
+                  <svg
+                    aria-hidden="true"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M14 3h7v7" />
+                    <path d="M10 14 21 3" />
+                    <path
+                      d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"
+                    />
+                  </svg>
+                </button>
+                <button
+                  class="icon-btn file-preview-enlarge-btn"
+                  id="file-preview-enlarge"
+                  title="Enlarge panel"
+                  data-i18n-title="files.preview.enlarge"
+                  aria-label="Enlarge panel"
+                  data-i18n-aria-label="files.preview.enlarge"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                    <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+                    <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+                    <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                  </svg>
+                </button>
+                <button
+                  class="icon-btn file-preview-collapse-btn hidden"
+                  id="file-preview-collapse"
+                  title="Collapse panel"
+                  data-i18n-title="files.preview.collapse"
+                  aria-label="Collapse panel"
+                  data-i18n-aria-label="files.preview.collapse"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+                    <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+                    <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+                    <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+                  </svg>
+                </button>
+                <button
+                  class="icon-btn"
+                  id="file-preview-close"
+                  title="Close panel"
+                  data-i18n-title="files.preview.close"
+                  aria-label="Close panel"
+                  data-i18n-aria-label="files.preview.close"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div
+              class="file-preview-toolbar hidden"
+              id="file-preview-toolbar"
+              role="toolbar"
+              aria-label="Editor controls"
+              data-i18n-aria-label="files.preview.showControls"
+            >
+              <fieldset
+                class="file-preview-mode"
+                aria-label="View mode"
+                data-i18n-aria-label="files.preview.mode"
+              >
+                <button
+                  type="button"
+                  id="file-preview-mode-preview"
+                  data-i18n="files.preview.preview"
+                >
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  id="file-preview-mode-edit"
+                  data-i18n="files.preview.edit"
+                >
+                  Edit
+                </button>
+              </fieldset>
+              <button
+                type="button"
+                id="file-preview-save"
+                title="Save"
+                data-i18n-title="files.preview.save"
+                aria-label="Save"
+                data-i18n-aria-label="files.preview.save"
+                data-i18n="files.preview.save"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                id="file-preview-reload"
+                title="Reload from disk"
+                data-i18n-title="files.preview.conflictReload"
+                aria-label="Reload from disk"
+                data-i18n-aria-label="files.preview.conflictReload"
+                data-i18n="files.preview.conflictReload"
+              >
+                Reload
+              </button>
+              <button
+                type="button"
+                id="file-preview-search"
+                title="Find"
+                data-i18n-title="files.preview.find"
+                aria-label="Find"
+                data-i18n-aria-label="files.preview.find"
+                data-i18n="files.preview.find"
+              >
+                Find
+              </button>
+              <button
+                type="button"
+                id="file-preview-go-to-line"
+                title="Go to line"
+                data-i18n-title="files.preview.goToLine"
+                aria-label="Go to line"
+                data-i18n-aria-label="files.preview.goToLine"
+                data-i18n="files.preview.goToLine"
+              >
+                Line
+              </button>
+              <input
+                type="text"
+                class="file-preview-go-to-line-input hidden"
+                id="file-preview-go-to-line-input"
+                inputmode="numeric"
+                autocomplete="off"
+                placeholder="Line number"
+                data-i18n-ph="files.preview.goToLinePrompt"
+                aria-label="Line number"
+                data-i18n-aria-label="files.preview.goToLinePrompt"
+              />
+              <button
+                type="button"
+                id="file-preview-copy"
+                title="Copy all"
+                data-i18n-title="files.preview.copyContent"
+                aria-label="Copy all"
+                data-i18n-aria-label="files.preview.copyContent"
+                data-i18n="files.preview.copyContent"
+              >
+                Copy
+              </button>
+              <label class="file-preview-toolbar-check"
+                ><input type="checkbox" id="file-preview-wrap" /><span
+                  data-i18n="files.preview.lineWrap"
+                  >Wrap</span
+                ></label
+              >
+              <label class="file-preview-toolbar-check"
+                ><input type="checkbox" id="file-preview-autosave" /><span
+                  data-i18n="files.preview.autoSave"
+                  >Auto-save</span
+                ></label
+              >
+              <span
+                class="file-preview-status"
+                id="file-preview-status"
+                aria-live="polite"
+              ></span>
+            </div>
+            <div class="file-preview-content" id="file-preview-content"></div>
+          </section>
+
+          <!-- Super Agent Runtime Panel (right column, shown when SA active) -->
+          <super-agent-runtime
+            class="super-agent-runtime app-side-panel"
+            id="super-agent-runtime"
+          ></super-agent-runtime>
+
+          <!-- File Browser (right sidebar) -->
+          <div class="file-sidebar collapsed" id="file-sidebar">
+            <div class="file-sidebar-header">
+              <span
+                class="file-sidebar-title"
+                id="file-sidebar-title"
+                data-i18n="files.title"
+                >Files</span
+              >
+              <button
+                class="icon-btn"
+                id="file-sidebar-up"
+                title="Parent directory"
+                data-i18n-title="files.parentDirectory"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="m5 12 7-7 7 7" />
+                  <path d="M12 19V5" />
+                </svg>
+              </button>
+              <button
+                class="icon-btn"
+                id="file-sidebar-finder"
+                title="Open in file manager"
+                data-i18n-title="files.openInFileManager"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"
+                  />
+                </svg>
+              </button>
+              <button
+                class="icon-btn"
+                id="file-sidebar-close"
+                title="Close"
+                aria-label="Close file browser"
+                data-i18n-title="files.close"
+                data-i18n-aria-label="files.close"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <div
+              class="file-sidebar-path"
+              id="file-sidebar-path"
+              title=""
+            ></div>
+            <div class="file-list" id="file-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-overlay hidden" id="settings-overlay"></div>
+
+    <div class="settings-panel hidden" id="settings-panel">
+      <aside class="settings-nav">
+        <div class="settings-nav-title" data-i18n="settings.title">
+          Settings
+        </div>
+        <button
+          class="settings-nav-item active"
+          data-settings-tab="general"
+          data-i18n="settings.general"
+        >
+          General
+        </button>
+        <button
+          class="settings-nav-item"
+          data-settings-tab="extensions"
+          data-i18n="settings.extensions"
+        >
+          Extensions
+        </button>
+        <button
+          class="settings-nav-item"
+          data-settings-tab="usage"
+          data-i18n="settings.usage"
+        >
+          Usage
+        </button>
+        <button
+          class="settings-nav-item"
+          data-settings-tab="configuration"
+          data-i18n="settings.configuration"
+        >
+          Configuration
+        </button>
+        <button
+          class="settings-nav-item"
+          data-settings-tab="chat"
+          data-i18n="settings.agentInbox"
+        >
+          Agent Inbox
+        </button>
+        <button class="settings-nav-back" id="settings-close">
+          <span class="settings-nav-back-icon">‹</span>
+          <span data-i18n="settings.backToChat">Back to chat</span>
+        </button>
+      </aside>
+      <section class="settings-content">
+        <div class="settings-tab active" data-settings-panel="general">
+          <div class="settings-header">
+            <h3 data-i18n="settings.general">General</h3>
+          </div>
+          <div class="settings-body">
+            <div class="settings-section">
+              <div
+                class="settings-section-title"
+                data-i18n="settings.appearance"
+              >
+                Appearance
+              </div>
+              <div class="theme-grid" id="theme-grid"></div>
+            </div>
+            <div class="settings-section">
+              <div
+                class="settings-section-title"
+                data-i18n="settings.language.title"
+              >
+                Language
+              </div>
+              <p
+                class="settings-help"
+                data-i18n="settings.language.description"
+              >
+                Choose the interface language. System Default follows your
+                operating system.
+              </p>
+              <div class="theme-grid" id="settings-language-options"></div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-section-title" data-i18n="settings.agent">
+                Agent
+              </div>
+              <div class="settings-row" id="setting-auto-compact">
+                <span class="settings-label" data-i18n="settings.autoCompaction"
+                  >Auto-compaction</span
+                >
+                <button
+                  class="settings-toggle"
+                  id="toggle-auto-compact"
+                ></button>
+              </div>
+              <div class="settings-row" id="setting-thinking">
+                <span class="settings-label settings-label-stack">
+                  <span
+                    class="settings-label-main"
+                    data-i18n="settings.thinkingEffort"
+                    >Thinking effort</span
+                  >
+                  <span
+                    class="settings-label-sub"
+                    data-i18n="settings.reasoningDepth"
+                    >Reasoning depth</span
+                  >
+                </span>
+                <div
+                  class="thinking-effort"
+                  id="thinking-effort"
+                  role="radiogroup"
+                  aria-label="Thinking effort"
+                >
+                  <div class="thinking-effort-ends">
+                    <span>Faster</span>
+                    <span class="thinking-effort-name" id="thinking-effort-name"
+                      >off</span
+                    >
+                    <span>Smarter</span>
+                  </div>
+                  <div class="thinking-effort-track" id="thinking-effort-steps">
+                    <span
+                      class="thinking-effort-thumb"
+                      id="thinking-effort-marker"
+                      aria-hidden="true"
+                    ></span>
+                    <!-- biome-ignore lint/a11y/useSemanticElements: ARIA radiogroup dot; native radio cannot anchor the sliding thumb marker -->
+                    <button
+                      type="button"
+                      class="thinking-effort-dot"
+                      data-level="off"
+                      role="radio"
+                      aria-checked="true"
+                      aria-label="off"
+                      title="off"
+                    ></button>
+                    <!-- biome-ignore lint/a11y/useSemanticElements: ARIA radiogroup dot; native radio cannot anchor the sliding thumb marker -->
+                    <button
+                      type="button"
+                      class="thinking-effort-dot"
+                      data-level="minimal"
+                      role="radio"
+                      aria-checked="false"
+                      aria-label="minimal"
+                      title="minimal"
+                    ></button>
+                    <!-- biome-ignore lint/a11y/useSemanticElements: ARIA radiogroup dot; native radio cannot anchor the sliding thumb marker -->
+                    <button
+                      type="button"
+                      class="thinking-effort-dot"
+                      data-level="low"
+                      role="radio"
+                      aria-checked="false"
+                      aria-label="low"
+                      title="low"
+                    ></button>
+                    <!-- biome-ignore lint/a11y/useSemanticElements: ARIA radiogroup dot; native radio cannot anchor the sliding thumb marker -->
+                    <button
+                      type="button"
+                      class="thinking-effort-dot"
+                      data-level="medium"
+                      role="radio"
+                      aria-checked="false"
+                      aria-label="medium"
+                      title="medium"
+                    ></button>
+                    <!-- biome-ignore lint/a11y/useSemanticElements: ARIA radiogroup dot; native radio cannot anchor the sliding thumb marker -->
+                    <button
+                      type="button"
+                      class="thinking-effort-dot"
+                      data-level="high"
+                      role="radio"
+                      aria-checked="false"
+                      aria-label="high"
+                      title="high"
+                    ></button>
+                  </div>
+                </div>
+              </div>
+              <div class="settings-row">
+                <span class="settings-label" data-i18n="settings.showThinking"
+                  >Show thinking</span
+                >
+                <button
+                  class="settings-toggle on"
+                  id="toggle-show-thinking"
+                ></button>
+              </div>
+            </div>
+            <div class="settings-section" id="setting-updater-section">
+              <div class="settings-section-title" data-i18n="settings.updates">
+                Updates
+              </div>
+              <div class="settings-row" id="setting-pi-version">
+                <span class="settings-label" data-i18n="settings.piVersion"
+                  >Pi version</span
+                >
+                <span
+                  class="settings-static-value"
+                  id="setting-pi-version-value"
+                  data-i18n="status.loading"
+                  >Loading...</span
+                >
+              </div>
+              <div class="settings-row">
+                <span class="settings-label" data-i18n="settings.picotVersion"
+                  >Picot version</span
+                >
+                <span
+                  class="settings-static-value"
+                  id="setting-app-version-value"
+                  data-i18n="status.loading"
+                  >Loading...</span
+                >
+              </div>
+              <div class="settings-row">
+                <span
+                  class="settings-label"
+                  data-i18n="settings.checkForUpdates"
+                  >Check for updates</span
+                >
+                <button
+                  class="settings-value-btn"
+                  id="btn-check-updates"
+                  data-i18n="updater.checkNow"
+                >
+                  Check now
+                </button>
+              </div>
+              <div class="settings-row" id="setting-update-status-row" hidden>
+                <span class="settings-label" data-i18n="settings.status"
+                  >Status</span
+                >
+                <span
+                  class="settings-static-value"
+                  id="setting-update-status"
+                ></span>
+              </div>
+              <div class="settings-row" id="setting-update-install-row" hidden>
+                <span
+                  class="settings-label"
+                  id="setting-update-install-label"
+                  data-i18n="settings.updateAvailable"
+                  >Update available</span
+                >
+                <button
+                  class="settings-value-btn"
+                  id="btn-install-update"
+                  data-i18n="updater.downloadInstall"
+                >
+                  Download &amp; install
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-tab" data-settings-panel="extensions">
+          <div class="settings-header">
+            <h3 data-i18n="settings.extensions">Extensions</h3>
+          </div>
+          <div class="settings-body">
+            <div class="settings-section">
+              <div
+                class="settings-section-title"
+                data-i18n="settings.browseCommunityPackages"
+              >
+                Browse Community Packages
+              </div>
+              <p class="settings-help" data-i18n="settings.browseHelp">
+                Discover extensions, skills, themes, and prompts from the Pi
+                ecosystem. Install with one click.
+              </p>
+              <div class="pkg-browse-filters">
+                <input
+                  type="text"
+                  id="pkg-browse-search"
+                  class="pkg-browse-search"
+                  placeholder="Search packages..."
+                  data-i18n-ph="extensions.searchPackages"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <div class="pkg-browse-pills" id="pkg-browse-pills">
+                  <button
+                    type="button"
+                    class="pkg-browse-pill active"
+                    data-pkg-type="all"
+                    data-i18n="extensions.all"
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    class="pkg-browse-pill"
+                    data-pkg-type="extension"
+                    data-i18n="extensions.extensions"
+                  >
+                    Extensions
+                  </button>
+                  <button
+                    type="button"
+                    class="pkg-browse-pill"
+                    data-pkg-type="skill"
+                    data-i18n="extensions.skills"
+                  >
+                    Skills
+                  </button>
+                  <button
+                    type="button"
+                    class="pkg-browse-pill"
+                    data-pkg-type="theme"
+                    data-i18n="extensions.themes"
+                  >
+                    Themes
+                  </button>
+                  <button
+                    type="button"
+                    class="pkg-browse-pill"
+                    data-pkg-type="prompt"
+                    data-i18n="extensions.prompts"
+                  >
+                    Prompts
+                  </button>
+                </div>
+                <label class="pkg-browse-installed-toggle">
+                  <input type="checkbox" id="pkg-browse-installed-only" />
+                  <span data-i18n="extensions.installedOnly"
+                    >Installed only</span
+                  >
+                </label>
+                <select
+                  id="pkg-browse-sort"
+                  class="pkg-browse-sort"
+                  data-i18n-aria-label="extensions.sortPackages"
+                  aria-label="Sort packages"
+                >
+                  <option
+                    value="downloads"
+                    data-i18n="extensions.mostDownloads"
+                  >
+                    Most downloads
+                  </option>
+                  <option value="name" data-i18n="extensions.nameAZ">
+                    Name (A–Z)
+                  </option>
+                  <option
+                    value="updated"
+                    data-i18n="extensions.recentlyUpdated"
+                  >
+                    Recently updated
+                  </option>
+                </select>
+                <span class="pkg-browse-count" id="pkg-browse-count"></span>
+              </div>
+              <div
+                class="settings-extension-list pkg-browse-list"
+                id="pkg-browse-list"
+              ></div>
+              <div
+                class="pkg-browse-pagination"
+                id="pkg-browse-pagination"
+                hidden
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-tab" data-settings-panel="usage">
+          <div class="settings-header">
+            <h3 data-i18n="settings.usage">Usage</h3>
+          </div>
+          <div class="settings-usage-embed">
+            <iframe
+              src="/cost"
+              data-i18n-title="settings.costDashboard"
+              title="Cost Dashboard"
+              class="settings-usage-iframe"
+              scrolling="yes"
+            ></iframe>
+          </div>
+        </div>
+
+        <div class="settings-tab" data-settings-panel="configuration">
+          <div class="settings-header">
+            <h3 data-i18n="settings.configuration">Configuration</h3>
+          </div>
+          <div class="settings-body">
+            <div class="settings-section">
+              <div
+                class="settings-section-title"
+                data-i18n="settings.authentication"
+              >
+                Authentication
+              </div>
+              <p class="settings-help">
+                <span data-i18n="settings.auth.helpPre"
+                  >Keys are stored locally in</span
+                >
+                <code>~/.pi/agent/auth.json</code>
+                <span data-i18n="settings.auth.helpPost"
+                  >(chmod 600). Picot launched from Finder does not read shell
+                  environment variables, so set keys here for them to stick
+                  across launches.</span
+                >
+              </p>
+              <div class="settings-api-keys" id="settings-api-keys">
+                <div
+                  class="settings-api-keys-loading"
+                  data-i18n="settings.loadingProviders"
+                >
+                  Loading providers…
+                </div>
+              </div>
+            </div>
+            <div
+              class="settings-section"
+              id="settings-auth-section"
+              style="display: none"
+            >
+              <div
+                class="settings-section-title"
+                data-i18n="settings.protection"
+              >
+                Protection
+              </div>
+              <div class="settings-row">
+                <span class="settings-label" data-i18n="settings.requireLogin"
+                  >Require login</span
+                >
+                <button class="settings-toggle" id="toggle-auth"></button>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="settings-section-title" data-i18n="settings.agent">
+                Agent
+              </div>
+              <div class="settings-config-meta">
+                <span
+                  class="settings-label"
+                  data-i18n="settings.agentConfigFile"
+                  >Agent config file</span
+                >
+                <span
+                  class="settings-static-value"
+                  id="inline-config-path"
+                ></span>
+              </div>
+              <textarea
+                class="config-editor-textarea settings-config-textarea"
+                id="inline-config-textarea"
+                spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+              ></textarea>
+              <div class="settings-config-actions">
+                <div
+                  class="config-editor-error settings-save-status hidden"
+                  id="inline-config-error"
+                ></div>
+                <div class="settings-config-button-group">
+                  <button
+                    class="btn-primary"
+                    id="inline-config-save"
+                    data-i18n="actions.save"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div
+                class="settings-section-title"
+                data-i18n="settings.llmProviders"
+              >
+                LLM providers
+              </div>
+              <p class="settings-help">
+                <span data-i18n="settings.models.helpPre">Edit</span>
+                <code>~/.pi/agent/models.json</code>
+                <span data-i18n="settings.models.helpPost1"
+                  >to add custom providers (Ollama, vLLM, LM Studio,
+                  OpenAI-compatible proxies, OpenRouter routing overrides, etc).
+                  See the</span
+                >
+                <a
+                  href="https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/models.md"
+                  id="models-config-docs-link"
+                  data-i18n="settings.models.docsLink"
+                  >models.json docs</a
+                >
+                <span data-i18n="settings.models.helpPost2"
+                  >for the full schema. Changes are picked up immediately — no
+                  restart needed.</span
+                >
+              </p>
+              <div class="settings-config-meta">
+                <span class="settings-label" data-i18n="settings.providersFile"
+                  >Providers file</span
+                >
+                <span
+                  class="settings-static-value"
+                  id="inline-models-path"
+                ></span>
+              </div>
+              <textarea
+                class="config-editor-textarea settings-config-textarea"
+                id="inline-models-textarea"
+                spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                placeholder='{ "providers": { ... } }'
+              ></textarea>
+              <div class="settings-config-actions">
+                <div
+                  class="config-editor-error settings-save-status hidden"
+                  id="inline-models-error"
+                ></div>
+                <div class="settings-config-button-group">
+                  <button
+                    class="settings-value-btn"
+                    id="inline-models-insert-example"
+                    data-i18n="actions.insertExample"
+                  >
+                    Insert example
+                  </button>
+                  <button
+                    class="btn-primary"
+                    id="inline-models-save"
+                    data-i18n="actions.save"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <chat-settings-panel
+          class="settings-tab"
+          data-settings-panel="chat"
+        ></chat-settings-panel>
+      </section>
+    </div>
+
+    <!-- Config Editor Modal (agent configuration) -->
+    <div class="config-editor-overlay hidden" id="config-editor-overlay"></div>
+    <div class="config-editor-modal hidden" id="config-editor-modal">
+      <div class="config-editor-header">
+        <div class="config-editor-title-group">
+          <h3>Agent Configuration</h3>
+          <span class="config-editor-path" id="config-editor-path"></span>
+        </div>
+        <button
+          class="settings-close"
+          id="config-editor-close"
+          aria-label="Close"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div class="config-editor-body">
+        <textarea
+          class="ui-textarea config-editor-textarea"
+          id="config-editor-textarea"
+          spellcheck="false"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+        ></textarea>
+        <div class="config-editor-error hidden" id="config-editor-error"></div>
+      </div>
+      <div class="config-editor-footer">
+        <button class="config-editor-cancel" id="config-editor-cancel">
+          Cancel
+        </button>
+        <button
+          class="ui-button ui-button--primary btn-primary"
+          id="config-editor-save"
+        >
+          Save
+        </button>
+      </div>
+    </div>
+
+    <!-- Command Palette -->
+    <div
+      class="command-palette-overlay hidden"
+      id="command-palette-overlay"
+    ></div>
+    <div class="command-palette hidden" id="command-palette">
+      <div class="command-palette-header" data-i18n="input.commands">
+        Commands
+      </div>
+      <div class="command-list" id="command-list"></div>
+    </div>
+
+    <!-- Dialog Container -->
+    <div id="dialog-container" class="hidden"></div>
+
+    <!-- LAN QR Code Modal -->
+    <div
+      class="lan-qr-modal hidden"
+      id="lan-qr-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Mobile QR code"
+      data-i18n-aria-label="lanQr.modalAriaLabel"
+    >
+      <div class="lan-qr-modal-backdrop" id="lan-qr-modal-backdrop"></div>
+      <div class="lan-qr-modal-content">
+        <div class="lan-qr-modal-header">
+          <span class="lan-qr-modal-title" data-i18n="lanQr.title"
+            >Open on Mobile</span
+          >
+          <button
+            class="lan-qr-modal-close icon-btn"
+            id="lan-qr-modal-close"
+            aria-label="Close"
+            data-i18n-aria-label="lanQr.closeAriaLabel"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
         </div>
-        <div class="sidebar-actions">
-          <button class="icon-btn" id="open-folder-btn" title="Open folder as workspace" aria-label="Open folder" data-i18n-title="sidebar.openFolder" data-i18n-aria-label="sidebar.openFolderAria"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg></button>
-          <button class="icon-btn hidden" id="quick-chat-btn" title="Quick Chat" aria-label="Quick Chat" data-i18n-title="nav.quickChat" data-i18n-aria-label="nav.quickChat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></button>
-          <button class="icon-btn" id="refresh-sessions-btn" title="Refresh sessions" aria-label="Refresh sessions" data-i18n-title="sidebar.refreshSessions" data-i18n-aria-label="sidebar.refreshSessions"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></button>
-        </div>
-      </div>
-      <div class="session-list" id="session-list">
-        <div class="session-loading" data-i18n="sidebar.loadingSessions">Loading sessions...</div>
-      </div>
-      <div class="sidebar-footer">
-        <div class="sidebar-settings-row">
-          <button class="sidebar-settings-btn" id="settings-btn" title="Settings" aria-label="Settings" data-i18n-title="sidebar.settings" data-i18n-aria-label="sidebar.settings">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-            <span data-i18n="sidebar.settings">Settings</span>
-          </button>
-          <button class="sidebar-update-pill hidden" id="sidebar-update-btn" title="Update available" aria-label="Open updates in settings" data-i18n-title="sidebar.updateAvailable" data-i18n-aria-label="updater.openInSettings">
-            <span data-i18n="updater.update">Update</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sidebar overlay for mobile -->
-    <div class="sidebar-overlay" id="sidebar-overlay"></div>
-
-    <!-- Workspace -->
-    <div class="workspace">
-      <!-- Header -->
-      <div class="header">
-        <div class="header-left">
-          <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar" data-i18n-title="nav.toggleSidebar" data-i18n-aria-label="nav.toggleSidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
-          <button class="icon-btn lan-qr-btn hidden" id="lan-qr-btn" title="Show mobile QR code" aria-label="Show mobile QR code" data-i18n-title="nav.showMobileQR" data-i18n-aria-label="nav.showMobileQR">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-          </button>
-          <div class="status">
-            <span class="status-indicator" id="status-indicator"></span>
-            <span class="status-text" id="status-text" data-i18n="status.connecting">Connecting...</span>
+        <div class="lan-qr-modal-body">
+          <div
+            class="lan-qr-loading"
+            id="lan-qr-loading"
+            data-i18n="lanQr.generating"
+          >
+            Generating QR code…
           </div>
-        </div>
-        <div class="header-right">
-          <span class="pill session-cost" id="session-cost" title="Session cost" data-i18n-title="usage.sessionCostTitle"></span>
-          <span class="pill token-usage" id="token-usage" title="Context usage" data-i18n-title="usage.contextTitle"></span>
-         
-          <div class="context-viz hidden" id="context-viz">
-            <div class="context-viz-title" data-i18n="misc.contextWindow">Context Window</div>
-            <div class="context-bar" id="context-bar"></div>
-            <div class="context-legend" id="context-legend"></div>
-            <div class="context-viz-footer">
-              <span id="context-viz-used"></span>
-              <span id="context-viz-total"></span>
-            </div>
-            <button type="button" class="context-viz-compact" id="context-viz-compact" data-i18n="misc.compact">
-              Compact
-            </button>
+          <img
+            class="lan-qr-image hidden"
+            id="lan-qr-image"
+            alt="QR code for mobile access"
+            data-i18n-alt="lanQr.qrAlt"
+          />
+          <div class="lan-qr-hint" data-i18n="lanQr.hint">
+            Scan with your phone to open Picot on the same network
           </div>
-          <fieldset class="header-open-app hidden" id="header-open-app">
-            <button class="header-open-app-btn" id="header-open-app-btn" title="Open workspace" aria-label="Open workspace in app" data-i18n-title="nav.openWorkspace" data-i18n-aria-label="nav.openWorkspaceInApp">
-              <span class="header-open-app-logo" id="header-open-app-logo" aria-hidden="true"><img src="icons/app-cursor.svg" alt="" class="header-open-app-logo-img"></span>
-            </button>
-            <button class="header-open-app-toggle" id="header-open-app-toggle" title="Choose app" aria-label="Choose app to open workspace" data-i18n-title="nav.chooseApp" data-i18n-aria-label="nav.chooseApp">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            <div class="header-open-app-menu hidden" id="header-open-app-menu"></div>
-          </fieldset>
-          <button class="icon-btn" id="file-sidebar-toggle" title="Files" aria-label="Toggle file browser" data-i18n-title="nav.files" data-i18n-aria-label="nav.files">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
-          </button>
-          <button class="icon-btn hidden" id="side-chat-btn" title="Side Chat" aria-label="Side Chat" data-i18n-title="nav.sideChat" data-i18n-aria-label="nav.sideChat"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
-        </div>
-      </div>
-      <div class="workspace-content">
-        <!-- Main Chat Area -->
-        <div class="main">
-          <div class="quick-chat-dialog-root" id="quick-chat-dialog-root"></div>
-          <div class="quick-chat-chip-root" id="quick-chat-chip-root"></div>
-
-      <!-- Super Agent Chat Header web component (shown when SA is active) -->
-      <sa-chat-header class="super-agent-chat-header hidden" id="super-agent-chat-header"></sa-chat-header>
-
-      <!-- Messages Container -->
-      <div class="messages" id="messages">
-        <div class="welcome">
-          <div class="welcome-icon"><img src="icons/logo-dark.svg" alt="Picot logo" class="tau-icon-welcome"></div>
-        <p data-i18n="app.welcome">Welcome to Picot</p>
-        <p class="hint" data-i18n="app.welcomeHint">Type a message below to start chatting with Pi, or select a session from the sidebar.</p>
-        <div class="shortcuts-hint">
-          <span><kbd>/</kbd> <span data-i18n="shortcuts.focusInput">Focus input</span></span>
-          <span><kbd>Esc</kbd> <span data-i18n="shortcuts.abort">Abort</span></span>
-        </div>
-      </div>
-    </div>
-      <!-- Conversation navigator rail (Codex-style) -->
-      <nav class="conv-nav hidden" id="conv-nav" aria-label="Conversation navigator">
-        <div class="conv-nav-track" id="conv-nav-track"></div>
-      </nav>
-      <div class="conv-nav-tooltip hidden" id="conv-nav-tooltip" aria-hidden="true">
-        <div class="conv-nav-tooltip-q" id="conv-nav-tooltip-q"></div>
-        <div class="conv-nav-tooltip-sep" id="conv-nav-tooltip-sep"></div>
-        <div class="conv-nav-tooltip-a" id="conv-nav-tooltip-a"></div>
-      </div>
-      <!-- Legacy IDs kept as invisible references so existing JS bindings don't break -->
-      <button id="scroll-prev-btn" hidden></button>
-
-      <!-- Scroll to bottom + new message indicator -->
-      <button class="scroll-bottom-btn hidden" id="scroll-bottom-btn">
-        <span class="scroll-bottom-badge hidden" id="scroll-bottom-badge"><span data-i18n="misc.new">New</span> <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></span>
-        <span class="scroll-bottom-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></span>
-      </button>
-
-      <!-- Typing indicator (hidden, kept for JS reference) -->
-      <div class="typing-indicator hidden" id="typing-indicator"></div>
-
-      <!-- Input Area -->
-      <div class="input-area">
-        <button class="mobile-context-toggle" id="mobile-context-toggle">
-          <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 5L5 1L9 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <div class="mobile-model-bar" id="mobile-model-bar"></div>
-        <div class="queued-messages hidden" id="queued-messages"></div>
-        <form id="chat-form">
-          <div class="composer-card" id="composer-card">
-            <div class="skill-slash-menu hidden" id="skill-slash-menu"></div>
-            <div class="image-previews hidden" id="image-previews"></div>
-            <textarea
-              id="message-input"
-              placeholder="Type a message..."
-              data-i18n-ph="input.typeMessage"
-              autocomplete="off"
-              rows="2"
-            ></textarea>
-            <div class="composer-toolbar">
-              <div class="composer-toolbar-left">
-                <button type="button" class="input-icon-btn" id="attach-btn" title="Attach image" aria-label="Attach image" data-i18n-title="input.attachImage" data-i18n-aria-label="input.attachImage" tabindex="-1">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                </button>
-                <button type="button" class="input-icon-btn" id="command-btn" title="Commands" aria-label="Open commands" data-i18n-title="input.commands" data-i18n-aria-label="input.commands" tabindex="-1">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>
-                </button>
-                <input type="file" id="image-input" accept="image/*" multiple style="display:none" />
-              </div>
-              <div class="composer-toolbar-right">
-                <div class="model-dropdown" id="model-dropdown">
-                  <button type="button" class="model-dropdown-btn" id="model-dropdown-btn" title="Switch model" data-i18n-title="input.switchModel" tabindex="-1">
-                    <span class="model-dropdown-label" id="model-dropdown-label" data-i18n="misc.model">model</span>
-                    <svg class="model-dropdown-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                  </button>
-                  <div class="model-dropdown-menu hidden" id="model-dropdown-menu"></div>
-                </div>
-                <button type="button" class="thinking-tag off" id="thinking-btn" title="Thinking effort controls reasoning depth. Click to cycle." aria-label="Thinking effort: off. Click to cycle reasoning depth." data-i18n-title="settings.thinkingTitle" data-i18n-aria-label="settings.thinkingAriaLabel" tabindex="-1">Think off</button>
-                <button type="button" class="input-mic-btn" id="mic-btn" title="Voice input" data-i18n-title="voice.voiceInput" tabindex="-1">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
-                </button>
-                <button type="submit" id="send-btn" title="Send message" data-i18n-title="input.send" tabindex="-1">
-                  <span class="send-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></span>
-                </button>
-                <button type="button" id="abort-btn" class="hidden" title="Abort (Esc)" data-i18n-title="input.abort" tabindex="-1"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button>
-              </div>
-            </div>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- File Preview Panel (between chat and file tree) -->
-    <hr class="file-preview-resizer collapsed" id="file-preview-resizer" aria-orientation="vertical" tabindex="0" aria-valuenow="42" aria-valuemin="20" aria-valuemax="70">
-    <section class="file-preview-panel collapsed" id="file-preview-panel" aria-label="File preview" data-i18n-aria-label="files.preview.title">
-      <div class="file-preview-tabs-bar" id="file-preview-tabs-bar">
-        <div class="file-preview-tabs" id="file-preview-tabs"></div>
-        <div class="file-preview-panel-controls">
-          <button type="button" class="icon-btn" id="file-preview-toolbar-toggle" title="Editor controls" data-i18n-title="files.preview.showControls" aria-label="Editor controls" data-i18n-aria-label="files.preview.showControls" aria-expanded="false" aria-controls="file-preview-toolbar">
-            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="8" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="12" r="2" fill="currentColor"/><circle cx="10" cy="18" r="2" fill="currentColor"/></svg>
-          </button>
-          <button type="button" class="icon-btn" id="file-preview-open" title="Open in desktop app" data-i18n-title="files.preview.openDesktop" aria-label="Open in desktop app" data-i18n-aria-label="files.preview.openDesktop">
-            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>
-          </button>
-          <button class="icon-btn file-preview-enlarge-btn" id="file-preview-enlarge" title="Enlarge panel" data-i18n-title="files.preview.enlarge" aria-label="Enlarge panel" data-i18n-aria-label="files.preview.enlarge">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
-          </button>
-          <button class="icon-btn file-preview-collapse-btn hidden" id="file-preview-collapse" title="Collapse panel" data-i18n-title="files.preview.collapse" aria-label="Collapse panel" data-i18n-aria-label="files.preview.collapse">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>
-          </button>
-          <button class="icon-btn" id="file-preview-close" title="Close panel" data-i18n-title="files.preview.close" aria-label="Close panel" data-i18n-aria-label="files.preview.close">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-      </div>
-      <div class="file-preview-toolbar hidden" id="file-preview-toolbar" role="toolbar" aria-label="Editor controls" data-i18n-aria-label="files.preview.showControls">
-        <fieldset class="file-preview-mode" aria-label="View mode" data-i18n-aria-label="files.preview.mode">
-          <button type="button" id="file-preview-mode-preview" data-i18n="files.preview.preview">Preview</button>
-          <button type="button" id="file-preview-mode-edit" data-i18n="files.preview.edit">Edit</button>
-        </fieldset>
-        <button type="button" id="file-preview-save" title="Save" data-i18n-title="files.preview.save" aria-label="Save" data-i18n-aria-label="files.preview.save" data-i18n="files.preview.save">Save</button>
-        <button type="button" id="file-preview-reload" title="Reload from disk" data-i18n-title="files.preview.conflictReload" aria-label="Reload from disk" data-i18n-aria-label="files.preview.conflictReload" data-i18n="files.preview.conflictReload">Reload</button>
-        <button type="button" id="file-preview-search" title="Find" data-i18n-title="files.preview.find" aria-label="Find" data-i18n-aria-label="files.preview.find" data-i18n="files.preview.find">Find</button>
-        <button type="button" id="file-preview-go-to-line" title="Go to line" data-i18n-title="files.preview.goToLine" aria-label="Go to line" data-i18n-aria-label="files.preview.goToLine" data-i18n="files.preview.goToLine">Line</button>
-        <input type="text" class="file-preview-go-to-line-input hidden" id="file-preview-go-to-line-input" inputmode="numeric" autocomplete="off" placeholder="Line number" data-i18n-ph="files.preview.goToLinePrompt" aria-label="Line number" data-i18n-aria-label="files.preview.goToLinePrompt">
-        <button type="button" id="file-preview-copy" title="Copy all" data-i18n-title="files.preview.copyContent" aria-label="Copy all" data-i18n-aria-label="files.preview.copyContent" data-i18n="files.preview.copyContent">Copy</button>
-        <label class="file-preview-toolbar-check"><input type="checkbox" id="file-preview-wrap"><span data-i18n="files.preview.lineWrap">Wrap</span></label>
-        <label class="file-preview-toolbar-check"><input type="checkbox" id="file-preview-autosave"><span data-i18n="files.preview.autoSave">Auto-save</span></label>
-        <span class="file-preview-status" id="file-preview-status" aria-live="polite"></span>
-      </div>
-      <div class="file-preview-content" id="file-preview-content"></div>
-    </section>
-
-    <!-- Super Agent Runtime Panel (right column, shown when SA active) -->
-    <super-agent-runtime class="super-agent-runtime app-side-panel" id="super-agent-runtime"></super-agent-runtime>
-
-    <!-- File Browser (right sidebar) -->
-    <div class="file-sidebar collapsed" id="file-sidebar">
-      <div class="file-sidebar-header">
-        <span class="file-sidebar-title" id="file-sidebar-title" data-i18n="files.title">Files</span>
-        <button class="icon-btn" id="file-sidebar-up" title="Parent directory" data-i18n-title="files.parentDirectory">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
-        </button>
-        <button class="icon-btn" id="file-sidebar-finder" title="Open in file manager" data-i18n-title="files.openInFileManager">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
-        </button>
-        <button class="icon-btn" id="file-sidebar-close" title="Close" aria-label="Close file browser" data-i18n-title="files.close" data-i18n-aria-label="files.close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-      </div>
-      <div class="file-sidebar-path" id="file-sidebar-path" title=""></div>
-      <div class="file-list" id="file-list"></div>
-    </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="settings-overlay hidden" id="settings-overlay"></div>
-
-  <div class="settings-panel hidden" id="settings-panel">
-    <aside class="settings-nav">
-      <div class="settings-nav-title" data-i18n="settings.title">Settings</div>
-      <button class="settings-nav-item active" data-settings-tab="general" data-i18n="settings.general">General</button>
-      <button class="settings-nav-item" data-settings-tab="extensions" data-i18n="settings.extensions">Extensions</button>
-      <button class="settings-nav-item" data-settings-tab="usage" data-i18n="settings.usage">Usage</button>
-      <button class="settings-nav-item" data-settings-tab="configuration" data-i18n="settings.configuration">Configuration</button>
-      <button class="settings-nav-back" id="settings-close"><span class="settings-nav-back-icon">‹</span> <span data-i18n="settings.backToChat">Back to chat</span></button>
-    </aside>
-    <section class="settings-content">
-      <div class="settings-tab active" data-settings-panel="general">
-        <div class="settings-header">
-          <h3 data-i18n="settings.general">General</h3>
-        </div>
-        <div class="settings-body">
-          <div class="settings-section">
-            <div class="settings-section-title" data-i18n="settings.appearance">Appearance</div>
-            <div class="theme-grid" id="theme-grid"></div>
-          </div>
-          <div class="settings-section">
-            <div class="settings-section-title" data-i18n="settings.language.title">Language</div>
-            <p class="settings-help" data-i18n="settings.language.description">Choose the interface language. System Default follows your operating system.</p>
-            <div class="theme-grid" id="settings-language-options"></div>
-          </div>
-          <div class="settings-section">
-            <div class="settings-section-title" data-i18n="settings.agent">Agent</div>
-            <div class="settings-row" id="setting-auto-compact">
-              <span class="settings-label" data-i18n="settings.autoCompaction">Auto-compaction</span>
-              <button class="settings-toggle" id="toggle-auto-compact"></button>
-            </div>
-            <div class="settings-row" id="setting-thinking">
-              <span class="settings-label settings-label-stack">
-                <span class="settings-label-main" data-i18n="settings.thinkingEffort">Thinking effort</span>
-                <span class="settings-label-sub" data-i18n="settings.reasoningDepth">Reasoning depth</span>
-              </span>
-              <button class="settings-value-btn" id="btn-thinking-level" title="Click to cycle: off, minimal, low, medium, high" data-i18n-title="settings.thinkingCycleTitle">Thinking: off</button>
-            </div>
-            <div class="settings-row">
-              <span class="settings-label" data-i18n="settings.showThinking">Show thinking</span>
-              <button class="settings-toggle on" id="toggle-show-thinking"></button>
-            </div>
-          </div>
-          <div class="settings-section" id="setting-updater-section">
-            <div class="settings-section-title" data-i18n="settings.updates">Updates</div>
-            <div class="settings-row" id="setting-pi-version">
-              <span class="settings-label" data-i18n="settings.piVersion">Pi version</span>
-              <span class="settings-static-value" id="setting-pi-version-value" data-i18n="status.loading">Loading...</span>
-            </div>
-            <div class="settings-row">
-              <span class="settings-label" data-i18n="settings.picotVersion">Picot version</span>
-              <span class="settings-static-value" id="setting-app-version-value" data-i18n="status.loading">Loading...</span>
-            </div>
-            <div class="settings-row">
-              <span class="settings-label" data-i18n="settings.checkForUpdates">Check for updates</span>
-              <button class="settings-value-btn" id="btn-check-updates" data-i18n="updater.checkNow">Check now</button>
-            </div>
-            <div class="settings-row" id="setting-update-status-row" hidden>
-              <span class="settings-label" data-i18n="settings.status">Status</span>
-              <span class="settings-static-value" id="setting-update-status"></span>
-            </div>
-            <div class="settings-row" id="setting-update-install-row" hidden>
-              <span class="settings-label" id="setting-update-install-label" data-i18n="settings.updateAvailable">Update available</span>
-              <button class="settings-value-btn" id="btn-install-update" data-i18n="updater.downloadInstall">Download &amp; install</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="settings-tab" data-settings-panel="extensions">
-        <div class="settings-header"><h3 data-i18n="settings.extensions">Extensions</h3></div>
-        <div class="settings-body">
-          <div class="settings-section">
-            <div class="settings-section-title" data-i18n="settings.browseCommunityPackages">Browse Community Packages</div>
-            <p class="settings-help" data-i18n="settings.browseHelp">
-              Discover extensions, skills, themes, and prompts from the Pi ecosystem. Install with one click.
-            </p>
-            <div class="pkg-browse-filters">
-              <input
-                type="text"
-                id="pkg-browse-search"
-                class="pkg-browse-search"
-                placeholder="Search packages..."
-                data-i18n-ph="extensions.searchPackages"
-                autocomplete="off"
-                spellcheck="false"
+          <button
+            class="lan-qr-open-link hidden"
+            id="lan-qr-open-link"
+            type="button"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
               />
-              <div class="pkg-browse-pills" id="pkg-browse-pills">
-                <button type="button" class="pkg-browse-pill active" data-pkg-type="all" data-i18n="extensions.all">All</button>
-                <button type="button" class="pkg-browse-pill" data-pkg-type="extension" data-i18n="extensions.extensions">Extensions</button>
-                <button type="button" class="pkg-browse-pill" data-pkg-type="skill" data-i18n="extensions.skills">Skills</button>
-                <button type="button" class="pkg-browse-pill" data-pkg-type="theme" data-i18n="extensions.themes">Themes</button>
-                <button type="button" class="pkg-browse-pill" data-pkg-type="prompt" data-i18n="extensions.prompts">Prompts</button>
-              </div>
-              <label class="pkg-browse-installed-toggle">
-                <input type="checkbox" id="pkg-browse-installed-only" />
-                <span data-i18n="extensions.installedOnly">Installed only</span>
-              </label>
-              <select id="pkg-browse-sort" class="pkg-browse-sort" data-i18n-aria-label="extensions.sortPackages" aria-label="Sort packages">
-                <option value="downloads" data-i18n="extensions.mostDownloads">Most downloads</option>
-                <option value="name" data-i18n="extensions.nameAZ">Name (A–Z)</option>
-                <option value="updated" data-i18n="extensions.recentlyUpdated">Recently updated</option>
-              </select>
-              <span class="pkg-browse-count" id="pkg-browse-count"></span>
-            </div>
-            <div class="settings-extension-list pkg-browse-list" id="pkg-browse-list"></div>
-            <div class="pkg-browse-pagination" id="pkg-browse-pagination" hidden></div>
-          </div>
+              <polyline points="15 3 21 3 21 9" />
+              <line x1="10" y1="14" x2="21" y2="3" />
+            </svg>
+            <span data-i18n="actions.openLink">Open Link</span>
+          </button>
         </div>
       </div>
-
-      <div class="settings-tab" data-settings-panel="usage">
-        <div class="settings-header"><h3 data-i18n="settings.usage">Usage</h3></div>
-        <div class="settings-usage-embed">
-          <iframe src="/cost" data-i18n-title="settings.costDashboard" title="Cost Dashboard" class="settings-usage-iframe" scrolling="yes"></iframe>
-        </div>
-      </div>
-
-      <div class="settings-tab" data-settings-panel="configuration">
-        <div class="settings-header"><h3 data-i18n="settings.configuration">Configuration</h3></div>
-        <div class="settings-body">
-          <div class="settings-section">
-            <div class="settings-section-title" data-i18n="settings.authentication">Authentication</div>
-            <p class="settings-help">
-              <span data-i18n="settings.auth.helpPre">Keys are stored locally in</span> <code>~/.pi/agent/auth.json</code> <span data-i18n="settings.auth.helpPost">(chmod 600). Picot launched from Finder does not read shell environment variables, so set keys here for them to stick across launches.</span>
-            </p>
-            <div class="settings-api-keys" id="settings-api-keys">
-              <div class="settings-api-keys-loading" data-i18n="settings.loadingProviders">Loading providers…</div>
-            </div>
-          </div>
-          <div class="settings-section" id="settings-auth-section" style="display:none">
-            <div class="settings-section-title" data-i18n="settings.protection">Protection</div>
-            <div class="settings-row">
-              <span class="settings-label" data-i18n="settings.requireLogin">Require login</span>
-              <button class="settings-toggle" id="toggle-auth"></button>
-            </div>
-          </div>
-
-          <div class="settings-section">
-            <div class="settings-section-title" data-i18n="settings.agent">Agent</div>
-            <div class="settings-config-meta">
-              <span class="settings-label" data-i18n="settings.agentConfigFile">Agent config file</span>
-              <span class="settings-static-value" id="inline-config-path"></span>
-            </div>
-            <textarea class="config-editor-textarea settings-config-textarea" id="inline-config-textarea" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
-            <div class="settings-config-actions">
-              <div class="config-editor-error settings-save-status hidden" id="inline-config-error"></div>
-              <div class="settings-config-button-group">
-                <button class="btn-primary" id="inline-config-save" data-i18n="actions.save">Save</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="settings-section">
-            <div class="settings-section-title" data-i18n="settings.llmProviders">LLM providers</div>
-            <p class="settings-help">
-              <span data-i18n="settings.models.helpPre">Edit</span> <code>~/.pi/agent/models.json</code> <span data-i18n="settings.models.helpPost1">to add custom providers (Ollama, vLLM, LM Studio, OpenAI-compatible proxies, OpenRouter routing overrides, etc). See the</span>
-              <a href="https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/models.md" id="models-config-docs-link" data-i18n="settings.models.docsLink">models.json docs</a>
-              <span data-i18n="settings.models.helpPost2">for the full schema. Changes are picked up immediately — no restart needed.</span>
-            </p>
-            <div class="settings-config-meta">
-              <span class="settings-label" data-i18n="settings.providersFile">Providers file</span>
-              <span class="settings-static-value" id="inline-models-path"></span>
-            </div>
-            <textarea class="config-editor-textarea settings-config-textarea" id="inline-models-textarea" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" placeholder='{ "providers": { ... } }'></textarea>
-            <div class="settings-config-actions">
-              <div class="config-editor-error settings-save-status hidden" id="inline-models-error"></div>
-              <div class="settings-config-button-group">
-                <button class="settings-value-btn" id="inline-models-insert-example" data-i18n="actions.insertExample">Insert example</button>
-                <button class="btn-primary" id="inline-models-save" data-i18n="actions.save">Save</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  </div>
-
-
-  <!-- Config Editor Modal (agent configuration) -->
-  <div class="config-editor-modal hidden" id="config-editor-modal">
-    <div class="config-editor-header">
-      <div class="config-editor-title-group">
-        <h3>Agent Configuration</h3>
-        <span class="config-editor-path" id="config-editor-path"></span>
-      </div>
-      <button class="settings-close" id="config-editor-close" aria-label="Close">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
     </div>
-    <div class="config-editor-body">
-      <textarea class="ui-textarea config-editor-textarea" id="config-editor-textarea" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
-      <div class="config-editor-error hidden" id="config-editor-error"></div>
-    </div>
-    <div class="config-editor-footer">
-      <button class="config-editor-cancel" id="config-editor-cancel">Cancel</button>
-      <button class="ui-button ui-button--primary btn-primary" id="config-editor-save">Save</button>
-    </div>
-  </div>
 
-  <!-- Command Palette -->
-  <div class="command-palette-overlay hidden" id="command-palette-overlay"></div>
-  <div class="command-palette hidden" id="command-palette">
-    <div class="command-palette-header" data-i18n="input.commands">Commands</div>
-    <div class="command-list" id="command-list"></div>
-  </div>
-
-  <!-- Dialog Container -->
-  <div id="dialog-container" class="hidden"></div>
-
-  <!-- LAN QR Code Modal -->
-  <div class="lan-qr-modal hidden" id="lan-qr-modal" role="dialog" aria-modal="true" aria-label="Mobile QR code" data-i18n-aria-label="lanQr.modalAriaLabel">
-    <div class="lan-qr-modal-backdrop" id="lan-qr-modal-backdrop"></div>
-    <div class="lan-qr-modal-content">
-      <div class="lan-qr-modal-header">
-        <span class="lan-qr-modal-title" data-i18n="lanQr.title">Open on Mobile</span>
-        <button class="lan-qr-modal-close icon-btn" id="lan-qr-modal-close" aria-label="Close" data-i18n-aria-label="lanQr.closeAriaLabel">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="lan-qr-modal-body">
-        <div class="lan-qr-loading" id="lan-qr-loading" data-i18n="lanQr.generating">Generating QR code…</div>
-        <img class="lan-qr-image hidden" id="lan-qr-image" alt="QR code for mobile access" data-i18n-alt="lanQr.qrAlt">
-        <div class="lan-qr-hint" data-i18n="lanQr.hint">Scan with your phone to open Picot on the same network</div>
-        <button class="lan-qr-open-link hidden" id="lan-qr-open-link" type="button">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-          <span data-i18n="actions.openLink">Open Link</span>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Scripts -->
-  <!-- Import map: redirects @codemirror/* and pdfjs-dist specifiers to
+    <!-- Scripts -->
+    <!-- Import map: redirects @codemirror/* and pdfjs-dist specifiers to
        same-origin ESM vendor bundles produced by scripts/build-frontend.js.
        Vitest ignores this map and resolves from node_modules directly. -->
-  <script type="importmap">
-    {
-      "imports": {
-        "@codemirror/state": "./vendor/codemirror.js",
-        "@codemirror/view": "./vendor/codemirror.js",
-        "@codemirror/commands": "./vendor/codemirror.js",
-        "@codemirror/language": "./vendor/codemirror.js",
-        "@codemirror/search": "./vendor/codemirror.js",
-        "@codemirror/lang-javascript": "./vendor/codemirror.js",
-        "@codemirror/lang-json": "./vendor/codemirror.js",
-        "@codemirror/lang-markdown": "./vendor/codemirror.js",
-        "@codemirror/lang-python": "./vendor/codemirror.js",
-        "@codemirror/lang-yaml": "./vendor/codemirror.js",
-        "@codemirror/lang-css": "./vendor/codemirror.js",
-        "@codemirror/lang-html": "./vendor/codemirror.js",
-        "@codemirror/legacy-modes/mode/r": "./vendor/codemirror.js",
-        "@codemirror/legacy-modes/mode/shell": "./vendor/codemirror.js",
-        "pdfjs-dist/legacy/build/pdf.mjs": "./vendor/pdf.js"
+    <script type="importmap">
+      {
+        "imports": {
+          "@codemirror/state": "./vendor/codemirror.js",
+          "@codemirror/view": "./vendor/codemirror.js",
+          "@codemirror/commands": "./vendor/codemirror.js",
+          "@codemirror/language": "./vendor/codemirror.js",
+          "@codemirror/search": "./vendor/codemirror.js",
+          "@codemirror/lang-javascript": "./vendor/codemirror.js",
+          "@codemirror/lang-json": "./vendor/codemirror.js",
+          "@codemirror/lang-markdown": "./vendor/codemirror.js",
+          "@codemirror/lang-python": "./vendor/codemirror.js",
+          "@codemirror/lang-yaml": "./vendor/codemirror.js",
+          "@codemirror/lang-css": "./vendor/codemirror.js",
+          "@codemirror/lang-html": "./vendor/codemirror.js",
+          "@codemirror/legacy-modes/mode/r": "./vendor/codemirror.js",
+          "@codemirror/legacy-modes/mode/shell": "./vendor/codemirror.js",
+          "pdfjs-dist/legacy/build/pdf.mjs": "./vendor/pdf.js"
+        }
       }
-    }
-  </script>
-  <script type="module" src="bootstrap-entry.js"></script>
-  <script type="module" src="components/super-agent-entry.js"></script>
-  <script type="module" src="components/super-agent-runtime.js"></script>
-  <script type="module" src="components/sa-chat-header.js"></script>
-  <script type="module" src="components/chat-settings-panel.js"></script>
-  <script type="module" src="super-agent/panel.js"></script>
-</body>
+    </script>
+    <script type="module" src="bootstrap-entry.js"></script>
+    <script type="module" src="components/super-agent-entry.js"></script>
+    <script type="module" src="components/super-agent-runtime.js"></script>
+    <script type="module" src="components/sa-chat-header.js"></script>
+    <script type="module" src="components/chat-settings-panel.js"></script>
+    <script type="module" src="super-agent/panel.js"></script>
+  </body>
 </html>

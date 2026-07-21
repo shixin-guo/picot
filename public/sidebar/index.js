@@ -13,6 +13,8 @@ import {
   writeRecentSessions,
 } from "../recent-sessions.js";
 import { buildSidebarSection, buildSidebarWorkspaceGroup } from "../sidebar-workspace-group.js";
+import { getSuperAgentProject, isSuperAgentProjectPath } from "../super-agent/session.js";
+import { isSuperAgentEnabled } from "../super-agent/settings.js";
 import { mergeWorkspaceProjects, resolvePinnedWorkspaceGroups } from "../workspace-projects.js";
 import { WorkspaceQuickInfo } from "../workspace-quick-info.js";
 
@@ -85,6 +87,7 @@ export class SessionSidebar {
     this.onSessionSelect = onSessionSelect;
     this.onNewChat = onNewChat;
     this.onOpenProject = options.onOpenProject || null;
+    this.superAgentPath = options.superAgentPath || "";
     this.activeSessionFile = null;
     this.projects = [];
     this.collapsedProjects = new Set();
@@ -818,6 +821,43 @@ export class SessionSidebar {
     return item;
   }
 
+  /**
+   * Pins the latest Super Agent session at the top of the sidebar as the
+   * "Agent Inbox" entry. Only the most recent session is shown; the rest of
+   * the Super Agent project's history stays out of the regular project list.
+   */
+  buildPinnedSuperAgentGroup(pinned) {
+    if (!pinned) return null;
+
+    const group = document.createElement("div");
+    group.className = "super-agent-pinned-group";
+    group.dataset.projectSearchText = this.getProjectSearchText(pinned.project);
+
+    const header = document.createElement("div");
+    header.className = "project-header super-agent-pinned-header";
+    const star = document.createElement("span");
+    star.className = "fav-star";
+    star.textContent = "★";
+    const title = document.createElement("span");
+    title.textContent = "Agent Inbox";
+    const count = document.createElement("span");
+    count.className = "project-count";
+    count.textContent = "Pinned";
+    header.append(star, title, count);
+    group.appendChild(header);
+
+    const sessionsDiv = document.createElement("div");
+    sessionsDiv.className = "project-sessions";
+    sessionsDiv.appendChild(
+      this.buildSessionItem(pinned.session, pinned.project, {
+        showArchiveButton: false,
+      }),
+    );
+    group.appendChild(sessionsDiv);
+
+    return group;
+  }
+
   getProjectVisibilityKey(project) {
     return project?.path || project?.dirName || "";
   }
@@ -958,13 +998,25 @@ export class SessionSidebar {
   render({ preserveQuickInfo = false } = {}) {
     const recentSessions = this.resolveRecentSessions();
 
+    const pinnedSuperAgent = isSuperAgentEnabled()
+      ? getSuperAgentProject(this.projects, this.superAgentPath)
+      : null;
+    const pinnedSessionFile = pinnedSuperAgent?.session?.filePath || null;
+
     this.container.replaceChildren();
     this.quickInfo.clearHeaders({ preserveCard: preserveQuickInfo });
     this.quickInfo.setWorkspaces(this.projects);
 
+    const pinnedSuperAgentGroup = this.buildPinnedSuperAgentGroup(pinnedSuperAgent);
+    if (pinnedSuperAgentGroup) {
+      this.container.appendChild(pinnedSuperAgentGroup);
+    }
+
     const archivedSessions = [];
     for (const project of this.projects) {
+      const isSuperAgentProject = isSuperAgentProjectPath(project.path, this.superAgentPath);
       for (const session of project.sessions || []) {
+        if (session.filePath === pinnedSessionFile || isSuperAgentProject) continue;
         if (this.isArchived(session.filePath)) archivedSessions.push({ session, project });
       }
     }
@@ -1017,8 +1069,9 @@ export class SessionSidebar {
     });
     projectsSection.className = `projects-group ${projectsSection.className}`;
     for (const project of this.projects) {
+      if (isSuperAgentProjectPath(project.path, this.superAgentPath)) continue;
       const visibleSessions = (project.sessions || []).filter(
-        (session) => !this.isArchived(session.filePath),
+        (session) => session.filePath !== pinnedSessionFile && !this.isArchived(session.filePath),
       );
       const visibleCount = this.getProjectVisibleSessionCount(project, visibleSessions.length);
       const sessionsToRender = this.searchQuery
@@ -1119,9 +1172,13 @@ export class SessionSidebar {
       this.container.appendChild(archivedGroup);
     }
 
+    const nonSuperAgentProjects = this.projects.filter(
+      (project) => !isSuperAgentProjectPath(project.path, this.superAgentPath),
+    );
     const pinState = this.pinStore.getRenderableState();
     if (
-      this.projects.length === 0 &&
+      !pinnedSuperAgent &&
+      nonSuperAgentProjects.length === 0 &&
       recentSessions.length === 0 &&
       archivedSessions.length === 0 &&
       pinState.workspaces.length === 0 &&

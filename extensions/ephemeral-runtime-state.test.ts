@@ -4,7 +4,7 @@
 // ABOUTME: message/tool streaming, snapshot watermarking, and no persistence.
 
 import { describe, expect, it } from "vitest";
-import { parseEphemeralEnv } from "./embedded-server.ts";
+import { parseEphemeralEnv } from "./ephemeral-env.ts";
 import { EphemeralRuntimeState } from "./ephemeral-runtime-state.ts";
 
 function makeState() {
@@ -35,7 +35,10 @@ function thinkingDelta(delta: string) {
   };
 }
 
-function assistantEnd(usage = null, stopReason = "stop") {
+function assistantEnd(
+  usage: { cost?: { total: number }; input?: number; output?: number } | null = null,
+  stopReason = "stop",
+) {
   return {
     type: "message_end",
     message: { role: "assistant", content: "final", usage, stopReason },

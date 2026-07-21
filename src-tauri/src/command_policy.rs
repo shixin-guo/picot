@@ -119,7 +119,7 @@ mod tests {
         let raw = include_str!("../../protocol/picot-core-commands.json");
         let manifest: Manifest = serde_json::from_str(raw).expect("manifest parses");
         assert_eq!(manifest.version, 1);
-        // 25 handleCommand cases plus the two predeclared ephemeral commands.
-        assert_eq!(manifest.commands.len(), 27);
+        // 30 handleCommand cases plus the two predeclared ephemeral commands.
+        assert_eq!(manifest.commands.len(), 32);
     }
 }

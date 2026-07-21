@@ -355,7 +355,7 @@ describe("startNewProjectChat parallel-spawn", () => {
 });
 
 describe("renderError i18n safety", () => {
-  const sourcePath = join(process.cwd(), "public/workspace-actions.js");
+  const sourcePath = join(process.cwd(), "public/workspace/actions.js");
 
   it("has no renderError template literals with raw English text", () => {
     const src = readFileSync(sourcePath, "utf8");

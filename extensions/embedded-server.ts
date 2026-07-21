@@ -52,6 +52,7 @@ import {
   buildEmptyCostDashboardPayload,
   type CostSession,
 } from "./cost-dashboard-data.ts";
+import { parseEphemeralEnv } from "./ephemeral-env.ts";
 import { EphemeralRuntimeState } from "./ephemeral-runtime-state.ts";
 import {
   classifyFile,
@@ -240,23 +241,6 @@ const BIND_HOST = LAN_BIND_HOST;
 const EMBEDDED_PI_VERSION = process.env.PI_STUDIO_PI_VERSION || "";
 
 const STATIC_DIR = process.env.PI_STUDIO_STATIC_DIR || findPublicDir();
-
-export type EphemeralEnv = {
-  kind: "side-chat" | "quick-chat";
-  instanceId: string;
-  generation: number;
-};
-
-/** Parse the trusted host-injected ephemeral markers. Absent or partial → null. */
-export function parseEphemeralEnv(env: NodeJS.ProcessEnv = process.env): EphemeralEnv | null {
-  const kind = env.PI_STUDIO_EPHEMERAL_KIND;
-  if (kind !== "side-chat" && kind !== "quick-chat") return null;
-  const instanceId = env.PI_STUDIO_EPHEMERAL_INSTANCE_ID || "";
-  const generation = Number.parseInt(env.PI_STUDIO_EPHEMERAL_GENERATION || "0", 10) || 0;
-  if (!instanceId) return null;
-  return { kind, instanceId, generation };
-}
-
 const EPHEMERAL_ENV = parseEphemeralEnv();
 
 function findPublicDir(): string {

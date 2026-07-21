@@ -334,8 +334,11 @@ export class MessageRenderer {
       this._setupCodeCopyButtons(contentDiv);
     }
 
-    // Add copy button after streaming finishes
-    if (!messageElement.querySelector(".message-copy-btn")) {
+    // Add copy button only when there is visible (non-thinking) text to copy.
+    if (
+      this._copyableText(messageElement).trim() &&
+      !messageElement.querySelector(".message-copy-btn")
+    ) {
       const btn = document.createElement("button");
       btn.className = "message-copy-btn";
       btn.setAttribute("aria-label", t("messages.copyMessage"));
@@ -374,13 +377,26 @@ export class MessageRenderer {
     this.scrollToBottom();
   }
 
+  /**
+   * Returns the user-visible text of a message, excluding private thinking
+   * blocks so copying an assistant message keeps only the answer.
+   */
+  _copyableText(messageEl) {
+    const content = messageEl.querySelector(".message-content");
+    if (!content) return "";
+    const clone = content.cloneNode(true);
+    clone.querySelectorAll(".thinking-block, .streaming-thinking").forEach((el) => {
+      el.remove();
+    });
+    return clone.textContent || "";
+  }
+
   _setupCopyBtn(messageEl) {
     const btn = messageEl.querySelector(".message-copy-btn");
     if (!btn) return;
     btn.addEventListener("click", () => {
-      const content = messageEl.querySelector(".message-content");
-      if (!content) return;
-      const text = content.textContent;
+      const text = this._copyableText(messageEl);
+      if (!text) return;
       // Fallback for non-HTTPS (LAN access)
       const copyText = (t) => {
         if (navigator.clipboard) return navigator.clipboard.writeText(t);

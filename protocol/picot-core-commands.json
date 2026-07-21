@@ -26,6 +26,11 @@
     "mirror_sync_request": "allowed",
     "get_auth": "allowed",
     "set_auth": "desktopOwnerOnly",
+    "list_skills": "allowed",
+    "get_fork_messages": "deniedSessionLifecycle",
+    "list_model_catalog": "allowed",
+    "set_model_visibility": "allowed",
+    "check_model_health": "allowed",
     "ephemeral_snapshot_request": "allowed",
     "extension_ui_response": "allowed"
   }

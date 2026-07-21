@@ -1,5 +1,28 @@
-import { describe, expect, test, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { initI18n } from "../i18n.js";
 import { createAppUpdater } from "./updater.js";
+
+const enMessages = JSON.parse(readFileSync(join(process.cwd(), "public/locales/en.json"), "utf8"));
+
+beforeEach(async () => {
+  vi.unstubAllGlobals();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input) => {
+      if (String(input).includes("/locales/en.json")) {
+        return { ok: true, status: 200, json: async () => enMessages };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    }),
+  );
+  await initI18n();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function createUpdaterHarness({ checkForUpdate } = {}) {
   document.body.innerHTML = `

@@ -47,8 +47,9 @@ describe("thinking effort cycle controls", () => {
 
   test("sets the thinking level when a dot is clicked and moves the thumb", async () => {
     const html = readFileSync(join(process.cwd(), "public/index.html"), "utf8");
-    const dom = new JSDOM(html);
+    const dom = new JSDOM(html, { url: "http://localhost" });
     const { document } = dom.window;
+    vi.stubGlobal("localStorage", dom.window.localStorage);
     const track = document.querySelector("#thinking-effort-steps");
     const thumb = document.querySelector("#thinking-effort-marker");
     const rpcCommand = vi.fn().mockResolvedValue({ success: true });
