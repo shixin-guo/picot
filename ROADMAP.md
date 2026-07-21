@@ -101,3 +101,10 @@ Embedded terminal panel (xterm.js) showing real-time bash output from Pi's tool 
 
 ### memoryd Dashboard
 Standalone viewer for memoryd memory files. Was previously built into Pi Studio, stripped out to keep the core lean. The viewer code is saved at `~/Desktop/memoryd-viewer/`. Now being integrated into the native macOS memoryd menu bar app.
+
+---
+
+## 🧊 Deferred (Considered, Not Now)
+
+### Session Name Display & Rename in Sidebar
+Investigated showing user-defined session names (set via pi's `/resume`) in the sidebar and adding a rename action. The display path is already wired end-to-end, but `parseSessionFile`'s 50-line early-exit skips the `session_info` entry (always appended at the file tail), so renamed names never surface; and the frontend `startRename` is dead code with no menu entry, while the backend `set_session_name` RPC can only rename the *currently active* session, not arbitrary ones. Fixes are isolated but span frontend + embedded-server (+ possibly pi), and the payoff is small while `firstMessage` titles remain usable. Full findings + fix options in [`docs/session-naming.md`](docs/session-naming.md).
