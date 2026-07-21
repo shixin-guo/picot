@@ -4,14 +4,11 @@
 
 A local desktop GUI for the [Pi](https://github.com/badlogic/pi-mono) coding agent. No cloud, no account — runs entirely on your machine.
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![Latest release](https://img.shields.io/github/v/release/shixin-guo/picot?include_prereleases&label=release)](https://github.com/shixin-guo/picot/releases)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)](#install)
 
 Picot ships a known-good build of the `pi` runtime **inside the .app bundle**, so there's no separate `pi` install to manage, no PATH shenanigans, and no version drift between Picot and the agent it talks to.
 
 <p align="center">
-  <img width="1200" alt="Picot hero" src="docs/images/hero.webp" />
+  <img width="1200" alt="Picot hero" src="https://github.com/user-attachments/assets/27d1b71e-77e8-420c-84ab-5e56eb48335a" />
 </p>
 
 
@@ -20,63 +17,31 @@ Picot ships a known-good build of the `pi` runtime **inside the .app bundle**, s
 
 ## Install
 
-You **do not** need to install the `pi` CLI separately — Picot bundles its own pi runtime.
-
-### One-liner install (recommended)
-
-**macOS / Linux:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/shixin-guo/picot/main/scripts/install.sh | bash
-```
-
-**Windows (PowerShell):**
-```powershell
-irm https://raw.githubusercontent.com/shixin-guo/picot/main/scripts/install.ps1 | iex
-```
-
-The script auto-detects your OS and architecture, downloads the right package, installs it, and on macOS automatically clears the Gatekeeper quarantine bit — so the app opens directly without any "Open Anyway" prompt.
-
-To install a specific version:
-```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/shixin-guo/picot/main/scripts/install.sh | bash -s -- --version v0.3.0
-
-# Windows — enterprise MSI deployment
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/shixin-guo/picot/main/scripts/install.ps1'))) -Version v0.3.0 -MSI
-```
-
-### Manual download
-
 [Download from GitHub Releases](https://github.com/shixin-guo/picot/releases)
 
-| Platform | File |
-|----------|------|
-| macOS Apple Silicon | `Picot_*_aarch64.dmg` |
-| macOS Intel | `Picot_*_x64.dmg` |
-| Linux x86\_64 (Debian/Ubuntu) | `Picot_*_amd64.deb` |
-| Linux arm64 (Debian/Ubuntu) | `Picot_*_arm64.deb` |
-| Linux x86\_64 (RHEL/Fedora) | `Picot-*-1.x86_64.rpm` |
-| Linux arm64 (RHEL/Fedora) | `Picot-*-1.aarch64.rpm` |
-| Windows x64 | `Picot_*_x64-setup.exe` |
-| Windows arm64 | `Picot_*_arm64-setup.exe` |
+You **do not** need to install the `pi` CLI separately — Picot bundles its own pi runtime.
 
 ### macOS unsigned release notice
 
-Picot currently ships macOS builds without Apple Developer ID signing/notarization.
-The one-liner install script handles this automatically. If you install manually:
+Picot currently ships macOS builds without Apple Developer ID signing/notarization. Expected Gatekeeper behavior:
+
+`"Picot" cannot be opened because the developer cannot be verified.`
+
+**To allow it:**
 
 1. Drag `Picot.app` into `/Applications`
 2. Right-click → **Open**
 3. If blocked: **System Settings → Privacy & Security → Open Anyway**
 
+
 <p align="center">
-  <img width="420" alt="macOS Gatekeeper warning" src="docs/images/gatekeeper-warning.webp" />
+  <img width="420" alt="macOS Gatekeeper warning" src="https://github.com/user-attachments/assets/02e9cb30-9314-4c47-bc61-87d9f37b6848" />
 </p>
 
 Then click **Done**:
 
 <p align="center">
-  <img width="960" alt="Allow app in macOS security settings" src="docs/images/gatekeeper-allow.webp" />
+  <img width="960" alt="Allow app in macOS security settings" src="https://github.com/user-attachments/assets/42ada9ae-b43d-47f1-bf38-ea38c34beb4f" />
 </p>
 
 ---
@@ -92,7 +57,7 @@ Picot gives you a full visual interface for Pi. Open any project folder, start c
 ### 📸 UI Preview
 
 <p align="center">
-  <img width="1200" alt="Picot workspace and project UI" src="docs/images/workspace.webp" />
+  <img width="1200" alt="Picot workspace and project UI" src="https://github.com/user-attachments/assets/ffde7b7a-1eb9-4da7-8916-e06b612aaea1" />
 </p>
 
 ### 💬 Chat
@@ -131,10 +96,10 @@ Picot gives you a full visual interface for Pi. Open any project folder, start c
 
 ### 📱 Mobile & LAN Access
 <p align="center">
-  <img width="900" alt="LAN and mobile access panel" src="docs/images/lan-mobile-panel.webp" />
+  <img width="900" alt="LAN and mobile access panel" src="https://github.com/user-attachments/assets/f50ce09d-1ba7-4a67-93dd-f8ff1bc2631f" />
 </p>
 <p align="center">
-  <img width="360" alt="Picot on mobile" src="docs/images/mobile.webp" />
+  <img width="360" alt="Picot on mobile" src="https://github.com/user-attachments/assets/d1975347-a3d9-49fd-9d66-94942016ed19" />
 </p>
 
 
@@ -143,7 +108,7 @@ Picot gives you a full visual interface for Pi. Open any project folder, start c
 
 ### 📦 Package Manager
 <p align="center">
-  <img width="1200" alt="Built-in package manager UI" src="docs/images/package-manager.webp" />
+  <img width="1200" alt="Built-in package manager UI" src="https://github.com/user-attachments/assets/e7e3a100-16db-4b63-b257-801b7f6b5e00" />
 </p>
 
 
@@ -153,10 +118,10 @@ Picot gives you a full visual interface for Pi. Open any project folder, start c
 ### 💰 Cost & Usage Dashboard
 
 <p align="center">
-  <img width="1200" alt="Cost dashboard overview" src="docs/images/cost-dashboard.webp" />
+  <img width="1200" alt="Cost dashboard overview" src="https://github.com/user-attachments/assets/1c381a9f-c587-406f-8f62-f3f029aa5c3e" />
 </p>
 <p align="center">
-  <img width="1200" alt="Per-model and trend breakdown" src="docs/images/cost-breakdown.webp" />
+  <img width="1200" alt="Per-model and trend breakdown" src="https://github.com/user-attachments/assets/d9f07d41-d38a-454d-a46a-1ab8ed34c19b" />
 </p>
 
 
@@ -188,7 +153,7 @@ Picot gives you a full visual interface for Pi. Open any project folder, start c
 
 ### ⚙️ Settings & Control
 <p align="center">
-  <img width="1200" alt="Settings and controls" src="docs/images/settings.webp" />
+  <img width="1200" alt="Settings and controls" src="https://github.com/user-attachments/assets/44f884de-f2d1-45af-8a13-9b8d01d227a5" />
 </p>
 
 

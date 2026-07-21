@@ -4,77 +4,41 @@
 
 本地桌面 GUI，专为 [Pi](https://github.com/badlogic/pi-mono) 编程 Agent 打造。无需云端，无需账号，完全在本机运行。
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![Latest release](https://img.shields.io/github/v/release/shixin-guo/picot?include_prereleases&label=release)](https://github.com/shixin-guo/picot/releases)
-[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#%E5%AE%89%E8%A3%85)
 
 Picot 将 `pi` 运行时**直接打包进 .app**，无需单独安装 `pi`，无需配置 PATH，也不存在版本不一致的问题。
 
 <p align="center">
-  <img width="1200" alt="Picot 主界面" src="docs/images/hero.webp" />
+  <img width="1200" alt="Picot 主界面" src="https://github.com/user-attachments/assets/27d1b71e-77e8-420c-84ab-5e56eb48335a" />
 </p>
 
 ---
 
 ## 安装
 
-**无需单独安装 `pi` CLI** — Picot 内置了自己的 pi 运行时。
-
-### 一键安装（推荐）
-
-**macOS / Linux：**
-```bash
-curl -fsSL https://raw.githubusercontent.com/shixin-guo/picot/main/scripts/install.sh | bash
-```
-
-**Windows（PowerShell）：**
-```powershell
-irm https://raw.githubusercontent.com/shixin-guo/picot/main/scripts/install.ps1 | iex
-```
-
-脚本会自动识别系统和架构，下载对应安装包并完成安装。macOS 下还会自动清除 Gatekeeper 检疫属性，无需手动点击「仍要打开」。
-
-安装指定版本：
-```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/shixin-guo/picot/main/scripts/install.sh | bash -s -- --version v0.3.0
-
-# Windows — 企业 MSI 部署
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/shixin-guo/picot/main/scripts/install.ps1'))) -Version v0.3.0 -MSI
-```
-
-### 手动下载
-
 [从 GitHub Releases 下载](https://github.com/shixin-guo/picot/releases)
 
-| 平台 | 文件 |
-|------|------|
-| macOS Apple Silicon | `Picot_*_aarch64.dmg` |
-| macOS Intel | `Picot_*_x64.dmg` |
-| Linux x86\_64（Debian/Ubuntu） | `Picot_*_amd64.deb` |
-| Linux arm64（Debian/Ubuntu） | `Picot_*_arm64.deb` |
-| Linux x86\_64（RHEL/Fedora） | `Picot-*-1.x86_64.rpm` |
-| Linux arm64（RHEL/Fedora） | `Picot-*-1.aarch64.rpm` |
-| Windows x64 | `Picot_*_x64-setup.exe` |
-| Windows arm64 | `Picot_*_arm64-setup.exe` |
+**无需单独安装 `pi` CLI** — Picot 内置了自己的 pi 运行时。
 
 ### macOS 未签名提示
 
-Picot 目前发布的 macOS 版本未经 Apple 开发者 ID 签名/公证。
-使用一键安装脚本会自动处理此问题。如需手动安装：
+Picot 目前发布的 macOS 版本未经 Apple 开发者 ID 签名/公证，系统可能弹出：
+
+`"Picot" 无法打开，因为无法验证开发者。`
+
+**解决方法：**
 
 1. 将 `Picot.app` 拖入 `/Applications`
 2. 右键点击 → **打开**
 3. 若仍被阻止：**系统设置 → 隐私与安全性 → 仍要打开**
 
 <p align="center">
-  <img width="420" alt="macOS Gatekeeper 未验证提示" src="docs/images/gatekeeper-warning-zh.webp" />
+  <img width="420" alt="macOS Gatekeeper 未验证提示" src="https://github.com/user-attachments/assets/cb09f1f8-9eb8-4c0d-aee0-2fc9b704b201" />
 </p>
 
 点击**完成**：
 
 <p align="center">
-  <img width="960" alt="在 macOS 设置中允许打开 Picot" src="docs/images/gatekeeper-allow.webp" />
+  <img width="960" alt="在 macOS 设置中允许打开 Picot" src="https://github.com/user-attachments/assets/42ada9ae-b43d-47f1-bf38-ea38c34beb4f" />
 </p>
 
 ---
@@ -90,7 +54,7 @@ Picot 为 Pi 提供完整的可视化界面。打开任意项目文件夹，与 
 ### 📸 界面预览
 
 <p align="center">
-  <img width="1200" alt="Picot 工作区与项目界面" src="docs/images/workspace.webp" />
+  <img width="1200" alt="Picot 工作区与项目界面" src="https://github.com/user-attachments/assets/ffde7b7a-1eb9-4da7-8916-e06b612aaea1" />
 </p>
 
 ### 💬 对话
@@ -129,10 +93,10 @@ Picot 为 Pi 提供完整的可视化界面。打开任意项目文件夹，与 
 ### 📱 移动端 & 局域网访问
 
 <p align="center">
-  <img width="900" alt="局域网与移动端访问面板" src="docs/images/lan-mobile-panel.webp" />
+  <img width="900" alt="局域网与移动端访问面板" src="https://github.com/user-attachments/assets/f50ce09d-1ba7-4a67-93dd-f8ff1bc2631f" />
 </p>
 <p align="center">
-  <img width="360" alt="移动端上的 Picot" src="docs/images/mobile.webp" />
+  <img width="360" alt="移动端上的 Picot" src="https://github.com/user-attachments/assets/d1975347-a3d9-49fd-9d66-94942016ed19" />
 </p>
 
 - **局域网二维码** — 扫码即可在同网络的任意设备上访问 Picot
@@ -141,7 +105,7 @@ Picot 为 Pi 提供完整的可视化界面。打开任意项目文件夹，与 
 ### 📦 包管理器
 
 <p align="center">
-  <img width="1200" alt="内置包管理器界面" src="docs/images/package-manager.webp" />
+  <img width="1200" alt="内置包管理器界面" src="https://github.com/user-attachments/assets/e7e3a100-16db-4b63-b257-801b7f6b5e00" />
 </p>
 
 - 在 UI 内浏览、安装和删除社区包
@@ -150,10 +114,10 @@ Picot 为 Pi 提供完整的可视化界面。打开任意项目文件夹，与 
 ### 💰 费用 & 用量面板
 
 <p align="center">
-  <img width="1200" alt="费用面板总览" src="docs/images/cost-dashboard.webp" />
+  <img width="1200" alt="费用面板总览" src="https://github.com/user-attachments/assets/1c381a9f-c587-406f-8f62-f3f029aa5c3e" />
 </p>
 <p align="center">
-  <img width="1200" alt="按模型与趋势拆解" src="docs/images/cost-breakdown.webp" />
+  <img width="1200" alt="按模型与趋势拆解" src="https://github.com/user-attachments/assets/d9f07d41-d38a-454d-a46a-1ab8ed34c19b" />
 </p>
 
 - 每个会话实时 Token 用量和费用追踪
@@ -185,7 +149,7 @@ Picot 为 Pi 提供完整的可视化界面。打开任意项目文件夹，与 
 ### ⚙️ 设置 & 控制
 
 <p align="center">
-  <img width="1200" alt="设置与控制面板" src="docs/images/settings.webp" />
+  <img width="1200" alt="设置与控制面板" src="https://github.com/user-attachments/assets/44f884de-f2d1-45af-8a13-9b8d01d227a5" />
 </p>
 
 - 模型选择器，支持搜索/筛选和键盘操作

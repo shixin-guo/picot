@@ -59,16 +59,6 @@ Tauri IPC commands (invoked via `window.tauriNative` in `public/tauri-bridge.js`
 
 Conventions for any coding agent working in this directory.
 
-## Agent skills
-
-### Issue tracker
-
-Issues and PRDs are tracked in GitHub Issues via the `gh` CLI. See `docs/agents/issue-tracker.md`.
-
-### Domain docs
-
-This repo uses the single-context domain docs layout: root `CONTEXT.md` plus ADRs under `docs/adr/`. See `docs/agents/domain.md`.
-
 ## Package manager
 
 Use **Bun** exclusively. Never run `npm install` or `npm ci` — this would create a stray `package-lock.json` that drifts from `bun.lock` and confuses CI (`bun install --frozen-lockfile`).
@@ -111,10 +101,6 @@ bun run format:fix    # auto-fix formatting
 - **Always** run `bun run check` after editing any `.js` / `.ts` file under `public/` or `extensions/`.
 - Only mark the task complete if `bun run check` exits 0 (or all remaining violations are intentional and documented).
 - Prefer `bun run check:fix` over manual reformatting — Biome is the source of truth for style.
-
-## Design system
-
-Before editing CSS or UI controls, read [`docs/DESIGN.md`](docs/DESIGN.md). Use tokens from `public/style-theme.css` and primitives from `public/design-system.css`; do not add literal design dimensions. After CSS, UI markup, or inline-style changes, run `bun run check` (or focused `bun run check:design`).
 
 ## Module Design
 
