@@ -68,8 +68,11 @@
     "@biomejs/biome": "^2.5.2",
     "@tauri-apps/cli": "^2.11.2",
     "esbuild": "^0.28.0",
+    "husky": "^9.1.7",
     "jsdom": "^26.1.0",
-    "vitest": "^3.2.4",
-    "husky": "^9.1.7"
+    "vitest": "^3.2.4"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
   }
 }
