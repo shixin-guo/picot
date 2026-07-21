@@ -5348,6 +5348,10 @@ body.is-resizing-side-panel {
 }
 
 .file-sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
   border-bottom: 0;
 }
 
@@ -5361,7 +5365,7 @@ body.is-resizing-side-panel {
 }
 
 .file-sidebar-path {
-  padding: var(--space-2) var(--space-3) var(--space-2);
+  padding: var(--space-1) var(--space-3);
   font-size: var(--font-size-sm);
   color: var(--text-dim);
   white-space: nowrap;

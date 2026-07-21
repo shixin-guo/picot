@@ -2804,7 +2804,14 @@ export default function (pi: ExtensionAPI) {
         res.writeHead(404, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Session history is unavailable in temporary chat" }));
       } else {
-        serveSessionFile(res, sessionMatch[1], sessionMatch[2]);
+        // dirName/file arrive URL-encoded (workspaces can contain spaces and
+        // non-ASCII, e.g. iCloud "Mobile Documents" paths). decode so the
+        // filesystem lookup matches the real session directory.
+        serveSessionFile(
+          res,
+          decodeURIComponent(sessionMatch[1]),
+          decodeURIComponent(sessionMatch[2]),
+        );
       }
       return;
     }

@@ -122,7 +122,7 @@ test("defers a cross-workspace file tree load until the selected session is conf
   );
 });
 
-test("does not defer an already-loaded or incomplete workspace", () => {
+test("does not defer an already-loaded workspace or one without a project path", () => {
   expect(
     sessionRouting.deferFileBrowserWorkspace(
       "/history/current.jsonl",
@@ -130,8 +130,43 @@ test("does not defer an already-loaded or incomplete workspace", () => {
       "/work/current",
     ),
   ).toBeNull();
-  expect(sessionRouting.deferFileBrowserWorkspace("", "/work/new", "/work/old")).toBeNull();
   expect(
     sessionRouting.deferFileBrowserWorkspace("/history/new.jsonl", "", "/work/old"),
   ).toBeNull();
+});
+
+test("defers a new-session activation with no sessionFile yet", () => {
+  // A brand-new session's .jsonl isn't assigned until pi's first session_start,
+  // so activateNewParallelSession defers with a null sessionFile. Confirmation
+  // then matches any foreground mirror_sync (the caller gates on foreground port).
+  const pending = sessionRouting.deferFileBrowserWorkspace(null, "/work/new", "/work/old");
+  expect(pending).toEqual({ sessionFile: null, path: "/work/new" });
+  expect(
+    sessionRouting.confirmDeferredFileBrowserWorkspace(pending, "/work/new-session.jsonl"),
+  ).toBe(pending);
+});
+
+test("suppresses file browser loads while a cross-workspace switch is pending", () => {
+  const pending = sessionRouting.deferFileBrowserWorkspace(
+    "/history/new.jsonl",
+    "/work/new",
+    "/work/old",
+  );
+  expect(sessionRouting.shouldSuppressFileBrowserLoad(pending)).toBe(true);
+});
+
+test("suppresses file browser loads during a new-session activation", () => {
+  const pending = sessionRouting.deferFileBrowserWorkspace(null, "/work/new", "/work/old");
+  expect(sessionRouting.shouldSuppressFileBrowserLoad(pending)).toBe(true);
+});
+
+test("does not suppress file browser loads without a pending switch", () => {
+  expect(sessionRouting.shouldSuppressFileBrowserLoad(null)).toBe(false);
+  // Same-workspace select produces no pending token — loads proceed normally.
+  const sameWorkspace = sessionRouting.deferFileBrowserWorkspace(
+    "/history/current.jsonl",
+    "/work/current",
+    "/work/current",
+  );
+  expect(sessionRouting.shouldSuppressFileBrowserLoad(sameWorkspace)).toBe(false);
 });

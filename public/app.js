@@ -37,7 +37,7 @@ import {
   findPortForSession,
   getWorkspacePathForPort,
   isExpectedMirrorSession,
-  shouldSpawnForCrossWorkspaceSelection,
+  shouldSuppressFileBrowserLoad,
 } from "./session/routing.js";
 import { anchorHistoryToBottom } from "./session/scroll-anchor.js";
 import { setupSettingsEditors } from "./settings/editors.js";
@@ -122,6 +122,18 @@ const navigateInWindow = (url) => {
   }
   window.location.assign(targetUrl.toString());
 };
+
+async function navigateToWorkspacePort(targetCwd, targetPort) {
+  if (typeof targetPort !== "number" || targetPort === getCurrentPort()) return;
+  if (typeof transport.prepareWorkspaceTarget === "function") {
+    const prepared = await transport.prepareWorkspaceTarget(targetCwd, { targetPort });
+    if (typeof prepared?.transitionGeneration !== "number") {
+      throw new Error("Workspace navigation was not prepared");
+    }
+    await transport.commitWorkspaceTransition(prepared.transitionGeneration);
+  }
+  navigateInWindow(withBrokerWs(buildWorkspaceUrl(targetPort), transport));
+}
 
 // ──────────────────────────────────────────────────────────────────────
 // Instance-swap overlay
@@ -676,6 +688,7 @@ const filePreviewPanel = new FilePreviewPanel({
   },
 });
 let fileBrowserWorkspacePath = null;
+let fileBrowserWorkspacePort = null;
 
 // ── Ephemeral chats (Side Chat + Quick Chat) + window close coordination ─────
 function confirmEphemeralDiscard(_risks, _reason) {
@@ -827,19 +840,37 @@ async function refreshFileBrowserForWorkspace(
   path = getCurrentWorkspacePath(),
   { force = false } = {},
 ) {
+  // During a cross-workspace session switch the embedded server is still
+  // scoped to the previous workspace until the mirror snapshot confirms the
+  // new session. Any workspace-scoped load in that window resolves the
+  // requested path against the stale root and returns 403. Defer instead —
+  // `handleMirrorSync` fires the authoritative load once the new server is
+  // active (after clearing `pendingFileBrowserWorkspace`).
+  if (shouldSuppressFileBrowserLoad(pendingFileBrowserWorkspace)) return true;
   const normalized = typeof path === "string" ? path.trim() : "";
-  if (!force && normalized === fileBrowserWorkspacePath) return true;
+  if (
+    !force &&
+    normalized === fileBrowserWorkspacePath &&
+    getCurrentPort() === fileBrowserWorkspacePort
+  ) {
+    return true;
+  }
   const switched = await filePreviewPanel.setWorkspaceRoot(normalized);
   if (!switched) return false;
 
-  fileBrowserWorkspacePath = normalized;
   fileBrowser.workspaceRoot = normalized;
   const isCollapsed = fileSidebar.classList.contains("collapsed");
   if (isCollapsed && !force) {
     fileBrowser.setWorkspaceRoot(normalized);
+    fileBrowserWorkspacePath = normalized;
+    fileBrowserWorkspacePort = getCurrentPort();
     return true;
   }
-  await fileBrowser.load(normalized || undefined);
+  // Let the active Pi resolve its own workspace root. Passing the previous
+  // workspace path here races session transitions and produces 403 outsideWorkspace.
+  await fileBrowser.load();
+  fileBrowserWorkspacePath = normalized;
+  fileBrowserWorkspacePort = getCurrentPort();
   return true;
 }
 
@@ -2004,6 +2035,13 @@ function handleExtensionUIRequest(event) {
     case "notify":
       dialogHandler.showNotification(event);
       break;
+    // `setStatus` and `setWidget` are informational labels/widgets the
+    // embedded server and pi extensions push (e.g. "Embedded: 127.0.0.1:47821",
+    // plannotator progress). They have no browser-side surface, so acknowledge
+    // them silently instead of logging unknown-method warnings.
+    case "setStatus":
+    case "setWidget":
+      break;
     default:
       console.warn("[App] Unknown extension UI method:", event.method);
   }
@@ -2873,7 +2911,13 @@ async function activateNewParallelSession(port, cwd) {
   if (cwd) {
     foregroundWorkspacePath = cwd;
     updateWorkspaceIndicator(cwd);
-    refreshFileBrowserForWorkspace(cwd);
+    // Defer the file browser load: the new pi's server is not yet scoped to
+    // `cwd` until its session_start fires. Setting the pending token makes
+    // `refreshFileBrowserForWorkspace` (including the 5s poll path) skip the
+    // load; `handleMirrorSync` clears it and fires the authoritative load once
+    // the new server confirms. sessionFile is null — the file isn't assigned
+    // until pi's first message round-trip.
+    pendingFileBrowserWorkspace = deferFileBrowserWorkspace(null, cwd, fileBrowserWorkspacePath);
   }
   wsClient.setRoutingContext({
     workspaceId: `workspace:${cwd || getCurrentWorkspacePath() || "unknown"}`,
@@ -3044,18 +3088,46 @@ async function handleSessionSelectImpl(session, project) {
     (instance) => instance.sessionFile === session.filePath,
   );
   foregroundPort = findPortForSession(liveInstances, session.filePath, foregroundPort);
-  syncWorkspaceIndicatorFromInstances();
+  // Record the deferred target BEFORE touching the workspace indicator. The
+  // mirror_sync handler consumes this token to fire the authoritative file-tree
+  // load once the new server's session_start confirms the switch.
+  const selectedWorkspacePath = session?.cwd || project?.path || "";
   pendingFileBrowserWorkspace = deferFileBrowserWorkspace(
     session.filePath,
-    project?.path,
+    selectedWorkspacePath,
     fileBrowserWorkspacePath,
   );
+  // Cross-workspace select: the session's recorded cwd owns the
+  // workspace label and file tree, regardless of whether a live pi for it
+  // exists yet. `syncWorkspaceIndicatorFromInstances` reads from
+  // liveInstances (which is stale here — foregroundPort still points at the
+  // previous workspace's process for a history session), so set the
+  // foreground workspace from the session cwd explicitly. The pending token
+  // defers the file-tree load until mirror_sync confirms the new server.
+  if (selectedWorkspacePath && selectedWorkspacePath !== fileBrowserWorkspacePath) {
+    foregroundWorkspacePath = selectedWorkspacePath;
+    updateWorkspaceIndicator(selectedWorkspacePath);
+    updateSuperAgentActiveStateFromWorkspace();
+    // A workspace switch changes the HTTP origin that serves the file API.
+    // Navigate before any branch can fall through to an in-process switch.
+    const targetPort = targetLiveInstance?.port ?? foregroundPort;
+    if (typeof targetPort === "number" && targetPort !== getCurrentPort()) {
+      try {
+        await navigateToWorkspacePort(selectedWorkspacePath, targetPort);
+        return;
+      } catch (error) {
+        console.error("[Session route] workspace navigation failed:", error);
+      }
+    }
+  } else {
+    syncWorkspaceIndicatorFromInstances();
+  }
   // Do not load the target workspace yet. `switch_session` only acknowledges
   // the RPC write; the current server remains scoped to the previous
   // workspace until its replacement extension sends a mirror snapshot.
   if (session.filePath) {
     wsClient.setRoutingContext({
-      workspaceId: `workspace:${project?.path || getCurrentWorkspacePath() || "unknown"}`,
+      workspaceId: `workspace:${selectedWorkspacePath || getCurrentWorkspacePath() || "unknown"}`,
       sessionId: session.filePath,
       sourcePort: foregroundPort,
     });
@@ -3100,12 +3172,12 @@ async function handleSessionSelectImpl(session, project) {
       return;
     }
 
-    const selectedProjectCwd = project?.path || session?.cwd || "";
-    const shouldSpawnForWorkspace =
-      !targetLiveInstance &&
-      shouldSpawnForCrossWorkspaceSelection(liveInstances, foregroundPort, selectedProjectCwd);
+    const selectedProjectCwd = selectedWorkspacePath;
 
-    if (wasStreaming || shouldSpawnForWorkspace) {
+    // A non-streaming session switch can safely reuse the current Pi process.
+    // This preserves the single-page UI and lets the authoritative mirror
+    // snapshot update the server workspace before refreshing the file tree.
+    if (wasStreaming) {
       if (transport.spawnSessionProcess) {
         let targetPort = null;
         try {
@@ -3128,7 +3200,12 @@ async function handleSessionSelectImpl(session, project) {
             sessionId: session.filePath,
             sourcePort: foregroundPort,
           });
-          syncWorkspaceIndicatorFromInstances();
+          try {
+            await navigateToWorkspacePort(selectedWorkspacePath, targetPort);
+            return;
+          } catch (error) {
+            console.error("[Session route] workspace navigation failed:", error);
+          }
           pollInstances().catch(() => {});
           wsClient.send({ type: "mirror_sync_request" });
           if (isMobile()) {
@@ -3138,7 +3215,7 @@ async function handleSessionSelectImpl(session, project) {
           return;
         }
       }
-      if (shouldSpawnForWorkspace) {
+      if (wasStreaming) {
         messageRenderer.renderError("Failed to open session in its workspace process.");
         if (isMobile()) {
           sidebarEl.classList.add("collapsed");
@@ -3204,7 +3281,7 @@ async function renderSelectedSessionHistory(session, project) {
   }
 
   try {
-    const url = `/api/sessions/${dirName}/${file}`;
+    const url = `/api/sessions/${encodeURIComponent(dirName)}/${encodeURIComponent(file)}`;
     logSessionRoute("history:fetch", {
       url,
       selectedSession: session.filePath,
@@ -3249,7 +3326,9 @@ async function switchSession(sessionFile, session = null, project = null) {
 
       if (dirName && file) {
         try {
-          const res = await fetch(`/api/sessions/${dirName}/${file}`);
+          const res = await fetch(
+            `/api/sessions/${encodeURIComponent(dirName)}/${encodeURIComponent(file)}`,
+          );
           console.log("[App] History fetch status:", res.status);
           const data = await res.json();
           console.log("[App] History entries:", data.entries?.length || 0);
@@ -3379,7 +3458,11 @@ function handleMirrorSync(data) {
     pendingFileBrowserWorkspace,
     data.sessionFile,
   );
-  const syncWorkspacePath = pendingWorkspace?.path || workspacePathFromId(data.workspaceId);
+  // The server's mirror workspace is authoritative. A sidebar project path can
+  // differ from the session cwd (for example, when a session was moved or
+  // imported), and using it would make /api/files reject the path as outside
+  // the process workspace.
+  const syncWorkspacePath = workspacePathFromId(data.workspaceId) || pendingWorkspace?.path || "";
   if (syncWorkspacePath) {
     foregroundWorkspacePath = syncWorkspacePath;
     updateWorkspaceIndicator(syncWorkspacePath);
@@ -3387,7 +3470,16 @@ function handleMirrorSync(data) {
   }
   if (pendingWorkspace) {
     pendingFileBrowserWorkspace = null;
-    void refreshFileBrowserForWorkspace(pendingWorkspace.path, { force: true }).catch((error) => {
+  }
+  // Refresh the file tree whenever the mirror-synced workspace differs from
+  // the one currently shown. The select path defers its load to here (via
+  // pendingWorkspace), but a workspace can also change without a deferred
+  // token — e.g. a reload landing on a new port, or an in-place switch whose
+  // pending token was cleared by an earlier sync. Force-refreshing on any
+  // divergence is what keeps the tree in sync once the server's session_start
+  // has rebound latestCtx to the right workspace.
+  if (syncWorkspacePath && syncWorkspacePath !== fileBrowserWorkspacePath) {
+    void refreshFileBrowserForWorkspace(syncWorkspacePath, { force: true }).catch((error) => {
       console.error("[App] Failed to refresh file browser after session switch:", error);
     });
   }
