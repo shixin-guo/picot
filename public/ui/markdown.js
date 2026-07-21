@@ -15,6 +15,7 @@ import remend from "../vendor/remend.js";
  */
 export function renderStreamingMarkdown(text) {
   if (!text) return "";
+  if (typeof text !== "string") text = String(text);
   try {
     let repaired = remend(text);
     // remend marks links whose URL hasn't finished streaming; show just the
@@ -34,6 +35,7 @@ export function renderStreamingMarkdown(text) {
 
 export function renderMarkdown(text) {
   if (!text) return "";
+  if (typeof text !== "string") text = String(text);
 
   // Normalize line endings
   text = text.replace(/\r\n/g, "\n");
@@ -254,6 +256,7 @@ export function renderMarkdown(text) {
  */
 export function renderUserMarkdown(text) {
   if (!text) return "";
+  if (typeof text !== "string") text = String(text);
   text = text.replace(/\r\n/g, "\n");
 
   const lines = text.split("\n");

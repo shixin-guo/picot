@@ -111,4 +111,21 @@ describe("MessageRenderer streaming markdown preview", () => {
     expect(count).toBe(1);
     expect(scrolled).toBe(true);
   });
+
+  it("can force-scroll after rendering session history", async () => {
+    const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+    globalThis.requestAnimationFrame = (callback) => {
+      callback();
+      return 0;
+    };
+    Object.defineProperty(container, "scrollHeight", { configurable: true, value: 1200 });
+
+    try {
+      renderer.forceScrollToBottom();
+
+      expect(container.scrollTop).toBe(1200);
+    } finally {
+      globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+    }
+  });
 });

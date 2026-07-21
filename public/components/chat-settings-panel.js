@@ -1,3 +1,5 @@
+import { isSuperAgentEnabled, setSuperAgentEnabled } from "../super-agent/settings.js";
+
 /**
  * <chat-settings-panel> Web Component
  *
@@ -74,6 +76,8 @@ class ChatSettingsPanel extends HTMLElement {
       </div>
     `;
 
+    this._setupSuperAgentToggle();
+
     this._textarea = this.querySelector("[data-textarea]");
     this._statusEl = this.querySelector("[data-status]");
     this._accountsEl = this.querySelector("[data-accounts-list]");
@@ -107,6 +111,28 @@ class ChatSettingsPanel extends HTMLElement {
     });
 
     this._load();
+  }
+
+  // ── Super Agent toggle ──────────────────────────────────────────────────
+
+  _setupSuperAgentToggle() {
+    const button = this.querySelector("#toggle-super-agent");
+    if (!button) return;
+
+    const isEnabled = isSuperAgentEnabled();
+    button.classList.toggle("on", isEnabled);
+    button.setAttribute("aria-checked", String(isEnabled));
+    button.setAttribute("role", "switch");
+
+    button.addEventListener("click", () => {
+      const newState = !button.classList.contains("on");
+      button.classList.toggle("on", newState);
+      button.setAttribute("aria-checked", String(newState));
+      setSuperAgentEnabled(newState);
+      window.dispatchEvent(
+        new CustomEvent("picot-super-agent-autostart-changed", { detail: { enabled: newState } }),
+      );
+    });
   }
 
   // ── API ───────────────────────────────────────────────────────────────────

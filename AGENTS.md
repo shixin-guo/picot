@@ -6,41 +6,34 @@
 
 ### Architecture
 
-Tauri wraps the web UI. A Rust `PiManager` (`src-tauri/src/pi_manager.rs`) spawns one `pi --mode rpc` subprocess per workspace, each on its own port, using the embedded pi binary shipped in `src-tauri/resources/pi/` (downloaded by `scripts/fetch-pi-binary.js` from pi-mono releases at the version pinned in `scripts/pi-version.json`). Each workspace gets its own OS window. Workspaces are opened via the native folder picker ("Open Folder"); clicking it opens or focuses a workspace window. Multi-project, multi-agent, no terminal required.
+Tauri wraps the web UI. Rust starts a native `HostServer` plus a managed `pi --mode rpc` subprocess using the embedded pi binary shipped in `src-tauri/resources/pi/` (downloaded by `scripts/fetch-pi-binary.js` from pi-mono releases at the version pinned in `scripts/pi-version.json`). The WebView talks to the Rust host over `/v2/ws`; the host bridges runtime requests to Pi over stdio RPC.
 
 ```
 Picot .app
   resources/
     public/                       (frontend)
-    extensions/embedded-server.mjs (HTTP + WS server, runs inside pi)
+    extensions/picot-bridge.mjs    (Picot-specific Pi commands)
     pi/<bun-compiled pi binary + assets>
-  Rust PiManager
-    spawn pi --mode rpc --extension embedded-server.mjs  (project A, :3001)
-    spawn pi --mode rpc --extension embedded-server.mjs  (project B, :3002)
-    OS Window per project  →  WebView  →  localhost:300X
-  Tauri IPC commands wired through public/tauri-bridge.js
+  Rust HostServer + NativePiManager
+    spawn pi --mode rpc --extension picot-bridge.mjs
+    WebView  →  /v2/ws  →  HostServer  →  stdio RPC  →  pi
 ```
 
-Tauri IPC commands (invoked via `window.tauriNative` in `public/tauri-bridge.js`):
-- `cmd_open_workspace(cwd)` — spawn pi for a workspace, open a window
-- `cmd_new_session(port)` — create a new session in a running pi
-- `cmd_switch_session(port, sessionPath)` — resume a historical session
-- `cmd_stop_instance(port)` — kill a pi process
-- `cmd_pick_folder()` — native folder picker
+There are currently no custom Tauri IPC commands. Runtime, data, auth, and extension UI traffic goes through the native host protocol.
 
 ### Goals
 
 - Local desktop GUI: all projects and agents visible in one app
 - Multi-project: each project has its own window, isolated working directory, session history, and running agent
 - Multi-agent: spawn new agents per project; switch between sessions without leaving the app
-- Multi-task: a `pi --mode rpc` process can only drive **one active session at a time** (switching/forking inside one process *replaces* the active session — the old `.jsonl` is preserved on disk, but it stops being the live, running session). So every concurrently-running session structurally needs its own `pi` process. Picot handles this without spawning OS windows: both "+ New Session" (header) and "start new chat" (sidebar project tile) spawn a fresh **headless** pi for the target cwd and navigate the current window's WebView to it. The previously-attached pi process keeps running in the background (PiManager retains it; reachable from the running-instances list / launcher / sidebar). Net effect: no new OS window, no interruption of the previously-running session, and you can still run multiple agents in parallel against the same project.
+- Native runtime protocol: browser frames are routed by Rust over `/v2/ws`, then forwarded to the managed Pi process over stdio RPC.
 - Visualization: streaming chat, tool-call cards, thinking blocks, token/cost tracking per session
 - Fully self-contained desktop app: zero dependency on the user's PATH / shell environment / globally installed pi
 
 ### Constraints
 
 - Frontend: vanilla JS, no framework (`public/`)
-- Backend: Rust (Tauri) wraps + manages process lifecycle; Node.js extension (`embedded-server.ts`) implements the HTTP + WS surface the WebView talks to
+- Backend: Rust (Tauri) owns process lifecycle, the HTTP/WebSocket host, routing, and host data APIs
 - PI integration: always via embedded `pi --mode rpc` subprocess — never re-implement PI runtime logic
 - Session history and working directory are isolated per project/port
 - The embedded pi version is the source of truth: `pi --version` shown in the UI comes from `PI_STUDIO_PI_VERSION` (set by Rust at spawn time, populated from `scripts/pi-version.json`). A user-installed pi on `$PATH` is irrelevant and never touched.
@@ -86,7 +79,7 @@ bun run test             # vitest run + check-tauri-permissions
 bun run test:watch       # vitest in watch mode
 bun run check:rust       # cargo check + clippy + fmt (use after every Rust edit)
 bun run fetch:pi         # download the locked pi binary into src-tauri/resources/pi/
-bun run build:extensions # compile extensions/embedded-server.ts → dist/embedded-server.mjs
+bun run build:extensions # compile picot-bridge and pi-chat extensions into extensions/dist/
 bun run build            # full release build (runs prebuild: fetch:pi + build:extensions)
 ```
 
@@ -130,30 +123,43 @@ The frontend (`public/`) is vanilla JS with **no framework**. Keep it modular:
 
 Picot is a Tauri v2 app. The three main layers:
 
-**1. Rust / Tauri (`src-tauri/`)** — process lifecycle and window management.
-- `src-tauri/src/pi_manager.rs` — `PiManager` spawns one `pi --mode rpc` subprocess per workspace, each on its own port. Manages port allocation, process lifecycle, and RPC message forwarding.
-- `src-tauri/src/main.rs` — Tauri commands wired to `PiManager`: `cmd_open_workspace`, `cmd_new_session`, `cmd_switch_session`, `cmd_stop_instance`, `cmd_pick_folder`.
+**1. Rust / Tauri (`src-tauri/`)** — process lifecycle, host protocol, and window management.
+- `src-tauri/src/native_pi_manager.rs` — spawns and supervises native `pi --mode rpc` processes.
+- `src-tauri/src/host_server.rs` — owns the HTTP/WebSocket host (`/v2/ws`, `/v2/bootstrap`) and dispatches protocol frames.
+- `src-tauri/src/pi_launch.rs` — resolves the bundled pi binary and bundled Picot bridge extension.
 
 **2. Frontend (`public/`)** — vanilla JS, no framework.
-- `app.js` — main entry: workspace launcher, window setup, session nav, settings
-- `websocket-client.js` — WebSocket client for streaming chat with pi
-- `state.js` — shared app state
-- `tauri-bridge.js` — wraps Tauri IPC (`window.tauriNative.*`)
-- `message-renderer.js`, `tool-card.js`, `markdown.js` — chat message rendering
-- `session-sidebar.js` — session history list
-- `file-browser.js` — lazy-loaded file tree sidebar
-- `dialogs.js`, `workspace-actions.js` — modal dialogs and workspace actions
+- `bootstrap-entry.js` + `native/app.js` — native host protocol entry point, wires up all native modules
+- `native/runtime-adapter.js` — WebSocket transport adapter to the native host runtime
+- `native/runtime-gateway.js` — mutation-capable RPC gateway for session runtime actions
+- `native/data-gateway.js` — read-only host RPC gateway for file/session/workspace queries
+- `native/config-gateway.js` — Picot Configuration data-plane client over picot-bridge RPC
+- `native/control-gateway.js` — write-capable host RPC gateway for package mgmt and opening links
+- `native/router.js` — parses/validates app route paths (workspace/session ids)
+- `native/session-store.js`, `native/session-tree.js` — client-side session state and conversation-tree navigation
+- `native/session-sidebar.js`, `native/session-navigation.js` — sidebar session list and selection dispatch
+- `native/project-header.js`, `native/header-open-app.js` — header workspace/git-branch info and "open in external app"
+- `native/file-browser.js` — right-sidebar file tree
+- `native/settings-panel.js`, `native/settings-config.js`, `native/settings-toggles.js`, `native/settings-save-status.js` — Settings overlay (tabs, config editors, toggles, save-status UI)
+- `native/workspace-actions.js` — bridges UI buttons to native Tauri workspace-window commands
+- `native/package-browse.js` — community package browser/installer for Settings → Extensions
+- `native/cost-dashboard.js`, `native/context-usage.js` — Usage tab cost dashboard and context-window usage pill
+- `native/dialog.js`, `native/extension-ui-host.js` — native modal dialogs driven by host/extension RPC requests
+- `native/slash-commands.js`, `native/composer-slash-menu.js`, `native/composer-images.js` — composer input (slash commands, pasted images)
+- `native/thinking-effort-control.js` — thinking-effort radio control
+- `native/lan-qr.js` — LAN QR-code modal for opening Picot on mobile
+- `ui/message-renderer.js`, `ui/markdown.js`, `ui/tool-card.js` — chat message rendering (dependency-free markdown, collapsible tool cards)
+- `ui/context-viz.js`, `ui/conv-nav.js`, `ui/image-lightbox.js`, `ui/layout-insets.js`, `ui/resizable-panel.js` — chat layout/nav helpers (context bar, turn navigator, image zoom, scroll insets, resizable panels)
 - `themes.js` — theme switching (6 built-in themes)
 
-**3. Embedded server (`extensions/`)** — TypeScript compiled to `dist/embedded-server.mjs`.
-- Runs **inside** the `pi --mode rpc` process as a pi extension
-- Owns the HTTP + WebSocket surface the Tauri WebView talks to: static asset serving, `/api/sessions`, `/api/cost-dashboard`, RPC bridge for prompts
+**3. Pi bridge extensions (`extensions/`)** — TypeScript compiled into `extensions/dist/`.
+- `picot-bridge.ts` runs inside Pi and exposes Picot-specific commands.
+- `pi-chat` remains an optional bundled extension for chat integrations.
 
 ## Key data flows
 
-- User action → `window.tauriNative.*` (tauri-bridge.js) → Tauri IPC → PiManager (Rust) → `pi --mode rpc` subprocess
-- Chat messages → WebSocket (websocket-client.js) → embedded-server.mjs (inside pi) → pi RPC
-- Multi-session: "+ New Session" spawns a **headless** pi process (no new OS window) and navigates the current WebView to it. The old pi process keeps running.
+- User action → `native/runtime-gateway.js` → `/v2/ws` → `HostServer` → `NativePiManager` → Pi stdio RPC.
+- Extension UI requests → Pi stdio RPC event → `HostServer` → native WebView dialog host → response over `/v2/ws`.
 
 ## Bumping the embedded pi version
 
@@ -197,7 +203,7 @@ bash scripts/check-rust.sh
 
 ## Auto-updater
 
-Picot uses the Tauri v2 updater plugin to fetch new releases from GitHub. The runtime side lives in `public/tauri-bridge.js` + `public/app.js` (Settings → General → Updates), and the build side is wired into `.github/workflows/release.yml` via the `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets. See `docs/AUTO_UPDATER.md` for the one-time signing-key setup and how `latest.json` flows from CI → GitHub release → installed app.
+Picot uses the Tauri v2 updater plugin to fetch new releases from GitHub. The build side is wired into `.github/workflows/release.yml` via the `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets. See `docs/AUTO_UPDATER.md` for the one-time signing-key setup and how `latest.json` flows from CI → GitHub release → installed app.
 
 ## Tests
 

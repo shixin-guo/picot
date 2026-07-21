@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { HostRuntimeAdapter } from "./runtime-adapter.js";
 import { RuntimeGateway } from "./runtime-gateway.js";
 
@@ -103,5 +103,35 @@ describe("HostRuntimeAdapter", () => {
     socket.open();
     socket.receive({ type: "hello_ack", protocolVersion: 2 });
     expect(socket.sent[1]).toMatchObject({ type: "runtime_subscribe", target });
+  });
+
+  it("automatically reconnects and resubscribes when the host socket closes", async () => {
+    vi.useFakeTimers();
+    try {
+      FakeWebSocket.instances.length = 0;
+      const adapter = new HostRuntimeAdapter({
+        url: "ws://host/v2/ws",
+        WebSocketImpl: FakeWebSocket,
+        clientId: "desktop-a",
+        reconnectBaseDelayMs: 10,
+      });
+      adapter.connect();
+      let socket = FakeWebSocket.instances[0];
+      socket.open();
+      socket.receive({ type: "hello_ack", protocolVersion: 2 });
+      adapter.subscribeTarget(target);
+
+      socket.close();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(FakeWebSocket.instances).toHaveLength(2);
+
+      socket = FakeWebSocket.instances[1];
+      socket.open();
+      expect(socket.sent[0]).toMatchObject({ type: "hello", clientId: "desktop-a" });
+      socket.receive({ type: "hello_ack", protocolVersion: 2 });
+      expect(socket.sent[1]).toMatchObject({ type: "runtime_subscribe", target });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

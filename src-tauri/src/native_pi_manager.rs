@@ -4,7 +4,8 @@
 use crate::pi_rpc_bridge::InMemoryPiProcess;
 use crate::pi_rpc_bridge::{BridgeFrame, PiRpcBridge, PiRpcProcess};
 use crate::runtime_coordinator::{
-    MutationAcceptance, RuntimeCoordinator, RuntimeSnapshot, RuntimeState, RuntimeTarget,
+    MutationAcceptance, RuntimeCoordinator, RuntimeSnapshot, RuntimeState, RuntimeStatus,
+    RuntimeTarget,
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
@@ -463,6 +464,15 @@ impl NativePiManager {
             .map_err(|_| "Runtime coordinator lock poisoned".to_string())?
             .snapshot(target)
             .map_err(|error| format!("Runtime snapshot rejected: {error:?}"))
+    }
+
+    pub fn statuses(&self) -> Result<Vec<RuntimeStatus>, String> {
+        Ok(self
+            .inner
+            .coordinator
+            .lock()
+            .map_err(|_| "Runtime coordinator lock poisoned".to_string())?
+            .statuses())
     }
 
     pub async fn respond_extension_ui(

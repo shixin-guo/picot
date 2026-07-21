@@ -33,8 +33,11 @@ percent-encoding = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+base64 = "0.22"
 axum = { version = "0.8", features = ["ws"] }
-tower-http = { version = "0.6", features = ["fs"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "set-header"] }
 
 [profile.dev]
 incremental = true

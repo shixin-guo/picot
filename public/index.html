@@ -6,12 +6,15 @@
             name="viewport"
             content="width=device-width, initial-scale=1.0, viewport-fit=cover"
         />
+        <base href="/" />
         <title>Picot</title>
         <link rel="icon" type="image/svg+xml" href="icons/logo-dark.svg" />
         <meta name="theme-color" content="#f5f3ef" />
         <link rel="stylesheet" href="style-theme.css" />
         <link rel="stylesheet" href="design-system.css" />
         <link rel="stylesheet" href="style.css" />
+        <link rel="stylesheet" href="cost.css" />
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
         <script>
             // Detect macOS for overlay title bar padding (TitleBarStyle::Overlay in Rust
             // extends the WebView into the native title bar area; we add padding so
@@ -25,12 +28,9 @@
             }
         </script>
         <script>
-            // Boot-time instance-swap overlay gate.
-            // Set by workspace/actions.js right before window.location.href changes
-            // to a new pi instance's port. Read here synchronously (before <body>
-            // renders) so the new page's very first paint is the overlay, not a
-            // half-loaded chat UI. Cleared by app.js after the first WebSocket
-            // connection on the new page.
+            // Boot-time instance-swap overlay gate kept for session route swaps.
+            // Read synchronously before <body> renders so the first paint is the
+            // overlay, not a half-loaded chat UI.
             try {
                 if (
                     sessionStorage.getItem("pi-studio:swapping-instance") ===
@@ -59,7 +59,7 @@
         </div>
         <script>
             // Flip the body class as early as the body element exists. Done inline
-            // (rather than waiting for app.js) so we don't get a chat-UI flash
+            // (rather than waiting for the native entry) so we don't get a chat-UI flash
             // between body parse and app.js executing.
             if (
                 document.documentElement.classList.contains(
@@ -118,6 +118,26 @@
                         </button>
                     </div>
                     <div class="sidebar-actions">
+                        <button
+                            class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
+                            id="new-session-btn"
+                            title="New session"
+                            aria-label="New session"
+                        >
+                            <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <line x1="12" y1="5" x2="12" y2="19" />
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                        </button>
                         <button
                             class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
                             id="open-folder-btn"
@@ -282,6 +302,16 @@
                             id="token-usage"
                             title="Context usage"
                         ></span>
+                        <span
+                            class="pill workspace-indicator hidden"
+                            id="workspace-indicator"
+                            title="Workspace path"
+                        ></span>
+                        <span
+                            class="pill git-branch-indicator hidden"
+                            id="git-branch-indicator"
+                            title="Git branch"
+                        ></span>
 
                         <div class="context-viz hidden" id="context-viz">
                             <div class="context-viz-title">Context Window</div>
@@ -384,9 +414,9 @@
                         <p class="hint">
                             Type a message below to start chatting with Pi, or select a session from the sidebar.
                         </p>
-                        <div class="shortcuts-hint">
-                            <span>/ Focus input</span>
-                            <span>Esc Abort</span>
+                        <div class="shortcuts-hint" aria-label="Keyboard shortcuts">
+                            <span><kbd>/</kbd> Focus input</span>
+                            <span><kbd>Esc</kbd> Abort</span>
                         </div>
                     </div>
                 </div>
@@ -916,44 +946,36 @@
                                     >Loading...</span
                                 >
                             </div>
-                            <div class="settings-row">
-                                <span class="settings-label"
-                                    >Check for updates</span
+                            <div class="settings-row settings-update-row">
+                                <span class="settings-label">Updates</span>
+                                <span
+                                    class="settings-static-value"
+                                    id="setting-update-status"
+                                    role="status"
+                                    aria-live="polite"
+                                    >Click to check</span
                                 >
                                 <button
+                                    type="button"
                                     class="ui-button ui-button--secondary settings-value-btn"
                                     id="btn-check-updates"
                                 >
                                     Check now
                                 </button>
                             </div>
-                            <div
-                                class="settings-row"
-                                id="setting-update-status-row"
-                                hidden
-                            >
-                                <span class="settings-label">Status</span>
-                                <span
-                                    class="settings-static-value"
-                                    id="setting-update-status"
-                                ></span>
-                            </div>
-                            <div
-                                class="settings-row"
-                                id="setting-update-install-row"
-                                hidden
-                            >
-                                <span
-                                    class="settings-label"
-                                    id="setting-update-install-label"
-                                    >Update available</span
-                                >
+                            <div class="settings-row">
+                                <span class="settings-label settings-label-stack">
+                                    <span class="settings-label-main">Beta updates</span>
+                                    <span class="settings-label-sub">Receive prerelease Picot builds</span>
+                                </span>
                                 <button
-                                    class="ui-button ui-button--secondary settings-value-btn"
-                                    id="btn-install-update"
-                                >
-                                    Download &amp; install
-                                </button>
+                                    type="button"
+                                    class="settings-toggle"
+                                    id="toggle-beta-updates"
+                                    role="switch"
+                                    aria-label="Receive beta updates"
+                                    aria-checked="false"
+                                ></button>
                             </div>
                         </div>
                     </div>
@@ -1133,7 +1155,7 @@
                                 ></div>
                                 <div class="settings-config-button-group">
                                     <button
-                                        class="ui-button ui-button--primary btn-primary"
+                                        class="ui-button ui-button--primary"
                                         id="inline-config-save"
                                     >
                                         Save
@@ -1253,13 +1275,58 @@
                 ></div>
             </div>
             <div class="config-editor-footer">
-                <button class="config-editor-cancel" id="config-editor-cancel">
+                <button class="ui-button ui-button--secondary config-editor-cancel" id="config-editor-cancel">
                     Cancel
                 </button>
-                <button class="ui-button ui-button--primary btn-primary" id="config-editor-save">
+                <button class="ui-button ui-button--primary" id="config-editor-save">
                     Save
                 </button>
             </div>
+        </div>
+
+        <!-- Global Session Search -->
+        <div
+            class="session-search-overlay hidden"
+            id="session-search-overlay"
+        ></div>
+        <div
+            class="session-search-dialog hidden"
+            id="session-search-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Search tasks"
+        >
+            <div class="session-search-input-row">
+                <svg
+                    class="session-search-input-icon"
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                >
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.3-4.3" />
+                </svg>
+                <input
+                    type="text"
+                    class="session-search-dialog-input"
+                    id="session-search-dialog-input"
+                    placeholder="Search tasks and messages…"
+                    autocomplete="off"
+                    spellcheck="false"
+                />
+            </div>
+            <div
+                class="session-search-results"
+                id="session-search-results"
+                role="listbox"
+                aria-label="Search results"
+            ></div>
         </div>
 
         <!-- Command Palette -->

@@ -40,7 +40,7 @@ describe("syncMessagesInsets", () => {
       measureHeight: () => 20,
     });
 
-    expect(main.style.getPropertyValue("--messages-top-inset")).toBe("68px");
-    expect(main.style.getPropertyValue("--messages-bottom-inset")).toBe("100px");
+    expect(main.style.getPropertyValue("--messages-top-inset")).toBe("52px");
+    expect(main.style.getPropertyValue("--messages-bottom-inset")).toBe("128px");
   });
 });

@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * Validates that every Tauri custom command registered in main.rs
- * has a matching permission entry in src-tauri/permissions/default.toml,
- * and that the capability file includes "pi-desktop:default".
+ * Validates that every Tauri custom command registered in main.rs has a
+ * matching permission entry in src-tauri/permissions/default.toml. Apps with
+ * no custom commands must not carry a stale local default permission set.
  *
  * Run:  node scripts/check-tauri-permissions.js
  * Exit: 0 = OK, 1 = mismatch found
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,19 +21,17 @@ const mainRs = readFileSync(resolve(root, "src-tauri/src/main.rs"), "utf8");
 
 // Match: tauri::generate_handler![cmd_a, cmd_b, ...]
 const handlerBlock = mainRs.match(/tauri::generate_handler!\[([^\]]+)\]/);
-if (!handlerBlock) {
-  console.error("ERROR: Could not find tauri::generate_handler! block in main.rs");
-  process.exit(1);
-}
-
-const registeredCommands = handlerBlock[1]
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+const registeredCommands = handlerBlock
+  ? handlerBlock[1]
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+  : [];
 
 // ── 2. Parse permissions from default.toml ──────────────────────────────────
 
-const toml = readFileSync(resolve(root, "src-tauri/permissions/default.toml"), "utf8");
+const permissionsPath = resolve(root, "src-tauri/permissions/default.toml");
+const toml = existsSync(permissionsPath) ? readFileSync(permissionsPath, "utf8") : "";
 
 // Extract all commands.allow = ["cmd_x"] entries
 const allowedInToml = [...toml.matchAll(/commands\.allow\s*=\s*\[([^\]]+)\]/g)].flatMap((m) =>
@@ -93,13 +91,17 @@ for (const cmd of allowedInToml) {
   }
 }
 
-// 4c. Capability must include the app's bundled default permission set.
-// Within the same app, the local permission group is referenced as "default"
-// (Tauri resolves it to <package>:default internally at build time).
-if (
-  capabilityPermissions.includes("default") ||
-  capabilityPermissions.includes("pi-desktop:default")
-) {
+// 4c. Capability must include the app's bundled default permission set only
+// when custom commands exist.
+const hasLocalDefault =
+  capabilityPermissions.includes("default") || capabilityPermissions.includes("pi-desktop:default");
+if (registeredCommands.length === 0) {
+  if (hasLocalDefault) {
+    fail(`capabilities/default.json includes a stale local default permission set`);
+  } else {
+    pass(`no custom commands registered; no local default permission set required`);
+  }
+} else if (hasLocalDefault) {
   pass(`capabilities/default.json includes the app default permission set`);
 } else {
   fail(

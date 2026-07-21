@@ -2,6 +2,7 @@
  * Message Renderer - Renders chat messages with markdown support
  */
 
+import { initImageLightbox } from "./image-lightbox.js";
 import {
   initCodeCopyDelegation,
   renderMarkdown,
@@ -46,6 +47,9 @@ export class MessageRenderer {
 
     // Wire up code-block copy buttons via event delegation
     initCodeCopyDelegation(this.container);
+
+    // Wire up image lightbox
+    initImageLightbox(this.container);
 
     // Wire up thinking-block toggle buttons via event delegation
     this.container.addEventListener("click", (e) => {
@@ -137,9 +141,9 @@ export class MessageRenderer {
         <p>Welcome to Picot</p>
         <p class="hint">Type a message below to start chatting with Pi, or select a session from the sidebar.</p>
         ${workspaceHtml}
-        <div class="shortcuts-hint">
-          <span>/ Focus input</span>
-          <span>Esc Abort</span>
+        <div class="shortcuts-hint" aria-label="Keyboard shortcuts">
+          <span><kbd>/</kbd> Focus input</span>
+          <span><kbd>Esc</kbd> Abort</span>
         </div>
       </div>
     `;
@@ -153,11 +157,30 @@ export class MessageRenderer {
     const div = document.createElement("div");
     div.className = `message user${isHistory ? " history" : ""}`;
 
-    let imagesHtml = "";
+    // Collect images from all sources: message.images, content image blocks, attachments
+    const imageItems = [];
     if (message.images && message.images.length > 0) {
+      imageItems.push(...message.images);
+    }
+    if (Array.isArray(message.content)) {
+      for (const block of message.content) {
+        if (block?.type === "image" && block.data) {
+          imageItems.push(block);
+        }
+      }
+    }
+    if (message.attachments && message.attachments.length > 0) {
+      for (const att of message.attachments) {
+        if (att.type === "image" && att.content) {
+          imageItems.push({ data: att.content, mimeType: att.mimeType });
+        }
+      }
+    }
+    let imagesHtml = "";
+    if (imageItems.length > 0) {
       imagesHtml =
         '<div class="message-images">' +
-        message.images
+        imageItems
           .map((img) => {
             const src = img.data.startsWith("data:")
               ? img.data
@@ -168,7 +191,16 @@ export class MessageRenderer {
         "</div>";
     }
 
-    const displayContent = cleanChatTranscript(message.content) ?? message.content;
+    // Normalise content: Pi RPC user messages may carry an array of content blocks
+    // ({type:"text",text:"..."}  or {type:"image",...}).  Extract the text parts so
+    // downstream string-only helpers (cleanChatTranscript, renderUserMarkdown) work.
+    const rawContent = Array.isArray(message.content)
+      ? message.content
+          .filter((b) => b?.type === "text")
+          .map((b) => b.text)
+          .join("\n")
+      : message.content;
+    const displayContent = cleanChatTranscript(rawContent) ?? rawContent;
     if (entryId) div.dataset.entryId = entryId;
     const forkBtnHtml = entryId
       ? `<button class="message-fork-btn" aria-label="Fork session from here" title="Fork session from here"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></button>`
@@ -229,6 +261,11 @@ export class MessageRenderer {
 
     const streamingClass = isStreaming ? " streaming" : "";
 
+    // Skip history messages that have no renderable text/thinking content
+    // (e.g. assistant messages that only contain toolCall blocks — those are
+    // already rendered by ToolCardRenderer).
+    if (!isStreaming && isHistory && !contentHtml) return null;
+
     div.innerHTML = `
       <div class="message-content${streamingClass}">${contentHtml}</div>
       ${!isStreaming ? `<div class="message-footer"><button class="message-copy-btn" aria-label="Copy message"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>${usageHtml}</div>` : ""}
@@ -273,25 +310,48 @@ export class MessageRenderer {
 
   updateStreamingMessage(messageElement, content) {
     const contentDiv = messageElement.querySelector(".message-content");
-    if (contentDiv) {
-      messageElement._streamingRawText = content;
-      // Keep any thinking block, update only the text part
-      const thinkingBlock = contentDiv.querySelector(".streaming-thinking");
-      const rendered = renderStreamingMarkdown(content);
-      if (thinkingBlock) {
-        // Remove everything after the thinking block and re-add text
-        let textNode = contentDiv.querySelector(".streaming-text");
-        if (!textNode) {
-          textNode = document.createElement("div");
-          textNode.className = "streaming-text";
-          contentDiv.appendChild(textNode);
-        }
-        textNode.innerHTML = rendered;
-      } else {
-        contentDiv.innerHTML = rendered;
+    if (!contentDiv) return;
+
+    // The RPC stream may hand us either a plain string (legacy/tests) or the
+    // full AgentMessage content array ({type:"text"|"thinking", ...}). Extract
+    // the text so downstream markdown rendering never sees `[object Object]`.
+    const { text, thinking } = this.splitStreamingContent(content);
+
+    if (thinking) this.updateStreamingThinking(messageElement, thinking);
+
+    messageElement._streamingRawText = text;
+    // Keep any thinking block, update only the text part
+    const thinkingBlock = contentDiv.querySelector(".streaming-thinking");
+    const rendered = renderStreamingMarkdown(text);
+    if (thinkingBlock) {
+      // Remove everything after the thinking block and re-add text
+      let textNode = contentDiv.querySelector(".streaming-text");
+      if (!textNode) {
+        textNode = document.createElement("div");
+        textNode.className = "streaming-text";
+        contentDiv.appendChild(textNode);
       }
-      this.scrollToBottom();
+      textNode.innerHTML = rendered;
+    } else {
+      contentDiv.innerHTML = rendered;
     }
+    this.scrollToBottom();
+  }
+
+  /**
+   * Normalise streaming `message.content` (string, or AgentMessage content
+   * array) into separate text/thinking strings.
+   */
+  splitStreamingContent(content) {
+    if (typeof content === "string") return { text: content, thinking: "" };
+    if (!Array.isArray(content)) return { text: "", thinking: "" };
+    let text = "";
+    let thinking = "";
+    for (const block of content) {
+      if (block?.type === "text") text += block.text ?? "";
+      else if (block?.type === "thinking") thinking += block.thinking ?? "";
+    }
+    return { text, thinking };
   }
 
   finalizeStreamingMessage(messageElement, usage = null, thinking = "") {
@@ -308,10 +368,17 @@ export class MessageRenderer {
           : domText;
       messageElement._streamingRawText = null;
 
+      // Fall back to the thinking text accumulated during streaming (via
+      // updateStreamingThinking) if the caller didn't pass one explicitly.
+      const finalThinking =
+        thinking ||
+        contentDiv.querySelector(".streaming-thinking .thinking-content")?.textContent ||
+        "";
+
       // Rebuild with thinking block (if any) + markdown text
       let html = "";
-      if (thinking) {
-        html += this.renderThinkingBlock(thinking);
+      if (finalThinking) {
+        html += this.renderThinkingBlock(finalThinking);
       }
       html += renderMarkdown(rawText);
       contentDiv.innerHTML = html;
@@ -465,9 +532,13 @@ export class MessageRenderer {
 
   scrollToBottom() {
     if (this.isNearBottom) {
-      requestAnimationFrame(() => {
-        this.container.scrollTop = this.container.scrollHeight;
-      });
+      this.forceScrollToBottom();
     }
+  }
+
+  forceScrollToBottom() {
+    requestAnimationFrame(() => {
+      this.container.scrollTop = this.container.scrollHeight;
+    });
   }
 }

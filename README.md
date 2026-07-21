@@ -195,7 +195,7 @@ Picot does not re-implement agent logic — it embeds Pi and exposes its runtime
 - **Embedded `pi --mode rpc` runtime** — one managed process per workspace, isolated by project
 - **Streaming RPC bridge** — token-by-token output, tool-call events, and thinking blocks rendered live
 - **Session lifecycle APIs** — create, switch, and resume sessions; full per-project history
-- **WebSocket broker** — multiple UI clients can connect to the same pi process simultaneously
+- **Native host server** — Rust owns the HTTP/WebSocket surface and bridges browser frames to Pi RPC
 - **Extension compatibility** — user extensions from `~/.pi/agent/extensions/` and `.pi/extensions/` are auto-loaded
 - **Credential reuse** — reads Pi's existing `~/.pi/agent/auth.json`; no separate login needed
 
@@ -207,14 +207,14 @@ Picot does not re-implement agent logic — it embeds Pi and exposes its runtime
 ┌──────────────────────────────────────────────────────┐
 │ Picot .app                                       │
 │                                                      │
-│   Tauri + PiManager (Rust)                           │
-│      ├─► spawn  pi --mode rpc  (project A, :3001)    │
-│      ├─► spawn  pi --mode rpc  (project B, :3002)    │
-│      └─► OS Window per project ──► WebView ──► HTTP  │
+│   Tauri + native HostServer (Rust)                   │
+│      ├─► spawn  pi --mode rpc --extension picot-bridge.mjs │
+│      ├─► bridge stdio RPC frames over /v2/ws         │
+│      └─► OS Window ──► WebView ──► native host HTTP  │
 │                                                      │
 │   resources/                                         │
 │      ├─ public/             (frontend)               │
-│      ├─ extensions/         (embedded-server.mjs)    │
+│      ├─ extensions/         (picot-bridge.mjs)       │
 │      └─ pi/                 (bun-compiled pi binary) │
 └──────────────────────────────────────────────────────┘
                        │
@@ -225,7 +225,7 @@ Picot does not re-implement agent logic — it embeds Pi and exposes its runtime
                  └─ settings.json
 ```
 
-The embedded pi process loads `embedded-server.mjs` at startup. That extension owns the HTTP + WebSocket surface the Tauri WebView talks to: static assets, `/api/sessions`, `/api/cost-dashboard`, RPC bridge for prompts, etc. Picot's Rust side controls process lifecycle, port allocation, and window management.
+Picot starts a Rust `HostServer` and a managed native `pi --mode rpc` process. The WebView talks to `/v2/ws` on the host, and the host bridges those frames to Pi over stdio RPC. The bundled `picot-bridge.mjs` extension provides Picot-specific Pi commands; it does not serve the app UI.
 
 ---
 
@@ -268,10 +268,10 @@ To bump the embedded pi version, edit `scripts/pi-version.json`, run `bun run fe
 
 Picot is a maintained fork of **Tau**, adapted for Pi-first, local development workflows. Key additions:
 
-- **Tauri-native PiManager** — spawns one `pi --mode rpc` process per project window
+- **Native Pi runtime manager** — spawns and supervises `pi --mode rpc` processes
 - **Embedded pi runtime** — no separate global install; Picot ships its own binary
-- **Multi-session without new windows** — headless pi processes, current WebView navigates
-- **LAN + mobile access** — QR code, PWA support, WebSocket broker for multi-client
+- **Protocol v2 host bridge** — typed routing for runtime, data, auth, and extension UI frames
+- **Host data plane** — Rust serves session and workspace data directly to the native UI
 
 ---
 

@@ -196,3 +196,33 @@ jobs:
           # `https://github.com/.../releases/latest/download/latest.json`.
           updaterJsonPreferNsis: true
 
+  publish-beta-manifest:
+    needs: build-and-release
+    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-')
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download prerelease updater manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          gh release download "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --pattern latest.json \
+            --dir dist
+
+      - name: Publish beta channel manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view beta --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create beta \
+              --repo "${{ github.repository }}" \
+              --title "Picot Beta Channel" \
+              --notes "Mutable updater manifest for Picot prerelease builds." \
+              --prerelease \
+              --target "${{ github.sha }}"
+          fi
+          gh release upload beta dist/latest.json \
+            --repo "${{ github.repository }}" \
+            --clobber

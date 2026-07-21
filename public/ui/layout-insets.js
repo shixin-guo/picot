@@ -1,5 +1,5 @@
-const BASE_TOP_INSET = 68;
-const BASE_BOTTOM_INSET = 100;
+const BASE_TOP_INSET = 52;
+const BASE_BOTTOM_INSET = 128;
 const CHROME_GAP = 12;
 
 function defaultMeasureHeight(element) {

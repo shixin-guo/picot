@@ -4,17 +4,17 @@
   "description": "Default desktop capability for Pi Agent",
   "local": true,
   "remote": {
-    "urls": ["http://localhost:*"]
+    "urls": ["http://localhost:*", "http://127.0.0.1:*"]
   },
   "windows": ["*"],
   "permissions": [
+    "default",
     "core:default",
     "dialog:default",
     "fs:default",
     "shell:default",
     "updater:default",
     "process:default",
-    "core:window:allow-start-dragging",
-    "default"
+    "core:window:allow-start-dragging"
   ]
 }

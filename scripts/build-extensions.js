@@ -8,9 +8,8 @@
  * pi loads extensions with jiti and resolves their `import` statements via
  * Node's module algorithm at runtime. In dev that works because the source
  * lives next to this repo's `node_modules/`. Inside a packaged `.app`, the
- * raw `extensions/*.ts` is shipped without `node_modules`, so any non-builtin
- * import (e.g. `ws`, `qrcode`) fails with `Cannot find module`. Bundling here
- * inlines those deps so the shipped extension is fully self-contained.
+ * raw `extensions/*.ts` is shipped without `node_modules`. Bundling here
+ * inlines runtime deps so shipped extensions are fully self-contained.
  *
  * Notes
  * - We keep node built-ins external (esbuild does this automatically with
@@ -34,11 +33,7 @@ const SRC_DIR = path.join(ROOT, "extensions");
 const OUT_DIR = path.join(SRC_DIR, "dist");
 
 // [inputPath, outputName] — outputName defaults to inputPath with .ts→.mjs
-const ENTRIES = [
-  ["embedded-server.ts"],
-  ["picot-bridge.ts"],
-  ["pi-chat-src/extension-entry.ts", "pi-chat.mjs"],
-];
+const ENTRIES = [["picot-bridge.ts"], ["pi-chat-src/extension-entry.ts", "pi-chat.mjs"]];
 
 const EXTERNAL = [
   "@earendil-works/pi-coding-agent",
@@ -71,9 +66,9 @@ async function buildOne(entrySpec) {
     minify: false,
     legalComments: "none",
     logLevel: "info",
-    // Some bundled CJS deps (e.g. `ws`, `qrcode`) expect `require` /
-    // `__dirname` / `__filename` to exist at runtime. esbuild's ESM output
-    // does not provide them, so we shim them via banner.
+    // Some bundled CJS deps expect `require` / `__dirname` / `__filename`
+    // to exist at runtime. esbuild's ESM output does not provide them, so we
+    // shim them via banner.
     banner: {
       js: [
         "import { createRequire as __piCreateRequire } from 'node:module';",

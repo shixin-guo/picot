@@ -62,6 +62,13 @@ pub struct RuntimeSnapshot {
     pub state: RuntimeState,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeStatus {
+    pub target: RuntimeTarget,
+    pub state: RuntimeState,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CoordinatorError {
     UnknownInstance,
@@ -234,6 +241,16 @@ impl RuntimeCoordinator {
             sequence: record.sequence,
             state: record.state,
         })
+    }
+
+    pub fn statuses(&self) -> Vec<RuntimeStatus> {
+        self.instances
+            .values()
+            .map(|record| RuntimeStatus {
+                target: record.target.clone(),
+                state: record.state,
+            })
+            .collect()
     }
 
     pub fn set_state(

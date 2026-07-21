@@ -220,11 +220,8 @@ export class ToolCardRenderer {
 
     header.appendChild(headerRight);
 
-    // Toggle expand on click
-    header.addEventListener("click", () => {
-      body.classList.toggle("expanded");
-      chevron.classList.toggle("expanded");
-    });
+    // Toggle expand/collapse is handled by the container-level delegation
+    // in the constructor; no per-header listener needed here.
 
     card.appendChild(header);
 

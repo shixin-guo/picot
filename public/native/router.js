@@ -1,4 +1,8 @@
-const OPAQUE_ID = /^[A-Za-z][A-Za-z0-9_-]{0,127}$/;
+// Workspace ids are v4 UUIDs and session ids are v7 UUIDs, both of which may
+// start with a digit (e.g. "29e2ccd0-…", "019f80bd-…"). Allow a leading
+// alphanumeric so those routes parse; "." and "/" stay disallowed so the value
+// can never encode a path-traversal segment.
+const OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
 function validId(value) {
   return typeof value === "string" && OPAQUE_ID.test(value);

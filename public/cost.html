@@ -1,18 +1,86 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Picot - Usage</title>
-        <link rel="icon" type="image/svg+xml" href="icons/logo-dark.svg" />
-        <link rel="stylesheet" href="style-theme.css" />
-        <link rel="stylesheet" href="design-system.css" />
-        <link rel="stylesheet" href="style.css" />
-        <link rel="stylesheet" href="cost.css" />
-        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    </head>
-    <body class="cost-standalone">
-        <cost-dashboard></cost-dashboard>
-        <script type="module" src="cost.js"></script>
-    </body>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Picot - Usage</title>
+  <link rel="icon" type="image/svg+xml" href="icons/logo-dark.svg">
+  <link rel="stylesheet" href="style-theme.css">
+  <link rel="stylesheet" href="design-system.css">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="cost.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="cost-page cost-page-infobar">
+    <section class="" id="infobar-cost-section">
+      <div class="infobar-topbar">
+        <div class="infobar-topbar-actions">
+          <div class="infobar-quick-range" role="group" aria-label="Quick range">
+            <button type="button" class="infobar-range-chip" data-range-chip="7d">7d</button>
+            <button type="button" class="infobar-range-chip is-active" data-range-chip="30d">30d</button>
+            <button type="button" class="infobar-range-chip" data-range-chip="90d">90d</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="infobar-panels">
+        <div class="infobar-panel is-active" id="usage-overview">
+          <div class="infobar-cost-block">
+            <div class="infobar-subsection-head">
+              <h3>Overview</h3>
+            </div>
+            <div class="infobar-overview-grid" id="infobar-overview-grid"></div>
+            <div class="infobar-activity-wrap">
+              <div id="infobar-activity-panel"></div>
+            </div>
+            <p class="infobar-overview-note" id="infobar-overview-note"></p>
+          </div>
+        </div>
+
+        <div class="infobar-section-row">
+          <div class="infobar-panel is-active" id="usage-models">
+            <div class="infobar-cost-block">
+              <div class="infobar-subsection-head">
+                <h3>Models</h3>
+              </div>
+              <div class="infobar-rank-list" id="infobar-models-list"></div>
+            </div>
+          </div>
+
+          <div class="infobar-right-col">
+            <div class="infobar-panel is-active" id="usage-tool-cost">
+              <div class="infobar-cost-block">
+                <div class="infobar-subsection-head">
+                  <h3>Tool Cost</h3>
+                </div>
+                <div id="infobar-tool-cost-panel"></div>
+              </div>
+            </div>
+
+            <div class="infobar-panel is-active" id="usage-projects">
+              <div class="infobar-cost-block">
+                <div class="infobar-subsection-head">
+                  <h3>Projects</h3>
+                </div>
+                <div class="infobar-rank-list" id="infobar-projects-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="infobar-panel is-active" id="usage-sessions">
+          <div class="infobar-cost-block">
+            <div class="infobar-subsection-head">
+              <h3>Sessions</h3>
+              <span>Recent sessions in range</span>
+            </div>
+            <div id="infobar-sessions-panel"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script type="module" src="cost.js"></script>
+</body>
 </html>
