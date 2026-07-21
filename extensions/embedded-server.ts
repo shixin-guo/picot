@@ -2306,7 +2306,7 @@ export default function (pi: ExtensionAPI) {
     if (urlPath === "/api/super-agent/projects" && req.method === "GET") {
       res.writeHead(200, {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": "http://localhost",
       });
       res.end(JSON.stringify(buildSuperAgentProjectRegistry(getRunningInstances())));
       return;

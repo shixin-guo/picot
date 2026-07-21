@@ -1551,7 +1551,7 @@ function handleBackgroundRPCEvent(sessionFile, event) {
       // Check if this background session was a dispatched Super Agent task
       const srcPort = event?.__broker?.sourcePort;
       if (srcPort && dispatchedTasks.has(srcPort)) {
-        const taskMeta = dispatchedTasks.get(srcPort);
+        const taskMeta = dispatchedTasks.get(srcPort); // ast-grep-ignore no-case-declarations-js — case already has block braces
         dispatchedTasks.delete(srcPort);
         // agent_end carries no exit status — always mark done and let Super Agent handle
         notifySuperAgent(taskMeta.superAgentPort, taskMeta.taskId, taskMeta.title, "done", null);
