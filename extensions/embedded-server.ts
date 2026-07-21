@@ -40,8 +40,10 @@ import * as path from "node:path";
 import {
   createAgentSession,
   type ExtensionAPI,
+  type ExtensionCommandContext,
   type ExtensionContext,
   type ModelRegistry,
+  type SessionEntry,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import QRCode from "qrcode";
@@ -787,6 +789,14 @@ type AvailableModelRegistry = {
   getAvailable: () => Promise<unknown[]>;
 };
 
+/** Runtime shape: ModelRegistry instances carry an AuthStorage for key management */
+type ModelRegistryWithAuth = ModelRegistry & {
+  authStorage: {
+    modify: (provider: string, fn: (current: unknown) => Promise<unknown>) => Promise<unknown>;
+    delete: (provider: string) => Promise<void>;
+  };
+};
+
 type CatalogModel = {
   provider?: string;
   id?: string;
@@ -983,7 +993,7 @@ async function runModelHealthCheck(
       sessionManager: SessionManager.inMemory(),
       authStorage: registry.authStorage,
       modelRegistry: registry,
-    } as Parameters<typeof createAgentSession>[0]);
+    } as unknown as Parameters<typeof createAgentSession>[0]);
     try {
       const unsubscribe = session.subscribe((event: unknown) => {
         const evt = event as {
@@ -1321,7 +1331,9 @@ export default function (pi: ExtensionAPI) {
     let text = "";
     if (typeof content === "string") text = content;
     else if (Array.isArray(content)) {
-      const tb = content.find((b: { type?: string }) => b.type === "text");
+      const tb = content.find((b: { type?: string }) => b.type === "text") as
+        | { type: string; text: string }
+        | undefined;
       if (tb) text = tb.text;
     }
     if (text) userMessages.push(text.substring(0, 300));
@@ -1435,6 +1447,23 @@ export default function (pi: ExtensionAPI) {
       isStreaming: !ctx.isIdle(),
       contextUsage,
     };
+  }
+
+  /**
+   * Extracts the text content from a session entry for fork-message previews.
+   * Delegated to a module-level function so the calling case clause has no
+   * lexical declarations (avoiding no-case-declarations false positives).
+   */
+  function extractUserEntryText(e: SessionEntry): string {
+    const content = (e as { message?: { content?: unknown } }).message?.content;
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      return (content as Array<{ type?: string; text?: string }>)
+        .filter((b) => b.type === "text")
+        .map((b) => b.text ?? "")
+        .join("");
+    }
+    return "";
   }
 
   // ═══════════════════════════════════════
@@ -1610,22 +1639,11 @@ export default function (pi: ExtensionAPI) {
             break;
           }
           const allEntries = ctx.sessionManager.getEntries();
-          const forkMessages = allEntries
-            .filter(
-              (e: { type?: string; message?: { role?: string; content?: unknown } }) =>
-                e.type === "message" && e.message?.role === "user",
-            )
-            .map((e: { id?: string; message?: { content?: unknown } }) => ({
+          const forkMessages = (allEntries as SessionEntry[])
+            .filter((e: SessionEntry) => e.type === "message" && e.message?.role === "user")
+            .map((e: SessionEntry) => ({
               entryId: e.id ?? "",
-              text:
-                typeof e.message?.content === "string"
-                  ? e.message.content
-                  : Array.isArray(e.message?.content)
-                    ? (e.message.content as Array<{ type?: string; text?: string }>)
-                        .filter((b) => b.type === "text")
-                        .map((b) => b.text ?? "")
-                        .join("")
-                    : "",
+              text: extractUserEntryText(e),
             }))
             .filter((m: { entryId: string }) => m.entryId);
           sendTo(ws, success("get_fork_messages", { messages: forkMessages }));
@@ -1637,7 +1655,7 @@ export default function (pi: ExtensionAPI) {
             sendTo(ws, error("new_session", "No context available"));
             break;
           }
-          if (typeof (ctx as unknown as { newSession?: unknown }).newSession !== "function") {
+          if (typeof (ctx as unknown as ExtensionCommandContext).newSession !== "function") {
             sendTo(
               ws,
               error(
@@ -1647,7 +1665,7 @@ export default function (pi: ExtensionAPI) {
             );
             break;
           }
-          const result = await ctx.newSession();
+          const result = await (ctx as unknown as ExtensionCommandContext).newSession();
           sendTo(ws, success("new_session", result || {}));
           break;
         }
@@ -1661,7 +1679,7 @@ export default function (pi: ExtensionAPI) {
             sendTo(ws, error("switch_session", "sessionPath is required"));
             break;
           }
-          if (typeof (ctx as unknown as { switchSession?: unknown }).switchSession !== "function") {
+          if (typeof (ctx as unknown as ExtensionCommandContext).switchSession !== "function") {
             sendTo(
               ws,
               error(
@@ -1671,7 +1689,9 @@ export default function (pi: ExtensionAPI) {
             );
             break;
           }
-          const result = await ctx.switchSession(command.sessionPath);
+          const result = await (ctx as unknown as ExtensionCommandContext).switchSession(
+            command.sessionPath,
+          );
           sendTo(ws, success("switch_session", result || {}));
           break;
         }
@@ -1714,8 +1734,8 @@ export default function (pi: ExtensionAPI) {
         // ─── Model ───
         case "get_available_models": {
           const models = await getAvailableModelsForRpc(
-            ctx,
-            globalState.modelRegistry,
+            ctx as unknown as Parameters<typeof getAvailableModelsForRpc>[0],
+            globalState.modelRegistry as unknown as Parameters<typeof getAvailableModelsForRpc>[1],
             new ModelPreferencesStore(),
           );
           sendTo(ws, success("get_available_models", { models }));
@@ -1868,10 +1888,10 @@ export default function (pi: ExtensionAPI) {
             break;
           }
           try {
-            registry.authStorage.set(provider, {
+            await (registry as ModelRegistryWithAuth).authStorage.modify(provider, async () => ({
               type: "api_key",
               key: apiKey,
-            });
+            }));
             // Refresh so getAvailable() picks up the new key without restart.
             registry.refresh();
             sendTo(ws, success("set_api_key", { provider }));
@@ -1896,7 +1916,7 @@ export default function (pi: ExtensionAPI) {
             break;
           }
           try {
-            registry.authStorage.remove(provider);
+            await (registry as ModelRegistryWithAuth).authStorage.delete(provider);
             registry.refresh();
             sendTo(ws, success("remove_api_key", { provider }));
           } catch (e: unknown) {
@@ -2423,7 +2443,12 @@ export default function (pi: ExtensionAPI) {
           }
           const resolved = resolveScopedFilePath(dirPath, "workspace", wsRoot);
           if (!resolved.ok) {
-            sendJsonError(res, 403, "Path is outside workspace", resolved.code);
+            sendJsonError(
+              res,
+              403,
+              "Path is outside workspace",
+              (resolved as { ok: false; code: string }).code,
+            );
             return;
           }
           dirPath = resolved.path;
@@ -2456,7 +2481,12 @@ export default function (pi: ExtensionAPI) {
         }
         const resolved = resolveScopedFilePath(requestedPath, "workspace", wsRoot);
         if (!resolved.ok) {
-          sendJsonError(res, 403, "Path is outside workspace", resolved.code);
+          sendJsonError(
+            res,
+            403,
+            "Path is outside workspace",
+            (resolved as { ok: false; code: string }).code,
+          );
           return;
         }
 
@@ -2548,7 +2578,12 @@ export default function (pi: ExtensionAPI) {
         }
         const resolved = resolveScopedFilePath(requestedPath, "workspace", wsRoot);
         if (!resolved.ok) {
-          sendJsonError(res, 403, "Path is outside workspace", resolved.code);
+          sendJsonError(
+            res,
+            403,
+            "Path is outside workspace",
+            (resolved as { ok: false; code: string }).code,
+          );
           return;
         }
 
@@ -2663,7 +2698,12 @@ export default function (pi: ExtensionAPI) {
           }
           const resolved = resolveScopedFilePath(requestedPath, "workspace", wsRoot);
           if (!resolved.ok) {
-            sendJsonError(res, 403, "Path is outside workspace", resolved.code);
+            sendJsonError(
+              res,
+              403,
+              "Path is outside workspace",
+              (resolved as { ok: false; code: string }).code,
+            );
             return;
           }
 
@@ -2693,10 +2733,15 @@ export default function (pi: ExtensionAPI) {
           );
 
           if (!result.success) {
-            if (result.code === "conflict") {
+            if ((result as { success: false; code: string }).code === "conflict") {
               sendJsonError(res, 409, "File was modified externally", "conflict");
             } else {
-              sendJsonError(res, 400, "Invalid file for writing", result.code);
+              sendJsonError(
+                res,
+                400,
+                "Invalid file for writing",
+                (result as { success: false; code: string }).code,
+              );
             }
             return;
           }
@@ -3433,7 +3478,7 @@ export default function (pi: ExtensionAPI) {
                 const result = await parseSessionFileCached(filePath, readline);
                 if (!result?.parsed) return null;
                 return {
-                  ...result.parsed,
+                  ...(result.parsed as Record<string, unknown>),
                   file,
                   filePath,
                   mtime: result.stat.mtimeMs,

@@ -59,7 +59,7 @@ describe("resolveScopedFilePath", () => {
     const result = resolveScopedFilePath(target, "workspace", workspaceRoot);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.code).toBe("outsideWorkspace");
+      expect((result as { ok: false; code: string }).code).toBe("outsideWorkspace");
     }
   });
 
@@ -68,7 +68,7 @@ describe("resolveScopedFilePath", () => {
     const result = resolveScopedFilePath(target, "workspace", workspaceRoot);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.code).toBe("outsideWorkspace");
+      expect((result as { ok: false; code: string }).code).toBe("outsideWorkspace");
     }
   });
 
@@ -82,7 +82,7 @@ describe("resolveScopedFilePath", () => {
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.code).toBe("outsideWorkspace");
+      expect((result as { ok: false; code: string }).code).toBe("outsideWorkspace");
     }
   });
 
@@ -114,7 +114,7 @@ describe("resolveScopedFilePath", () => {
     const result = resolveScopedFilePath("", "workspace", workspaceRoot);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.code).toBe("invalidPath");
+      expect((result as { ok: false; code: string }).code).toBe("invalidPath");
     }
   });
 
@@ -122,7 +122,7 @@ describe("resolveScopedFilePath", () => {
     const result = resolveScopedFilePath(null, "workspace", workspaceRoot);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.code).toBe("invalidPath");
+      expect((result as { ok: false; code: string }).code).toBe("invalidPath");
     }
   });
 });
@@ -233,7 +233,7 @@ describe("writeTextFileIfUnchanged", () => {
     const result = writeTextFileIfUnchanged(filePath, "new content\n", 1);
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.code).toBe("conflict");
+      expect((result as { success: false; code: string }).code).toBe("conflict");
     }
   });
 

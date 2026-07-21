@@ -386,9 +386,9 @@ export function buildTelegramDoctorReport(
     configured,
     bot: {
       ok: botOk,
-      id: input.bot?.id || account?.botUserId,
-      username: input.bot?.username || account?.botUsername,
-      name: input.bot?.name || account?.name,
+      id: (input.bot?.id || account?.botUserId) as string,
+      username: (input.bot?.username || account?.botUsername) as string,
+      name: (input.bot?.name || account?.name) as string,
       message: checks[1].message,
     },
     dm: {
