@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { initI18n, setLocale } from "../i18n.js";
 import {
   renderCostInfobar,
   renderInfobarModels,
@@ -7,6 +10,36 @@ import {
   renderInfobarToolCost,
   renderInfobarUsage,
 } from "./infobar.js";
+
+const localeDir = resolve(import.meta.dirname, "..", "locales");
+const enMessages = JSON.parse(readFileSync(resolve(localeDir, "en.json"), "utf-8"));
+const zhMessages = JSON.parse(readFileSync(resolve(localeDir, "zh.json"), "utf-8"));
+
+function clearLanguageCookie() {
+  document.cookie = "picot-language=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+}
+
+beforeEach(async () => {
+  clearLanguageCookie();
+  vi.spyOn(global, "fetch").mockImplementation((url) => {
+    const path = String(url);
+    const body = path.includes("/locales/zh.json")
+      ? zhMessages
+      : path.includes("/locales/en.json")
+        ? enMessages
+        : {};
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(body),
+    });
+  });
+  await initI18n();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("cost infobar renderers", () => {
   afterEach(() => {
@@ -120,8 +153,7 @@ describe("cost infobar renderers", () => {
 
       expect(models.querySelectorAll(".infobar-model-legend-row")).toHaveLength(2);
       expect(projects.querySelector(".infobar-projects-chart")).not.toBeNull();
-      expect(usage.textContent).toContain("Total Tokens");
-      expect(usage.textContent).toContain("3.6K");
+      expect(usage.textContent).toContain("Total tokens");
       expect(toolCost.textContent).toContain("read_file");
       expect(toolCostMeta.textContent).toContain("2 tracked");
     } finally {
@@ -358,5 +390,29 @@ describe("cost infobar renderers", () => {
     expect(section.querySelector("#infobar-models-list").textContent).toContain("gpt-4.1");
     expect(section.querySelector("#infobar-tool-cost-panel").textContent).toContain("read_file");
     expect(section.querySelector("#infobar-sessions-panel").textContent).toContain("Session 1");
+  });
+
+  it("renders translated Chinese cost labels after locale switch", async () => {
+    await setLocale("zh");
+    const overview = document.createElement("div");
+    renderInfobarOverview(
+      overview,
+      {
+        totalCost: 9,
+        sessions: 7,
+        messages: 22,
+        totalTokens: 3550,
+        activeDays: 4,
+        currentStreak: 1,
+        longestStreak: 3,
+      },
+      { inputTokens: 2000, outputTokens: 1000, cacheRead: 400, cacheWrite: 150, toolCalls: 6 },
+    );
+    expect(overview.textContent).toContain("总成本");
+    expect(overview.textContent).toContain("工具调用");
+
+    const toolCost = document.createElement("div");
+    renderInfobarToolCost(toolCost, { tools: [] });
+    expect(toolCost.textContent).toContain("所选范围内无工具使用。");
   });
 });

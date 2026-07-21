@@ -1,3 +1,5 @@
+import { onLocaleChange, t } from "../i18n.js";
+
 export function createAppUpdater({
   transport,
   appVersionValue,
@@ -27,9 +29,54 @@ export function createAppUpdater({
   const NUMERIC_PRERELEASE_VERSION_RE = /-\d+(?:\.\d+)*$/;
   let currentAppVersion = APP_VERSION;
 
+  // i18n: track the current status/button text so a locale change can repaint
+  // already-rendered UI without rechecking the network. Raw values (versions,
+  // raw transport error text) are kept untranslated and not re-applied.
+  let currentStatusKey = null;
+  let currentStatusParams = {};
+  let currentStatusTone = "info";
+  let appVersionUnknown = false;
+  let currentCheckBtnKey = "updater.checkNow";
+  let currentCheckBtnParams = {};
+  let currentInstallLabelKey = null;
+  let currentInstallLabelParams = {};
+  let currentInstallBtnKey = null;
+  let currentInstallBtnParams = {};
+
+  function applyUpdateStatus(key, params = {}, tone = "info") {
+    currentStatusKey = key;
+    currentStatusParams = params;
+    currentStatusTone = tone;
+    setUpdateStatus(t(key, params), tone);
+  }
+
+  function applyRawUpdateStatus(message, tone = "info") {
+    currentStatusKey = null;
+    currentStatusTone = tone;
+    setUpdateStatus(message, tone);
+  }
+
+  function setCheckBtnText(key, params = {}) {
+    currentCheckBtnKey = key;
+    currentCheckBtnParams = params;
+    if (checkUpdatesBtn) checkUpdatesBtn.textContent = t(key, params);
+  }
+
+  function setInstallBtnText(key, params = {}) {
+    currentInstallBtnKey = key;
+    currentInstallBtnParams = params;
+    if (installUpdateBtn) installUpdateBtn.textContent = t(key, params);
+  }
+
+  function setInstallLabelText(key, params = {}) {
+    currentInstallLabelKey = key;
+    currentInstallLabelParams = params;
+    if (updateInstallLabel) updateInstallLabel.textContent = t(key, params);
+  }
+
   function setSidebarUpdateButton({
     visible,
-    label = "Update",
+    label = t("updater.update"),
     tone = "ok",
     title = "Download and install update",
     disabled = false,
@@ -37,7 +84,7 @@ export function createAppUpdater({
     if (!sidebarUpdateBtn) return;
     sidebarUpdateBtn.classList.toggle("hidden", !visible);
     if (!visible) {
-      sidebarUpdateBtn.textContent = "Update";
+      sidebarUpdateBtn.textContent = t("updater.update");
       sidebarUpdateBtn.dataset.tone = "";
       sidebarUpdateBtn.disabled = false;
       sidebarUpdateBtn.title = "Download and install update";
@@ -57,9 +104,9 @@ export function createAppUpdater({
       }
       setSidebarUpdateButton({
         visible: true,
-        label: "Updating...",
+        label: t("updater.updating"),
         tone: "warn",
-        title: "Update is in progress",
+        title: t("updater.updateInProgress"),
         disabled: true,
       });
       return;
@@ -67,7 +114,7 @@ export function createAppUpdater({
     if (pendingUpdate) {
       setSidebarUpdateButton({
         visible: true,
-        label: "Update",
+        label: t("updater.update"),
         tone: "ok",
         title: `Download and install Picot ${pendingUpdate.version}`,
       });
@@ -76,7 +123,7 @@ export function createAppUpdater({
     if (updateCheckFailed) {
       setSidebarUpdateButton({
         visible: true,
-        label: "Retry",
+        label: t("updater.retry"),
         tone: "error",
         title: "Last update check failed. Retry update check.",
       });
@@ -102,13 +149,21 @@ export function createAppUpdater({
     if (!updateInstallRow || !updateInstallLabel || !installUpdateBtn) return;
     if (!update) {
       updateInstallRow.hidden = true;
+      currentInstallLabelKey = null;
+      currentInstallBtnKey = null;
       return;
     }
     updateInstallRow.hidden = false;
-    const from = update.currentVersion ? ` (from ${update.currentVersion})` : "";
-    updateInstallLabel.textContent = `Picot ${update.version}${from}`;
+    if (update.currentVersion) {
+      setInstallLabelText("updater.versionLabelFrom", {
+        version: update.version,
+        current: update.currentVersion,
+      });
+    } else {
+      setInstallLabelText("updater.versionLabel", { version: update.version });
+    }
     installUpdateBtn.disabled = false;
-    installUpdateBtn.textContent = "Download & install";
+    setInstallBtnText("updater.downloadInstall");
   }
 
   function isIgnoredPrereleaseVersion(version) {
@@ -124,6 +179,7 @@ export function createAppUpdater({
 
     if (APP_VERSION) {
       appVersionValue.textContent = APP_VERSION;
+      appVersionUnknown = false;
       currentAppVersion = APP_VERSION;
       return APP_VERSION;
     }
@@ -133,6 +189,7 @@ export function createAppUpdater({
         const v = await transport.getAppVersion();
         if (v) {
           appVersionValue.textContent = v;
+          appVersionUnknown = false;
           currentAppVersion = v;
           return v;
         }
@@ -140,7 +197,8 @@ export function createAppUpdater({
     } catch (err) {
       console.warn("[updater] unable to read app version:", err);
     }
-    appVersionValue.textContent = "unknown";
+    appVersionValue.textContent = t("updater.unknown");
+    appVersionUnknown = true;
     currentAppVersion = "unknown";
     return currentAppVersion;
   }
@@ -148,16 +206,13 @@ export function createAppUpdater({
   function explainUpdateError(rawMessage) {
     const msg = String(rawMessage || "");
     if (/Could not fetch a valid release JSON/i.test(msg)) {
-      return (
-        "No update manifest published yet. Either the latest GitHub release " +
-        "doesn't include `latest.json`, or it has no entry for this platform. " +
-        "See docs/AUTO_UPDATER.md."
-      );
+      return { key: "updater.noManifest", params: {} };
     }
     if (/pubkey|public key|signature/i.test(msg)) {
-      return "Updater public key is missing or the bundle signature is invalid. See docs/AUTO_UPDATER.md.";
+      return { key: "updater.pubkeyError", params: {} };
     }
-    return msg || "Unknown updater error";
+    if (msg) return { raw: msg };
+    return { key: "updater.unknownError", params: {} };
   }
 
   async function checkForUpdates({ silent = false } = {}) {
@@ -165,10 +220,7 @@ export function createAppUpdater({
 
     if (isLocalPrereleaseBuild(currentAppVersion)) {
       if (!silent) {
-        setUpdateStatus(
-          `Pre-release build (${currentAppVersion}) — auto-update is disabled for this build.`,
-          "info",
-        );
+        applyUpdateStatus("updater.prereleaseBuild", { version: currentAppVersion }, "info");
       }
       pendingUpdate = null;
       updateCheckFailed = false;
@@ -178,7 +230,7 @@ export function createAppUpdater({
     }
 
     if (!transport?.hasUpdater) {
-      if (!silent) setUpdateStatus("Auto-updates are only available in the desktop app.", "warn");
+      if (!silent) applyUpdateStatus("updater.autoUpdatesDesktopOnly", {}, "warn");
       if (updaterSection && !transport?.capabilities?.native) updaterSection.hidden = true;
       setSidebarUpdateButton({ visible: false });
       return null;
@@ -189,9 +241,9 @@ export function createAppUpdater({
     syncSidebarUpdateButton();
     if (checkUpdatesBtn) {
       checkUpdatesBtn.disabled = true;
-      checkUpdatesBtn.textContent = "Checking...";
+      setCheckBtnText("updater.checking");
     }
-    if (!silent) setUpdateStatus("Checking for updates...", "info");
+    if (!silent) applyUpdateStatus("updater.checkingForUpdates", {}, "info");
 
     try {
       const update = await transport.checkForUpdate();
@@ -199,7 +251,7 @@ export function createAppUpdater({
         pendingUpdate = null;
         updateCheckFailed = false;
         showInstallButton(null);
-        setUpdateStatus("You're on the latest version.", "ok");
+        applyUpdateStatus("updater.latestVersion", {}, "ok");
         syncSidebarUpdateButton();
         return null;
       }
@@ -209,7 +261,7 @@ export function createAppUpdater({
         pendingUpdate = null;
         updateCheckFailed = false;
         showInstallButton(null);
-        setUpdateStatus("You're on the latest stable version.", "ok");
+        applyUpdateStatus("updater.latestStable", {}, "ok");
         syncSidebarUpdateButton();
         return null;
       }
@@ -217,14 +269,18 @@ export function createAppUpdater({
       pendingUpdate = update;
       updateCheckFailed = false;
       showInstallButton(update);
-      setUpdateStatus(`Update available: ${update.version}`, "ok");
+      applyUpdateStatus("updater.updateAvailableVersion", { version: update.version }, "ok");
       syncSidebarUpdateButton();
       return update;
     } catch (err) {
-      const friendly = explainUpdateError(err?.message || err);
+      const explained = explainUpdateError(err?.message || err);
       console.warn("[updater] check failed:", err);
       if (!silent) {
-        setUpdateStatus(friendly, "warn");
+        if (explained.key) {
+          applyUpdateStatus(explained.key, explained.params, "warn");
+        } else {
+          applyRawUpdateStatus(explained.raw, "warn");
+        }
       }
       updateCheckFailed = true;
       syncSidebarUpdateButton();
@@ -235,7 +291,7 @@ export function createAppUpdater({
       syncSidebarUpdateButton();
       if (checkUpdatesBtn) {
         checkUpdatesBtn.disabled = false;
-        checkUpdatesBtn.textContent = "Check now";
+        setCheckBtnText("updater.checkNow");
       }
     }
   }
@@ -249,47 +305,50 @@ export function createAppUpdater({
     syncSidebarUpdateButton();
     if (installUpdateBtn) {
       installUpdateBtn.disabled = true;
-      installUpdateBtn.textContent = "Downloading...";
+      setInstallBtnText("updater.downloading");
     }
     if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
 
     try {
       await transport.downloadAndInstallUpdate((evt) => {
         if (evt.phase === "started") {
-          setUpdateStatus(
-            evt.contentLength
-              ? `Downloading ${(evt.contentLength / 1_048_576).toFixed(1)} MB...`
-              : "Downloading...",
-            "info",
-          );
+          if (evt.contentLength) {
+            applyUpdateStatus(
+              "updater.downloadingMB",
+              { mb: (evt.contentLength / 1_048_576).toFixed(1) },
+              "info",
+            );
+          } else {
+            applyUpdateStatus("updater.downloading", {}, "info");
+          }
         } else if (evt.phase === "progress" && evt.contentLength) {
           const pct = Math.min(100, Math.round((evt.downloaded / evt.contentLength) * 100));
-          if (installUpdateBtn) installUpdateBtn.textContent = `Downloading ${pct}%`;
+          setInstallBtnText("updater.downloadingPct", { pct });
         } else if (evt.phase === "finished") {
-          if (installUpdateBtn) installUpdateBtn.textContent = "Installing...";
-          setUpdateStatus("Installing...", "info");
+          setInstallBtnText("updater.installing");
+          applyUpdateStatus("updater.installing", {}, "info");
         }
       });
 
-      setUpdateStatus("Update installed. Restarting...", "ok");
+      applyUpdateStatus("updater.updateInstalled", {}, "ok");
       pendingUpdate = null;
       updateCheckFailed = false;
       syncSidebarUpdateButton();
       setTimeout(() => {
         transport?.relaunchApp?.().catch((err) => {
           console.error("[updater] relaunch failed:", err);
-          setUpdateStatus("Please restart Picot to finish updating.", "warn");
+          applyUpdateStatus("updater.pleaseRestart", {}, "warn");
           updateCheckFailed = true;
           syncSidebarUpdateButton();
         });
       }, 600);
     } catch (err) {
-      const msg = String(err?.message || err || "unknown error");
+      const msg = String(err?.message || err || t("errors.unknownError"));
       console.error("[updater] install failed:", err);
-      setUpdateStatus(`Update failed: ${msg}`, "error");
+      applyUpdateStatus("updater.updateFailed", { message: msg }, "error");
       if (installUpdateBtn) {
         installUpdateBtn.disabled = false;
-        installUpdateBtn.textContent = "Retry";
+        setInstallBtnText("updater.retry");
       }
       updateCheckFailed = true;
       syncSidebarUpdateButton();
@@ -327,17 +386,14 @@ export function createAppUpdater({
     const appVersion = await loadAppVersion();
 
     if (await isDevBuild()) {
-      setUpdateStatus("Dev build — updates are checked only in packaged releases.", "info");
+      applyUpdateStatus("updater.devBuild", {}, "info");
       if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
       syncSidebarUpdateButton();
       return;
     }
 
     if (isLocalPrereleaseBuild(appVersion)) {
-      setUpdateStatus(
-        `Pre-release build (${appVersion}) — auto-update is disabled for this build.`,
-        "info",
-      );
+      applyUpdateStatus("updater.prereleaseBuild", { version: appVersion }, "info");
       if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
       if (installUpdateBtn) installUpdateBtn.disabled = true;
       showInstallButton(null);
@@ -394,6 +450,31 @@ export function createAppUpdater({
     }
     checkUpdatesBtn?.focus();
   }
+
+  // Re-apply localized status/button text when the locale changes without
+  // rechecking the network. Raw values (versions, raw error text) are unchanged.
+  const unsubscribeLocaleChange = onLocaleChange(() => {
+    if (currentStatusKey) {
+      setUpdateStatus(t(currentStatusKey, currentStatusParams), currentStatusTone);
+    }
+    if (appVersionUnknown && appVersionValue) {
+      appVersionValue.textContent = t("updater.unknown");
+    }
+    if (checkUpdatesBtn && currentCheckBtnKey) {
+      checkUpdatesBtn.textContent = t(currentCheckBtnKey, currentCheckBtnParams);
+    }
+    if (updateInstallRow && !updateInstallRow.hidden) {
+      if (currentInstallLabelKey && updateInstallLabel) {
+        updateInstallLabel.textContent = t(currentInstallLabelKey, currentInstallLabelParams);
+      }
+      if (currentInstallBtnKey && installUpdateBtn) {
+        installUpdateBtn.textContent = t(currentInstallBtnKey, currentInstallBtnParams);
+      }
+    }
+    syncSidebarUpdateButton();
+  });
+  // Intentionally never unsubscribed — updater lives for the app lifetime.
+  void unsubscribeLocaleChange;
 
   return {
     initUpdaterUI,

@@ -1,3 +1,5 @@
+import { t } from "../i18n.js";
+
 const messageTimers = new WeakMap();
 
 export function clearSettingsSaveMessage(messageEl) {
@@ -20,7 +22,7 @@ export function showSettingsSaveError(messageEl, message) {
   messageEl.classList.remove("hidden");
 }
 
-export function showSettingsSaveSuccess(messageEl, message = "Saved") {
+export function showSettingsSaveSuccess(messageEl, message = t("status.saved")) {
   if (!messageEl) return;
   clearSettingsSaveMessage(messageEl);
   messageEl.textContent = message;
@@ -33,5 +35,5 @@ export function showSettingsSaveSuccess(messageEl, message = "Saved") {
 export function setSettingsSaveButtonSaving(button, isSaving) {
   if (!button) return;
   button.disabled = isSaving;
-  button.textContent = isSaving ? "Saving…" : "Save";
+  button.textContent = isSaving ? t("status.saving") : t("actions.save");
 }

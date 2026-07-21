@@ -1,5 +1,26 @@
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { initI18n } from "../i18n.js";
 import { getOnboardingState } from "./onboarding.js";
+
+beforeEach(async () => {
+  global.fetch = vi.fn(async (url) => {
+    const u = String(url);
+    if (u.includes("/locales/en.json")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          onboarding: {
+            openProject: "Open a project to start chatting.",
+            configureKey: "Configure an API key or provider to start chatting.",
+          },
+        }),
+      };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  });
+  await initI18n();
+});
 
 describe("onboarding state", () => {
   test("requires a project before the user can query", () => {

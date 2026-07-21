@@ -21,11 +21,17 @@ cargo check --manifest-path "$MANIFEST" --all-targets
 echo "==> cargo clippy (warnings as errors)"
 cargo clippy --manifest-path "$MANIFEST" --all-targets -- -D warnings
 
+echo "==> cargo test (unit)"
+if ! cargo test --manifest-path "$MANIFEST" --quiet; then
+    echo "    unit tests failed" >&2
+    exit 1
+fi
+
 if cargo fmt --version >/dev/null 2>&1; then
-  echo "==> cargo fmt --check (advisory)"
-  if ! cargo fmt --manifest-path "$MANIFEST" --check >/dev/null 2>&1; then
-    echo "    formatting drift detected; run 'cargo fmt --manifest-path $MANIFEST' to fix"
-  fi
+    echo "==> cargo fmt --check (advisory)"
+    if ! cargo fmt --manifest-path "$MANIFEST" --check >/dev/null 2>&1; then
+        echo "    formatting drift detected; run 'cargo fmt --manifest-path $MANIFEST' to fix"
+    fi
 fi
 
 echo "==> all rust checks passed"

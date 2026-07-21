@@ -2,12 +2,19 @@
  * FolderPicker — modal for browsing and selecting a server-side directory
  */
 
+import { onLocaleChange, t } from "../i18n.js";
+
 export class FolderPicker {
   constructor() {
     this.overlay = null;
     this.modal = null;
     this.currentPath = null;
     this.onSelect = null;
+    this.isOpen = false;
+    this.unsubscribeLocaleChange = onLocaleChange(() => {
+      if (!this.isOpen) return;
+      this._applyLocaleLabels();
+    });
   }
 
   open(onSelect) {
@@ -17,6 +24,7 @@ export class FolderPicker {
     document.body.appendChild(this.overlay);
     document.body.appendChild(this.modal);
     this._pathInput.focus();
+    this.isOpen = true;
   }
 
   close() {
@@ -24,6 +32,7 @@ export class FolderPicker {
     this.modal?.remove();
     this.overlay = null;
     this.modal = null;
+    this.isOpen = false;
   }
 
   _build() {
@@ -37,17 +46,17 @@ export class FolderPicker {
     this.modal.className = "folder-picker";
     this.modal.innerHTML = `
       <div class="folder-picker-header">
-        <span class="folder-picker-title">Open Folder</span>
-        <button class="folder-picker-close icon-btn" aria-label="Close">
+        <span class="folder-picker-title">${this._escape(t("folderPicker.title"))}</span>
+        <button class="folder-picker-close icon-btn" aria-label="${this._escape(t("folderPicker.close"))}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
       <div class="folder-picker-path-row">
-        <button class="folder-picker-up icon-btn" title="Parent directory" aria-label="Go up">
+        <button class="folder-picker-up icon-btn" title="${this._escape(t("folderPicker.parentDirectory"))}" aria-label="${this._escape(t("folderPicker.goUp"))}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
         </button>
-        <input class="folder-picker-path-input" type="text" placeholder="/path/to/folder" spellcheck="false" />
-        <button class="folder-picker-go icon-btn" title="Go to path">
+        <input class="folder-picker-path-input" type="text" placeholder="${this._escape(t("folderPicker.pathPlaceholder"))}" spellcheck="false" />
+        <button class="folder-picker-go icon-btn" title="${this._escape(t("folderPicker.goToPath"))}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
       </div>
@@ -55,8 +64,8 @@ export class FolderPicker {
       <div class="folder-picker-footer">
         <span class="folder-picker-selected-label"></span>
         <div class="folder-picker-actions">
-          <button class="folder-picker-cancel">Cancel</button>
-          <button class="folder-picker-open" disabled>Open</button>
+          <button class="folder-picker-cancel">${this._escape(t("folderPicker.cancel"))}</button>
+          <button class="folder-picker-open" disabled>${this._escape(t("folderPicker.open"))}</button>
         </div>
       </div>
     `;
@@ -98,16 +107,47 @@ export class FolderPicker {
     });
   }
 
+  _applyLocaleLabels() {
+    if (!this.modal) return;
+    const title = this.modal.querySelector(".folder-picker-title");
+    if (title) title.textContent = t("folderPicker.title");
+    const close = this.modal.querySelector(".folder-picker-close");
+    if (close) close.setAttribute("aria-label", t("folderPicker.close"));
+    const up = this.modal.querySelector(".folder-picker-up");
+    if (up) {
+      up.title = t("folderPicker.parentDirectory");
+      up.setAttribute("aria-label", t("folderPicker.goUp"));
+    }
+    const pathInput = this.modal.querySelector(".folder-picker-path-input");
+    if (pathInput) pathInput.placeholder = t("folderPicker.pathPlaceholder");
+    const go = this.modal.querySelector(".folder-picker-go");
+    if (go) go.title = t("folderPicker.goToPath");
+    const cancel = this.modal.querySelector(".folder-picker-cancel");
+    if (cancel) cancel.textContent = t("folderPicker.cancel");
+    const openBtn = this.modal.querySelector(".folder-picker-open");
+    if (openBtn) openBtn.textContent = t("folderPicker.open");
+  }
+
+  _setStatus(text) {
+    this._list.innerHTML = "";
+    const el = document.createElement("div");
+    el.className = "folder-picker-loading";
+    el.textContent = text;
+    this._list.appendChild(el);
+  }
+
   async _load(dirPath) {
-    this._list.innerHTML = '<div class="folder-picker-loading">Loading…</div>';
+    this._setStatus(t("folderPicker.loading"));
 
     try {
-      const url = dirPath ? `/api/files?path=${encodeURIComponent(dirPath)}` : "/api/files";
+      const url = dirPath
+        ? `/api/files?path=${encodeURIComponent(dirPath)}&scope=picker`
+        : "/api/files?scope=picker";
       const res = await fetch(url);
       const data = await res.json();
 
       if (data.error) {
-        this._list.innerHTML = `<div class="folder-picker-loading">${data.error}</div>`;
+        this._setStatus(data.error);
         return;
       }
 
@@ -123,7 +163,7 @@ export class FolderPicker {
       this._list.innerHTML = "";
 
       if (dirs.length === 0) {
-        this._list.innerHTML = '<div class="folder-picker-loading">No subdirectories</div>';
+        this._setStatus(t("folderPicker.noSubdirectories"));
         return;
       }
 
@@ -157,7 +197,7 @@ export class FolderPicker {
         this._list.appendChild(el);
       }
     } catch {
-      this._list.innerHTML = '<div class="folder-picker-loading">Failed to load directory</div>';
+      this._setStatus(t("folderPicker.failedLoad"));
     }
   }
 

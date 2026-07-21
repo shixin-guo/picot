@@ -1,0 +1,78 @@
+#!/usr/bin/env sh
+# pre-commit hook — staged-files pipeline modeled on the
+# lint:fix → format:fix → check flow.
+#
+# Operates ONLY on staged files: fast, and it never modifies the unstaged
+# working tree. Biome's native `--staged` flag selects staged content and
+# honors `files.includes` from biome.json, so no manual file plumbing.
+#
+# Steps:
+#   1. lint:fix    biome lint  --staged --write --unsafe   (re-stages fixes)
+#   2. format:fix  biome format --staged --write           (re-stages fixes)
+#                  + rustfmt --edition 2021 on staged .rs  (re-stages fixes)
+#   3. check       biome check --staged                    (verify, blocks on error)
+#
+# Type-checking (tsgo / tsc) is intentionally excluded: it is whole-project and
+# belongs in `bun run check` / CI, not the per-commit gate. Likewise the
+# embedded-server.ts TypeScript build (`bun run build:extensions`) is a
+# release-only artifact and not gated here.
+
+# Resolve the local biome binary so the hook also works when run directly
+# (husky already prepends node_modules/.bin to PATH for normal commits).
+biome="biome"
+if [ -x "./node_modules/.bin/biome" ]; then biome="./node_modules/.bin/biome"; fi
+
+run_step() {
+	step="$1"
+	shift
+	printf '\033[1m[%s]\033[0m Starting...\n' "$step"
+	if "$@"; then
+		printf '\033[1m[%s]\033[0m \033[32m✓ Completed successfully\033[0m\n\n' "$step"
+	else
+		printf '\n\033[1m[%s]\033[0m \033[31m✗ Failed\033[0m\n' "$step"
+		exit 1
+	fi
+}
+
+# Staged files (added/copied/modified only — skip deletions).
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+# ts/tsx/js/jsx mirrors biome.json `files.includes`. Keep in sync if biome
+# scope grows; a broader regex makes biome emit "No files were processed" and
+# fail the hook on out-of-scope staged files.
+code=$(printf '%s\n' "$staged" | grep -E '\.(ts|tsx|js|jsx)$' || :)
+rs=$(printf '%s\n' "$staged" | grep -E '\.rs$' || :)
+
+if [ -z "$code" ] && [ -z "$rs" ]; then
+	echo "No lintable staged files — skipping pre-commit checks."
+	exit 0
+fi
+
+# Re-stage the given newline-separated file list (biome/rustfmt write to the
+# working tree; fixes must be re-added to land in the commit).
+restage() { printf '%s\n' "$1" | grep . | xargs git add --; }
+
+# rustfmt wrapper — reads the global staged .rs list.
+rustfmt_staged() { printf '%s\n' "$rs" | grep . | xargs rustfmt --edition 2021; }
+
+# 1. lint:fix — apply lint fixes (safe + unsafe) to staged code.
+if [ -n "$code" ]; then
+	run_step "lint:fix" "$biome" lint --staged --write --unsafe
+	restage "$code"
+fi
+
+# 2. format:fix — biome formats staged code, rustfmt formats staged Rust.
+if [ -n "$code" ]; then
+	run_step "format:fix" "$biome" format --staged --write
+	restage "$code"
+fi
+if [ -n "$rs" ]; then
+	run_step "format:fix (rust)" rustfmt_staged
+	restage "$rs"
+fi
+
+# 3. check — verify staged code is clean (blocks the commit on error).
+if [ -n "$code" ]; then
+	run_step "check" "$biome" check --staged
+fi
+
+printf '\033[32m✓ All pre-commit checks passed.\033[0m\n'

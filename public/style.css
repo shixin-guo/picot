@@ -1,3 +1,6 @@
+/* ABOUTME: Defines Picot's shared layout, component, and accessibility styles. */
+/* ABOUTME: Includes transient Side Chat and Quick Chat geometry and interaction states. */
+
 /* ═══════════════════════════════════════════════════════
    Picot — Dark Glassmorphism
    ═══════════════════════════════════════════════════════ */
@@ -70,6 +73,21 @@ body {
   position: relative;
 }
 
+.workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace-content {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
 /* ═══════════════════════════════════════════════════════
    Sidebar — smoked glass panel
    ═══════════════════════════════════════════════════════ */
@@ -93,6 +111,24 @@ body {
   margin-left: calc(var(--sidebar-width) * -1);
 }
 
+.sidebar-resizer {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  z-index: 101;
+  position: relative;
+  transition: background 0.15s var(--ease);
+}
+.sidebar-resizer:hover,
+.sidebar-resizer.dragging {
+  background: var(--border);
+}
+/* Hide handle when the adjacent sidebar is collapsed. */
+.sidebar.collapsed + .sidebar-resizer,
+.sidebar-resizer:has(+ .file-sidebar.collapsed) {
+  display: none;
+}
 .sidebar-header {
   display: flex;
   align-items: center;
@@ -542,6 +578,35 @@ body {
   color: var(--bg-solid);
 }
 
+.workspace-more-actions-btn {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: var(--font-size-lg);
+  letter-spacing: 1px;
+  line-height: 1;
+}
+
+.workspace-more-actions-btn:hover,
+.workspace-more-actions-btn:focus-visible {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.archived-header {
+  color: var(--text-dim);
+}
+
 /* Open project in external app (VS Code / Cursor / Terminal / …) */
 .archived-delete-all-btn {
   display: none;
@@ -722,7 +787,7 @@ body {
 
 .session-action-slot {
   position: relative;
-  width: 64px;
+  width: 52px;
   height: 22px;
   flex-shrink: 0;
   margin-left: auto;
@@ -739,21 +804,21 @@ body {
   transition: opacity var(--duration) var(--ease);
 }
 
+.session-pin-btn,
 .session-archive-btn {
   position: absolute;
   top: 0;
-  right: 0;
   display: inline-flex;
   width: 22px;
   height: 22px;
   padding: 0;
   border: none;
   border-radius: var(--radius-sm);
+  align-items: center;
+  justify-content: center;
   background: transparent;
   color: var(--text-dim);
   cursor: pointer;
-  align-items: center;
-  justify-content: flex-end;
   flex-shrink: 0;
   transition:
     all var(--duration) var(--ease),
@@ -762,6 +827,34 @@ body {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
+}
+
+.session-pin-btn {
+  right: 24px;
+}
+
+.session-archive-btn {
+  right: 0;
+}
+
+.session-pin-icon,
+.context-menu-pin-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='black' d='m14.7 3.3 6 6-2.2 2.2-1.2-.2-3.4 3.4.2 1.2-1.5 1.5-3.2-3.2-4.1 4.1-.9-.9 4.1-4.1-3.2-3.2 1.5-1.5 1.2.2 3.4-3.4-.2-1.2z'/%3E%3C/svg%3E");
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='black' d='m14.7 3.3 6 6-2.2 2.2-1.2-.2-3.4 3.4.2 1.2-1.5 1.5-3.2-3.2-4.1 4.1-.9-.9 4.1-4.1-3.2-3.2 1.5-1.5 1.2.2 3.4-3.4-.2-1.2z'/%3E%3C/svg%3E");
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+.session-pin-btn[aria-pressed="true"] .session-pin-icon {
+  background-color: var(--accent);
 }
 
 .session-archive-btn svg {
@@ -778,12 +871,14 @@ body {
   opacity: 0;
 }
 
+.session-item:hover .session-pin-btn,
 .session-item:hover .session-archive-btn {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
 }
 
+.session-pin-btn:hover,
 .session-archive-btn:hover {
   background: var(--bg-glass-hover);
 }
@@ -798,10 +893,10 @@ body {
 }
 
 /* Context menu */
-.session-context-menu {
+.sidebar-context-menu {
   position: fixed;
   z-index: 10000;
-  min-width: 160px;
+  min-width: 180px;
   padding: var(--space-1);
   background: var(--bg-frosted);
   backdrop-filter: blur(20px);
@@ -814,13 +909,17 @@ body {
 
 .context-menu-item {
   display: flex;
+  width: 100%;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
+  border: 0;
   border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);
+  background: transparent;
   color: var(--text-primary);
   cursor: pointer;
+  text-align: left;
   transition: background var(--duration) var(--ease);
 }
 
@@ -846,12 +945,18 @@ body {
   color: var(--accent);
 }
 
-.archived-header {
-  color: var(--text-dim);
-}
-
 .fav-star {
   font-size: var(--font-size-sm);
+}
+
+.context-menu-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .tmux-tag {
@@ -991,10 +1096,8 @@ body {
   border-bottom: 1px solid var(--border);
   min-height: 36px;
   -webkit-app-region: drag;
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
+  position: relative;
+  flex-shrink: 0;
   z-index: 10;
 }
 
@@ -1018,6 +1121,9 @@ body {
   border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
   border-radius: var(--radius-md);
   -webkit-app-region: no-drag;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
 }
 
 .header-open-app-btn {
@@ -1261,13 +1367,13 @@ body {
   animation: pulse 2s infinite;
 }
 
-/* Context window visualiser popover */
+/* Context window visualiser popover — portaled to <body> at runtime so
+   it escapes the header's stacking context (z-index: 10). Position is
+   set via JS (fixed top + right) to track the token-usage pill. */
 .context-viz {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
+  position: fixed;
   width: 320px;
-  z-index: 1001;
+  z-index: 10000;
   background: var(--bg-solid);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -1378,6 +1484,30 @@ body {
   justify-content: space-between;
   font-size: var(--font-size-sm);
   color: var(--text-dim);
+}
+
+.context-viz-compact {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  background: var(--bg-glass-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+}
+
+.context-viz-compact:hover {
+  background: var(--bg-glass-active);
+  border-color: var(--border-hover);
+}
+
+.context-viz-compact:active {
+  transform: scale(0.98);
 }
 
 /* Compact button — appears at 80% context */
@@ -3295,7 +3425,7 @@ body {
   color: var(--text-dim);
 }
 
-.shortcuts-hint span {
+.shortcuts-hint > span {
   padding: var(--space-1) var(--space-2);
   background: var(--bg-glass);
   border: 1px solid var(--border);
@@ -4355,7 +4485,8 @@ body.hide-thinking .thinking-block {
   opacity: 0.7;
 }
 
-#message-input {
+#message-input,
+.ephemeral-input {
   padding: var(--space-3) var(--space-3) var(--space-1);
   background: transparent;
   border: none;
@@ -4400,7 +4531,13 @@ body.hide-thinking .thinking-block {
   opacity: 1;
   cursor: not-allowed;
 }
-#message-input::placeholder {
+
+.ephemeral-input:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+}
+#message-input::placeholder,
+.ephemeral-input::placeholder {
   color: var(--text-dim);
 }
 
@@ -4414,7 +4551,8 @@ body.hide-thinking .thinking-block {
   border-color: var(--border-hover);
 }
 
-#send-btn {
+#send-btn,
+.ephemeral-send {
   width: 32px;
   height: 32px;
   padding: 0;
@@ -4435,13 +4573,15 @@ body.hide-thinking .thinking-block {
     inset 0 1px 2px rgba(255, 255, 255, 0.2);
 }
 
-#send-btn:hover:not(:disabled) {
+#send-btn:hover:not(:disabled),
+.ephemeral-send:hover:not(:disabled) {
   transform: scale(1.1);
   filter: brightness(1.15);
   box-shadow: 0 6px 24px var(--accent-glow);
 }
 
-#send-btn:active:not(:disabled) {
+#send-btn:active:not(:disabled),
+.ephemeral-send:active:not(:disabled) {
   transform: scale(0.88);
   transition: transform 0.1s var(--ease);
 }
@@ -4706,6 +4846,11 @@ body.hide-thinking .thinking-block {
 .command-item:active {
   background: var(--bg-glass-active);
   transform: scale(0.98);
+}
+
+.command-item.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .command-icon {
@@ -5074,6 +5219,23 @@ body.hide-thinking .thinking-block {
    File Browser — right sidebar
    ═══════════════════════════════════════════════════════ */
 
+.file-sidebar {
+  width: var(--file-sidebar-width);
+  min-width: var(--file-sidebar-width);
+  background: var(--bg-frosted);
+  backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
+  -webkit-backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition:
+    margin-right 0.3s var(--ease),
+    opacity 0.3s var(--ease);
+  z-index: 100;
+  position: relative;
+}
+
 .app-side-panel {
   --panel-width: 320px;
   width: var(--panel-width);
@@ -5200,7 +5362,6 @@ body.is-resizing-side-panel {
   cursor: pointer;
   transition: background var(--duration) var(--ease);
   user-select: none;
-  -webkit-user-drag: element;
 }
 
 .file-item:hover {
@@ -5215,6 +5376,11 @@ body.is-resizing-side-panel {
   opacity: 0.5;
 }
 
+/* A custom drag is not a native DnD operation, so supply its copy cursor. */
+body.file-dragging,
+body.file-dragging * {
+  cursor: copy !important;
+}
 .file-icon {
   font-size: var(--font-size-md);
   width: 20px;
@@ -5246,14 +5412,32 @@ body.is-resizing-side-panel {
   font-size: var(--font-size-sm);
 }
 
-/* Drop zone highlight on input */
-#message-input.file-drop-hover {
+/* Drop zone highlight when dragging a file over the composer */
+.composer-card.file-drop-hover {
   border-color: var(--accent);
   box-shadow:
     0 0 0 3px var(--accent-glow),
     var(--shadow-sm),
     var(--shadow-inset);
   background: var(--bg-glass-hover);
+}
+
+/* Floating ghost preview during custom file drag */
+.file-drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 10000;
+  transform: translate(8px, 8px);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  opacity: 0.9;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -5466,6 +5650,11 @@ body.is-resizing-side-panel {
   .input-icon-btn {
     width: 36px;
     height: 36px;
+  }
+
+  /* Sidebar handles are useless on mobile (sidebars slide over). */
+  .sidebar-resizer {
+    display: none !important;
   }
 }
 
@@ -6643,4 +6832,1045 @@ body.super-agent-active .file-sidebar {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ═══════════════════════════════════════════════════════
+   File Preview Panel — between chat and file tree
+   ═══════════════════════════════════════════════════════ */
+
+.file-preview-panel {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  --file-preview-line-number-gutter: 28px;
+  background: var(--bg-frosted);
+  backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
+  -webkit-backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
+  border-left: 1px solid var(--border);
+  overflow: hidden;
+  position: relative;
+  min-width: 320px;
+  transition:
+    width 0.15s var(--ease),
+    flex-basis 0.15s var(--ease);
+}
+
+.file-preview-panel.collapsed {
+  width: 0 !important;
+  flex-basis: 0 !important;
+  min-width: 0;
+  border-left: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.file-preview-panel.enlarged {
+  flex: 1;
+  width: auto !important;
+  flex-basis: auto !important;
+  min-width: 0;
+}
+
+.main.preview-enlarged {
+  flex: 0 !important;
+  width: 0 !important;
+  overflow: hidden;
+}
+
+.file-preview-resizer {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  transition: background 0.15s var(--ease);
+}
+
+.file-preview-resizer.collapsed {
+  display: none;
+}
+
+.file-preview-resizer:hover,
+.file-preview-resizer.dragging {
+  background: var(--border);
+}
+
+body.file-preview-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.file-preview-resizer:focus-visible {
+  background: var(--accent);
+  outline: none;
+}
+
+/* Tab bar */
+.file-preview-tabs-bar {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-1);
+  min-height: 36px;
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+}
+
+.file-preview-tabs {
+  display: flex;
+  gap: var(--space-0-5);
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-width: 0;
+}
+
+.file-preview-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.file-preview-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  color: var(--text-secondary);
+  transition: background 0.1s var(--ease);
+}
+
+.file-preview-tab:hover {
+  background: var(--bg-glass-hover);
+}
+
+.file-preview-tab.active {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+}
+
+.file-preview-tab-icon {
+  font-size: var(--font-size-sm);
+  line-height: 1;
+}
+
+.file-preview-tab-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-preview-tab-dirty {
+  color: var(--accent);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 10px;
+}
+
+.file-preview-tab-conflict {
+  color: #ff9f0a;
+  font-size: var(--font-size-sm);
+}
+
+.file-preview-tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.1s var(--ease);
+}
+
+.file-preview-tab:hover .file-preview-tab-close,
+.file-preview-tab.active .file-preview-tab-close {
+  opacity: 1;
+}
+
+.file-preview-tab-close:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+}
+
+.file-preview-panel-controls {
+  display: flex;
+  gap: var(--space-0-5);
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+/* Editor toolbar */
+.file-preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-height: 36px;
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-app-region: no-drag;
+}
+
+.file-preview-toolbar.hidden {
+  display: none;
+}
+
+.file-preview-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.file-preview-toolbar button,
+.file-preview-mode button {
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+  color: var(--text-secondary);
+  font: inherit;
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.file-preview-go-to-line-input {
+  width: 72px;
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  background: var(--bg-glass);
+  color: var(--text-primary);
+  font: inherit;
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 11px;
+}
+
+.file-preview-go-to-line-input:focus {
+  border-color: var(--accent);
+}
+
+.file-preview-toolbar button:hover:not(:disabled),
+.file-preview-mode button.active {
+  border-color: var(--border-hover);
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+}
+
+.file-preview-toolbar button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.file-preview-mode {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.file-preview-mode button:first-child {
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.file-preview-mode button:last-child {
+  margin-left: -1px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.file-preview-toolbar-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.file-preview-toolbar-check input {
+  margin: 0;
+}
+
+.file-preview-status {
+  min-width: 72px;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--text-dim);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 11px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Dirty/conflict confirmation */
+.file-preview-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.file-preview-dialog {
+  width: min(420px, 100%);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding: 18px;
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  background: var(--bg-solid);
+  box-shadow: var(--shadow-lg);
+}
+
+.file-preview-dialog h3 {
+  margin: 0 0 8px;
+  color: var(--text-primary);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 15px;
+}
+
+.file-preview-dialog p {
+  margin: 0;
+  color: var(--text-secondary);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.file-preview-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: 18px;
+}
+
+.file-preview-dialog-button {
+  padding: var(--space-1-5) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.file-preview-dialog-button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+}
+
+/* Content area */
+.file-preview-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+}
+
+.file-preview-loading,
+.file-preview-error {
+  padding: var(--space-4);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.file-preview-error {
+  color: #ff453a;
+}
+
+/* CodeMirror in preview */
+.file-code-editor {
+  height: 100%;
+}
+
+.file-code-editor .cm-editor {
+  height: 100%;
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 13px;
+}
+
+.file-code-editor .cm-lineNumbers {
+  min-width: var(--file-preview-line-number-gutter);
+}
+
+.file-code-editor .cm-scroller {
+  font-family: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
+}
+
+/* Markdown preview */
+.file-markdown-preview {
+  height: 100%;
+  margin-left: var(--file-preview-line-number-gutter);
+  overflow: auto;
+  padding: var(--space-4);
+  font-size: var(--font-size-md);
+  line-height: 1.6;
+}
+
+/* Image preview */
+.file-image-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-4);
+  background: var(--bg);
+}
+
+.file-image-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-xs);
+}
+
+/* PDF preview */
+.file-pdf-container {
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--bg);
+}
+
+.file-pdf-page {
+  max-width: 100%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Narrow windows: the preview becomes a full-width page. */
+@media (max-width: 768px) {
+  .file-preview-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    width: 100% !important;
+    min-width: 0;
+    flex-basis: auto !important;
+    border-left: none;
+    background: var(--bg-solid);
+  }
+
+  .file-preview-panel.collapsed {
+    display: none;
+  }
+
+  .file-preview-resizer {
+    display: none !important;
+  }
+
+  .file-preview-tab-close {
+    opacity: 1;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Chat History Navigator — persistent tick rail + preview
+   Pointer-only overlay; hidden on touch/mobile and <2 turns.
+   ═══════════════════════════════════════════════════════ */
+
+/* Root: appended into .main (position: relative). Never
+   reserves layout width — pure overlay. */
+.chat-nav {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  z-index: 11;
+  transform: translateY(-50%);
+  pointer-events: none; /* children opt back in */
+}
+
+/* Hidden until at least two user turns exist. */
+.chat-nav.hidden {
+  display: none;
+}
+
+/* ── Rail ── */
+.chat-nav-rail {
+  position: relative;
+  width: 32px;
+  height: clamp(160px, 42vh, 360px);
+  /* Wide pointer hit area without covering message text. */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--space-1) 0 var(--space-1) var(--space-1);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* ── Tick marks ──
+   JS sets an inline --mag (0…1) per tick within the 6-tick
+   neighborhood and toggles .nearest on the closest. CSS drives
+   progressive size, color, and opacity from --mag. */
+.chat-nav-tick {
+  --mag: 0;
+  width: calc(4px + var(--mag) * 2px);
+  height: calc(10px + var(--mag) * 12px);
+  background: color-mix(
+    in srgb,
+    var(--text-ghost),
+    var(--text-secondary) calc(42% + var(--mag) * 58%)
+  );
+  border-radius: var(--radius-pill);
+  transition:
+    width var(--duration) var(--ease),
+    height var(--duration) var(--ease),
+    background var(--duration) var(--ease),
+    opacity var(--duration) var(--ease);
+  flex-shrink: 0;
+  opacity: calc(0.8 + var(--mag) * 0.2);
+}
+
+/* Current viewport turn — stronger color regardless of --mag. */
+.chat-nav-tick.active {
+  background: var(--text-secondary);
+  opacity: 1;
+}
+
+/* Nearest tick — JS toggles this class; it also forces --mag to 1
+   so the strongest treatment holds even without an inline value. */
+.chat-nav-tick.nearest {
+  --mag: 1;
+}
+
+/* ── Preview card ── */
+.chat-nav-preview {
+  position: absolute;
+  left: 32px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: clamp(280px, 30vw, 380px);
+  max-width: calc(100vw - 60px);
+  background: var(--bg-frosted);
+  backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
+  -webkit-backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg), var(--shadow-inset);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding: 12px 14px;
+  pointer-events: auto;
+  /* Card fades in; reduced-motion media query strips the transition. */
+  animation: chatNavPreviewIn var(--duration) var(--ease);
+  z-index: 6;
+}
+
+@keyframes chatNavPreviewIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+/* User prompt summary — stronger text treatment, 2-line clamp. */
+.chat-nav-preview-prompt {
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: pointer;
+  /* Prompt portion is a navigation control. */
+}
+
+/* Assistant response summary — secondary text, 3-line clamp. */
+.chat-nav-preview-response {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-top: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* Response portion is NOT a navigation control. */
+}
+
+/* Status modifier: JS adds .status to the response element when it
+   shows a localized waiting / generating / no-visible-response label
+   instead of actual response text. Inherits layout from
+   .chat-nav-preview-response; overrides to a dimmed italic treatment. */
+.chat-nav-preview-response.status {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+/* ── Navigation highlight (applied to target user message) ── */
+.chat-nav-target {
+  animation: chatNavHighlight 1.2s var(--ease);
+  border-radius: var(--radius-lg);
+}
+
+@keyframes chatNavHighlight {
+  0% {
+    background: var(--accent-subtle);
+    box-shadow: 0 0 0 0 var(--accent-subtle);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* ── Reduced motion: same states, no transitions/animations ── */
+@media (prefers-reduced-motion: reduce) {
+  .chat-nav-tick {
+    transition: none;
+  }
+
+  .chat-nav-preview {
+    animation: none;
+  }
+
+  .chat-nav-target {
+    animation: none;
+    background: var(--accent-subtle);
+    transition: none;
+  }
+
+  /* Smooth scrolling is disabled at the .messages container level
+     by the global reduced-motion rule, but we reinforce it: the
+     navigator JS must use instant scrolling. */
+}
+
+/* ── Touch-first and mobile: navigator is hidden ── */
+@media (hover: none), (pointer: coarse), (max-width: 768px) {
+  .chat-nav {
+    display: none;
+  }
+}
+
+/* Workspace quick info — compact project card from the sidebar prototype. */
+.workspace-quick-info {
+  width: min(306px, calc(100vw - 16px));
+  overflow: hidden;
+  color: var(--text-primary);
+  background: var(--bg-solid);
+  border: 1px solid var(--border-hover);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg), var(--shadow-inset);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.wqi-header-row,
+.wqi-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.wqi-header-row {
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  gap: 10px;
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding: 17px 18px 13px;
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.wqi-folder-icon,
+.wqi-count-icon,
+.wqi-path-icon,
+.wqi-repo-icon,
+.wqi-pin-icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  background-color: var(--text-secondary);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}
+
+.wqi-folder-icon,
+.wqi-path-icon {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8' d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8' d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3C/svg%3E");
+}
+
+.wqi-count-icon {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8' d='M20 11.5a7.5 7.5 0 0 1-8 7.5 8.4 8.4 0 0 1-3.6-.8L4 19l.8-3.2A7.5 7.5 0 1 1 20 11.5z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8' d='M20 11.5a7.5 7.5 0 0 1-8 7.5 8.4 8.4 0 0 1-3.6-.8L4 19l.8-3.2A7.5 7.5 0 1 1 20 11.5z'/%3E%3C/svg%3E");
+}
+
+.wqi-repo-icon {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8' d='M7 3v12m0-12a3 3 0 1 0 0 6a3 3 0 0 0 0-6m0 12a3 3 0 1 0 0 6a3 3 0 0 0 0-6m0-6h7a3 3 0 1 0 3 3V9'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8' d='M7 3v12m0-12a3 3 0 1 0 0 6a3 3 0 0 0 0-6m0 12a3 3 0 1 0 0 6a3 3 0 0 0 0-6m0-6h7a3 3 0 1 0 3 3V9'/%3E%3C/svg%3E");
+}
+
+.wqi-folder-name,
+.wqi-row-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wqi-folder-name {
+  flex: 1;
+}
+
+.wqi-pin-btn {
+  display: grid;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding: 5px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  place-items: center;
+}
+
+.wqi-pin-btn:hover,
+.wqi-pin-btn:focus-visible {
+  color: var(--text-primary);
+  background: var(--accent-subtle);
+  outline: none;
+}
+
+.wqi-pin-icon {
+  width: 20px;
+  height: 20px;
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='black' d='m14.7 3.3 6 6-2.2 2.2-1.2-.2-3.4 3.4.2 1.2-1.5 1.5-3.2-3.2-4.1 4.1-.9-.9 4.1-4.1-3.2-3.2 1.5-1.5 1.2.2 3.4-3.4-.2-1.2z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='black' d='m14.7 3.3 6 6-2.2 2.2-1.2-.2-3.4 3.4.2 1.2-1.5 1.5-3.2-3.2-4.1 4.1-.9-.9 4.1-4.1-3.2-3.2 1.5-1.5 1.2.2 3.4-3.4-.2-1.2z'/%3E%3C/svg%3E");
+}
+
+.wqi-pin-btn[aria-pressed="true"] .wqi-pin-icon {
+  background-color: var(--accent);
+}
+
+.wqi-content {
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding: 0 18px 16px;
+}
+
+.wqi-row {
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  gap: 10px;
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding: 5px 0;
+}
+
+.wqi-row-value {
+  flex: 1;
+}
+
+.wqi-git-region {
+  margin-top: 10px;
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.wqi-git-loading,
+.wqi-error {
+  padding-top: var(--space-2);
+  color: var(--text-secondary);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 13px;
+}
+
+.wqi-error {
+  color: var(--error);
+}
+
+/* ── Ephemeral chats (Side Chat / Quick Chat) ────────────────────────────── */
+.ephemeral-chat-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.ephemeral-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.ephemeral-tools,
+.ephemeral-usage,
+.ephemeral-dialog-container {
+  flex: 0 0 auto;
+}
+.ephemeral-usage {
+  padding: var(--space-1) var(--space-3);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.ephemeral-composer {
+  flex: 0 0 auto;
+  margin: 8px 12px 12px;
+}
+.quick-chat-dialog .ephemeral-composer {
+  margin-bottom: 12px;
+}
+.ephemeral-composer.streaming {
+  border-color: transparent;
+}
+.ephemeral-composer .model-dropdown-item {
+  width: 100%;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+/* Quick Chat floating dialog + minimized chip */
+.quick-chat-dialog-root {
+  position: static;
+}
+.quick-chat-dialog {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: min(520px, calc(100vw - 48px));
+  height: min(640px, calc(100vh - 48px));
+  min-width: 360px;
+  min-height: 280px;
+  background: var(--bg-solid);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg), var(--shadow-inset);
+  display: flex;
+  flex-direction: column;
+  z-index: 9000;
+}
+.quick-chat-dialog.hidden {
+  display: none;
+}
+.quick-chat-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding: 8px 10px;
+  cursor: grab;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-glass);
+  -webkit-app-region: no-drag;
+  user-select: none;
+}
+.quick-chat-title-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+.quick-chat-title button {
+  -webkit-app-region: no-drag;
+}
+.quick-chat-title-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  background: transparent;
+  cursor: pointer;
+}
+.quick-chat-title-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-glass-hover);
+}
+.quick-chat-resize-handle {
+  position: absolute;
+}
+
+.quick-chat-resize-n,
+.quick-chat-resize-s {
+  left: 12px;
+  right: 12px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.quick-chat-resize-n {
+  top: -4px;
+}
+.quick-chat-resize-s {
+  bottom: -4px;
+}
+.quick-chat-resize-e,
+.quick-chat-resize-w {
+  top: 12px;
+  bottom: 12px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.quick-chat-resize-e {
+  right: -4px;
+}
+.quick-chat-resize-w {
+  left: -4px;
+}
+.quick-chat-resize-ne,
+.quick-chat-resize-se,
+.quick-chat-resize-sw,
+.quick-chat-resize-nw {
+  width: 12px;
+  height: 12px;
+}
+.quick-chat-resize-ne {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+.quick-chat-resize-se {
+  right: -4px;
+  bottom: -4px;
+  cursor: nwse-resize;
+}
+.quick-chat-resize-sw {
+  bottom: -4px;
+  left: -4px;
+  cursor: nesw-resize;
+}
+.quick-chat-resize-nw {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+.quick-chat-dialog,
+.quick-chat-dialog *,
+.quick-chat-dialog button,
+.quick-chat-dialog textarea,
+.quick-chat-dialog input {
+  -webkit-app-region: no-drag;
+}
+.quick-chat-dialog.is-dragging,
+.quick-chat-dialog.is-resizing {
+  user-select: none;
+}
+.quick-chat-resize-handle:focus-visible {
+  outline: 2px solid var(--accent-color, #4c9ffe);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .quick-chat-dialog,
+  .quick-chat-chip {
+    transition: none;
+  }
+}
+.quick-chat-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.quick-chat-loading {
+  flex: 1 1 auto;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 13px;
+}
+.ephemeral-chat-loading {
+  flex: 1 1 auto;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 13px;
+  padding: var(--space-6);
+}
+.quick-chat-chip {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--accent-color, #2563eb);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  z-index: 9000;
+}
+.quick-chat-chip.hidden {
+  display: none;
+}
+
+/* Transient (Side Chat) tabs + tab-bar actions */
+.file-preview-tab.transient-tab .file-preview-tab-name {
+  font-style: normal;
+}
+.transient-tab-status {
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 10px;
+  opacity: 0.8;
+}
+.file-preview-tab-action {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* Non-native external-link toast */
+.external-link-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--space-2) var(--space-3);
+  background: #1f2937;
+  color: #fff;
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  z-index: 10000;
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.external-link-toast-link {
+  color: #93c5fd;
 }

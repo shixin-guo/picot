@@ -1,21 +1,43 @@
+// ABOUTME: Orchestrates Picot's main chat, workspace, file, and ephemeral-chat modules.
+// ABOUTME: Keeps feature state in focused modules and wires their lifecycle events.
+
 /**
  * Main App - Ties everything together
  */
 
-import { setupContextViz } from "./ui/context-viz.js";
+import { repaintContextViz, setupContextViz } from "./ui/context-viz.js";
 import "./cost/dashboard.js";
 import { StateManager } from "./app/state.js";
 import { initTransport } from "./app/transport.js";
 import { createAppUpdater } from "./app/updater.js";
 import { setupVoiceInput } from "./app/voice-input.js";
 import { resolveWebSocketUrl, WebSocketClient } from "./app/websocket-client.js";
+import { createChatHistoryNavigation } from "./chat-history-navigation.js";
+import { setupComposerCommandMenu } from "./composer-command-menu.js";
+import { setupComposerImageAttachments } from "./composer-image-attachments.js";
+import { EphemeralChatView } from "./ephemeral-chat-view.js";
+import { FilePreviewPanel } from "./file-preview-panel.js";
+import {
+  getLanguagePreference,
+  initI18n,
+  LANGUAGES,
+  onLocaleChange,
+  setLocale,
+  t,
+} from "./i18n.js";
+import { processImageFile, processImagePayload } from "./image-attachments.js";
 import { selectModel } from "./models/selection.js";
 import { renderPackageInstallFailure } from "./packages/install-status.js";
+import { QuickChatDialog } from "./quick-chat-dialog.js";
 import { getOnboardingState } from "./session/onboarding.js";
 import { resolveNewSessionLiveFile } from "./session/refresh.js";
 import {
+  applyForegroundMirrorSession,
+  confirmDeferredFileBrowserWorkspace,
+  deferFileBrowserWorkspace,
   findPortForSession,
   getWorkspacePathForPort,
+  isExpectedMirrorSession,
   shouldSpawnForCrossWorkspaceSelection,
 } from "./session/routing.js";
 import { anchorHistoryToBottom } from "./session/scroll-anchor.js";
@@ -31,8 +53,10 @@ import {
   renderThinkingEffort,
   setupSettingsToggles,
 } from "./settings/toggles.js";
+import { SideChatManager } from "./side-chat-manager.js";
 import { SessionSidebar } from "./sidebar/index.js";
 import { setupSidebarSearchControl } from "./sidebar/search-control.js";
+import { createSidebarResizer } from "./sidebar-resizer.js";
 import { ensureSuperAgentSession } from "./super-agent/bootstrap.js";
 import { dispatchSuperAgentTask as dispatchSuperAgentTaskCore } from "./super-agent/dispatch.js";
 import { getRunningSuperAgentPorts, isSuperAgentSession } from "./super-agent/session.js";
@@ -51,6 +75,7 @@ import { MessageRenderer } from "./ui/message-renderer.js";
 import { setupResizablePanel } from "./ui/resizable-panel.js";
 import { setupSkillSlashCommand } from "./ui/skill-slash-command.js";
 import { ToolCardRenderer } from "./ui/tool-card.js";
+import { WindowCloseCoordinator } from "./window-close-coordinator.js";
 import {
   buildWorkspaceUrl,
   openFolderAsWorkspace,
@@ -59,8 +84,6 @@ import {
   withBrokerWs,
 } from "./workspace/actions.js";
 import { FileBrowser } from "./workspace/file-browser.js";
-
-const COMPOSER_PLACEHOLDER = "Type a message, or use / to call a skill…";
 
 const fetchInstances = async () => {
   try {
@@ -80,15 +103,25 @@ const getCurrentPort = () => {
 };
 const mobileClientMode = new URLSearchParams(window.location.search).get("mobile") === "1";
 const navigateInWindow = (url) => {
-  let target = url;
-  if (mobileClientMode) {
-    try {
-      const nextUrl = new URL(url, window.location.href);
-      nextUrl.searchParams.set("mobile", "1");
-      target = nextUrl.toString();
-    } catch {}
+  let targetUrl;
+  try {
+    targetUrl = new URL(url, window.location.href);
+    const currentUrl = new URL(window.location.href);
+    if (
+      targetUrl.protocol !== currentUrl.protocol ||
+      targetUrl.hostname !== currentUrl.hostname ||
+      targetUrl.username ||
+      targetUrl.password
+    ) {
+      console.error("[navigation] rejected cross-origin target");
+      return;
+    }
+    if (mobileClientMode) targetUrl.searchParams.set("mobile", "1");
+  } catch {
+    console.error("[navigation] rejected invalid target");
+    return;
   }
-  window.location.href = target;
+  window.location.assign(targetUrl.toString());
 };
 
 // ──────────────────────────────────────────────────────────────────────
@@ -182,18 +215,42 @@ const transport = initTransport({ wsClient, env: window });
 const nativeAvailable = () => !mobileClientMode && transport.capabilities.native;
 const canUseSessionControl = () => transport.capabilities.native;
 const state = new StateManager();
-const messageRenderer = new MessageRenderer(document.getElementById("messages"));
-const toolCardRenderer = new ToolCardRenderer(document.getElementById("messages"));
-const dialogHandler = new DialogHandler(document.getElementById("dialog-container"), wsClient);
+const messagesElement = document.getElementById("messages");
+const chatHistoryNavigation = createChatHistoryNavigation({
+  host: document.querySelector(".main"),
+  messages: messagesElement,
+});
+const messageRenderer = new MessageRenderer(messagesElement);
+const toolCardRenderer = new ToolCardRenderer(messagesElement);
+const dialogHandler = new DialogHandler({
+  container: document.getElementById("dialog-container"),
+  notificationContainer: document.getElementById("messages"),
+  send: (message) => wsClient.send(message),
+});
 let superAgentPath = "";
 let superAgentAddonsActive = false;
+
+function clearConversationRenderers() {
+  messageRenderer.clear();
+  toolCardRenderer.clear();
+  chatHistoryNavigation.reset();
+}
 
 // Session sidebar
 const sidebar = new SessionSidebar(
   document.getElementById("session-list"),
   handleSessionSelect,
   handleNewProjectChat,
-  { onOpenProject: () => handleOpenFolder() },
+  {
+    onOpenProject: (project) => {
+      if (!project?.path) return handleOpenFolder();
+      return fetch("/api/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filePath: project.path }),
+      });
+    },
+  },
 );
 
 // ── Super Agent wiring ──────────────────────────────────────────────────────
@@ -435,6 +492,11 @@ let pendingNewSessionPreviousFile = null;
 // current agent run ends. The history is rendered immediately; pi gets the
 // switch_session RPC only after agent_end so the running call is not aborted.
 let pendingSessionSwitchPath = null;
+// A cross-workspace session switch replaces the embedded server's active
+// workspace asynchronously. Keep the requested root until its post-switch
+// mirror snapshot confirms that the new session is active; loading it earlier
+// asks the old server to read a path outside its workspace and returns 403.
+let pendingFileBrowserWorkspace = null;
 let sessionsLoaded = false;
 // Serializes handleSessionSelect: the function is a long async sequence that
 // mutates shared routing state (foregroundPort, mirrorActiveSessionFile,
@@ -443,6 +505,11 @@ let sessionsLoaded = false;
 // corrupt that state, so a second call queues behind the first.
 let sessionSelectChain = Promise.resolve();
 let deferredMirrorSync = null;
+// A selection may render its saved JSONL before its pi process has completed a
+// switch. Ignore the old process's same-port snapshot until it confirms the
+// selected session, otherwise it clobbers the restored history (and its
+// multi-turn navigator) with stale entries.
+let pendingMirrorSessionFile = null;
 let lastRenderedWelcomeWorkspacePath = null;
 // Maps port -> sessionFile for each pi process we're tracking
 const portSessionMap = new Map();
@@ -480,7 +547,7 @@ document
 const gitBranchEl = document.createElement("div");
 gitBranchEl.id = "git-branch-indicator";
 gitBranchEl.className = "pill git-branch-indicator hidden";
-gitBranchEl.title = "Current git branch";
+gitBranchEl.title = t("git.currentBranch");
 document
   .querySelector(".header-right")
   ?.insertBefore(gitBranchEl, document.querySelector("#context-viz"));
@@ -494,7 +561,7 @@ function updateGitBranchIndicator(branch = "") {
   }
   gitBranchEl.classList.remove("hidden");
   gitBranchEl.textContent = name;
-  gitBranchEl.title = `Branch: ${name}`;
+  gitBranchEl.title = t("git.branchName", { name });
 }
 
 async function refreshGitBranch() {
@@ -535,6 +602,7 @@ function syncWorkspaceIndicatorFromInstances() {
   if (workspacePath) foregroundWorkspacePath = workspacePath;
   updateWorkspaceIndicator(workspacePath || foregroundWorkspacePath);
   updateSuperAgentActiveStateFromWorkspace();
+  refreshFileBrowserForWorkspace(workspacePath || foregroundWorkspacePath);
   refreshGitBranch();
 }
 
@@ -582,17 +650,203 @@ const fileSidebarClose = document.getElementById("file-sidebar-close");
 const fileSidebarUp = document.getElementById("file-sidebar-up");
 const fileList = document.getElementById("file-list");
 const fileSidebarPath = document.getElementById("file-sidebar-path");
-const fileBrowser = new FileBrowser(fileList, fileSidebarPath, messageInput);
+const fileBrowser = new FileBrowser(fileList, fileSidebarPath, messageInput, {
+  onFileSelect: (filePath, metadata) => {
+    void filePreviewPanel.openFile(filePath, metadata);
+  },
+});
 setupResizablePanel(fileSidebar, {
   storageKey: "pi-studio-file-sidebar-width",
   defaultWidth: 360,
   minWidth: 280,
   maxWidth: 560,
 });
+const filePreviewPanel = new FilePreviewPanel({
+  panel: document.getElementById("file-preview-panel"),
+  resizer: document.getElementById("file-preview-resizer"),
+  tabBar: document.getElementById("file-preview-tabs"),
+  content: document.getElementById("file-preview-content"),
+  mainContainer: document.querySelector(".main"),
+  onOpenDesktop: (filePath) => {
+    fetch("/api/open", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filePath }),
+    });
+  },
+});
+let fileBrowserWorkspacePath = null;
+
+// ── Ephemeral chats (Side Chat + Quick Chat) + window close coordination ─────
+function confirmEphemeralDiscard(_risks, _reason) {
+  // Minimal confirmation; the full localized summary dialog lives in the close
+  // coordinator for window close. Per-chat close uses this lightweight gate.
+  return Promise.resolve(window.confirm(t("ephemeral.confirmDiscard")) ? "discard" : "cancel");
+}
+
+function showCloseSummaryDialog(_risk) {
+  return Promise.resolve(window.confirm(t("ephemeral.confirmCloseSummary")) ? "discard" : "cancel");
+}
+
+const createEphemeralView = (runtime) =>
+  new EphemeralChatView({
+    runtime,
+    kind: runtime.kind,
+    toolsEnabled: runtime.kind === "side-chat",
+  });
+
+async function getActiveSessionStartupProfile() {
+  try {
+    const response = await fetch("/api/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "get_state" }),
+    });
+    const payload = await response.json();
+    const model = payload.success ? payload.data?.model : null;
+    if (model?.provider && model?.id) {
+      return {
+        provider: model.provider,
+        modelId: model.id,
+        thinkingLevel: payload.data.thinkingLevel || "off",
+      };
+    }
+  } catch {
+    // Fall back to the latest UI state if the active session is briefly reloading.
+  }
+  const model = availableModels.find((entry) => entry.id === currentModelId);
+  if (!model?.provider || !model?.id) return null;
+  return {
+    provider: model.provider,
+    modelId: model.id,
+    thinkingLevel: currentThinkingLevel || "off",
+  };
+}
+
+const sideChatManager = new SideChatManager({
+  transport,
+  filePreviewPanel,
+  confirmDiscard: confirmEphemeralDiscard,
+  createView: createEphemeralView,
+  getStartupProfile: getActiveSessionStartupProfile,
+});
+const quickChatDialog = new QuickChatDialog({
+  transport,
+  dialogRoot: document.getElementById("quick-chat-dialog-root"),
+  chipRoot: document.getElementById("quick-chat-chip-root"),
+  boundsElement: document.querySelector(".main"),
+  confirmDiscard: confirmEphemeralDiscard,
+  createView: createEphemeralView,
+});
+const windowCloseCoordinator = new WindowCloseCoordinator({
+  transport,
+  showSummaryDialog: showCloseSummaryDialog,
+});
+windowCloseCoordinator.registerParticipant("file", filePreviewPanel);
+windowCloseCoordinator.registerParticipant("side", sideChatManager);
+windowCloseCoordinator.registerParticipant("quick", quickChatDialog);
+
+async function prepareEphemeralWorkspaceTransition() {
+  quickChatDialog.setInteractionLocked(true);
+  filePreviewPanel.setInteractionLocked(true);
+  try {
+    const accepted = await sideChatManager.prepareWorkspaceTransition();
+    if (accepted) {
+      sideChatManager.setInteractionLocked(true);
+    } else {
+      quickChatDialog.setInteractionLocked(false);
+      filePreviewPanel.setInteractionLocked(false);
+    }
+    return accepted;
+  } catch (error) {
+    sideChatManager.setInteractionLocked(false);
+    quickChatDialog.setInteractionLocked(false);
+    filePreviewPanel.setInteractionLocked(false);
+    throw error;
+  }
+}
+
+function cancelEphemeralWorkspaceTransition() {
+  sideChatManager.setInteractionLocked(false);
+  quickChatDialog.setInteractionLocked(false);
+  filePreviewPanel.setInteractionLocked(false);
+}
+
+wsClient.addEventListener("ownerBootstrap", async (event) => {
+  if (!nativeAvailable()) return;
+  try {
+    const advertised = event.detail?.instances;
+    const instances = Array.isArray(advertised)
+      ? advertised
+      : (await transport.getEphemeralBootstrap()) || [];
+    sideChatManager.rebind(instances.filter((d) => d.kind === "side-chat"));
+    const quick = instances.find((d) => d.kind === "quick-chat");
+    if (quick) quickChatDialog.rebind(quick);
+  } catch (err) {
+    console.warn("[ephemeral] bootstrap fetch failed:", err);
+  }
+});
+wsClient.addEventListener("ephemeralEvent", (event) => {
+  const { instanceId } = event.detail || {};
+  const side = sideChatManager.chats.get(instanceId)?.runtime;
+  if (side) {
+    side.applySequencedEvent(event.detail);
+    return;
+  }
+  if (quickChatDialog.runtime?.instanceId === instanceId) {
+    quickChatDialog.runtime.applySequencedEvent(event.detail);
+  }
+});
+wsClient.addEventListener("ephemeralCommandFailed", (event) => {
+  const requestId = event.detail?.requestId;
+  for (const chat of sideChatManager.chats.values()) {
+    chat.runtime.handleCommandFailure(requestId);
+  }
+  quickChatDialog.runtime?.handleCommandFailure(requestId);
+});
+wsClient.addEventListener("windowCloseRequest", (event) => {
+  windowCloseCoordinator.handleHostCloseRequest(event.detail?.requestId);
+});
+
+document.getElementById("side-chat-btn")?.addEventListener("click", () => {
+  if (nativeAvailable()) void sideChatManager.openMostRecent();
+});
+document.getElementById("quick-chat-btn")?.addEventListener("click", () => {
+  if (nativeAvailable()) void quickChatDialog.open();
+});
+filePreviewPanel.registerTabBarAction("new-side-chat", {
+  labelKey: "nav.newSideChat",
+  icon: "chat-plus",
+  onClick: () => {
+    if (nativeAvailable()) void sideChatManager.createAdditional();
+  },
+});
+filePreviewPanel.setTabBarActionVisible?.("new-side-chat", nativeAvailable());
+
+async function refreshFileBrowserForWorkspace(
+  path = getCurrentWorkspacePath(),
+  { force = false } = {},
+) {
+  const normalized = typeof path === "string" ? path.trim() : "";
+  if (!force && normalized === fileBrowserWorkspacePath) return true;
+  const switched = await filePreviewPanel.setWorkspaceRoot(normalized);
+  if (!switched) return false;
+
+  fileBrowserWorkspacePath = normalized;
+  fileBrowser.workspaceRoot = normalized;
+  const isCollapsed = fileSidebar.classList.contains("collapsed");
+  if (isCollapsed && !force) {
+    fileBrowser.setWorkspaceRoot(normalized);
+    return true;
+  }
+  await fileBrowser.load(normalized || undefined);
+  return true;
+}
+
 fileSidebarToggle.addEventListener("click", () => {
   const isCollapsed = fileSidebar.classList.toggle("collapsed");
-  if (!isCollapsed && !fileBrowser.currentPath) {
-    fileBrowser.load(); // Load session cwd
+  if (!isCollapsed) {
+    refreshFileBrowserForWorkspace(getCurrentWorkspacePath(), { force: true });
   }
   localStorage.setItem("pi-studio-file-sidebar", isCollapsed ? "closed" : "open");
 });
@@ -668,13 +922,22 @@ function openAppIconPath(app) {
   return HEADER_OPEN_APP_ICONS[app.id] || "";
 }
 
-function renderOpenAppLogo(app) {
+function populateOpenAppLogo(container, app) {
+  if (!container) return;
+  container.replaceChildren();
   const icon = openAppIconPath(app);
-  const monogram = openAppMonogram(app);
   if (icon) {
-    return `<img src="${icon}" alt="" class="header-open-app-logo-img">`;
+    const image = document.createElement("img");
+    image.src = icon;
+    image.alt = "";
+    image.className = "header-open-app-logo-img";
+    container.appendChild(image);
+    return;
   }
-  return `<span class="header-open-app-logo-text">${monogram}</span>`;
+  const monogram = document.createElement("span");
+  monogram.className = "header-open-app-logo-text";
+  monogram.textContent = openAppMonogram(app);
+  container.appendChild(monogram);
 }
 
 function refreshHeaderOpenAppButton() {
@@ -687,9 +950,12 @@ function refreshHeaderOpenAppButton() {
     return;
   }
   headerOpenApp.el.classList.remove("hidden");
-  if (headerOpenApp.logo) headerOpenApp.logo.innerHTML = renderOpenAppLogo(selected);
-  headerOpenApp.btn.title = `Open ${path} in ${selected.label}`;
-  headerOpenApp.btn.setAttribute("aria-label", `Open workspace in ${selected.label}`);
+  populateOpenAppLogo(headerOpenApp.logo, selected);
+  headerOpenApp.btn.title = t("nav.openWorkspaceInNamedApp", { path, app: selected.label });
+  headerOpenApp.btn.setAttribute(
+    "aria-label",
+    t("nav.openWorkspaceInAppAria", { app: selected.label }),
+  );
 }
 
 async function openWorkspaceInApp(app) {
@@ -719,15 +985,21 @@ function toggleHeaderOpenAppMenu() {
     closeHeaderOpenAppMenu();
     return;
   }
-  headerOpenApp.menu.innerHTML = "";
+  headerOpenApp.menu.replaceChildren();
   for (const app of headerOpenApp.apps) {
     const row = document.createElement("button");
     row.type = "button";
     row.className = "header-open-app-menu-item";
     if (app.id === headerOpenApp.selectedId) row.classList.add("active");
-    row.title = `Open in ${app.label}`;
-    row.setAttribute("aria-label", `Open in ${app.label}`);
-    row.innerHTML = `<span class="header-open-app-logo" aria-hidden="true">${renderOpenAppLogo(app)}</span><span>${app.label}</span>`;
+    row.title = t("nav.openInApp", { app: app.label });
+    row.setAttribute("aria-label", t("nav.openInApp", { app: app.label }));
+    const logo = document.createElement("span");
+    logo.className = "header-open-app-logo";
+    logo.setAttribute("aria-hidden", "true");
+    populateOpenAppLogo(logo, app);
+    const label = document.createElement("span");
+    label.textContent = app.label;
+    row.append(logo, label);
     row.addEventListener("click", (ev) => {
       ev.stopPropagation();
       closeHeaderOpenAppMenu();
@@ -770,8 +1042,24 @@ void loadHeaderOpenApps();
 // Restore file sidebar state
 if (localStorage.getItem("pi-studio-file-sidebar") === "open") {
   fileSidebar.classList.remove("collapsed");
-  fileBrowser.load();
+  refreshFileBrowserForWorkspace(getCurrentWorkspacePath(), { force: true });
 }
+
+// Resizable sidebars — drag handle on inner edge, persisted to localStorage.
+createSidebarResizer({
+  sidebarEl,
+  side: "left",
+  storageKey: "picot-sidebar-width",
+  minWidth: 200,
+  maxWidth: 500,
+});
+createSidebarResizer({
+  sidebarEl: fileSidebar,
+  side: "right",
+  storageKey: "picot-file-sidebar-width",
+  minWidth: 200,
+  maxWidth: 500,
+});
 
 // ═══════════════════════════════════════
 // Focus tracking for tab title notifications
@@ -1099,7 +1387,7 @@ wsClient.addEventListener("disconnected", () => {
 
 wsClient.addEventListener("reconnectFailed", () => {
   updateConnectionStatus("disconnected");
-  messageRenderer.renderError("Connection lost. Please refresh the page.");
+  messageRenderer.renderError(t("errors.connectionLost"));
 });
 
 wsClient.addEventListener("rpcEvent", (e) => {
@@ -1126,11 +1414,9 @@ wsClient.addEventListener("commandUndeliverable", (e) => {
   showTypingIndicator(false);
   const detail =
     reason === "no_route"
-      ? "no running session to receive it"
-      : "the session process is no longer reachable";
-  messageRenderer.renderError(
-    `Message not delivered (${detail}). The session may have closed — start a new chat or try again.`,
-  );
+      ? t("errors.commandUndeliverableNoRoute")
+      : t("errors.commandUndeliverableUnreachable");
+  messageRenderer.renderError(t("errors.messageNotDelivered", { detail }));
   if (pending.message && !messageInput.value.trim()) {
     messageInput.value = pending.message;
     messageInput.style.height = "auto";
@@ -1234,16 +1520,18 @@ function handleRPCEvent(event) {
       handleExtensionUIRequest(event);
       break;
     case "extension_error":
-      messageRenderer.renderError(`Extension error: ${event.error}`);
+      messageRenderer.renderError(t("errors.extensionError", { error: event.error }));
       break;
     case "session_name":
-      // Auto-title: update sidebar with new session name
-      if (event.name) {
-        const activeItem = document.querySelector(".session-item.active .session-title");
-        if (activeItem) activeItem.textContent = event.name;
-      }
+      handleSessionNameEvent(event);
       break;
   }
+}
+
+function handleSessionNameEvent(event) {
+  if (!event.name) return;
+  const activeItem = document.querySelector(".session-item.active .session-title");
+  if (activeItem) activeItem.textContent = event.name;
 }
 
 function handleBackgroundRPCEvent(sessionFile, event) {
@@ -1276,7 +1564,10 @@ function handleCompactionStart() {
   const el = document.createElement("div");
   el.className = "system-message compaction-message";
   el.id = "compaction-indicator";
-  el.innerHTML = '<span class="compaction-spinner">⟳</span> Compacting context…';
+  const spinner = document.createElement("span");
+  spinner.className = "compaction-spinner";
+  spinner.textContent = "⟳";
+  el.replaceChildren(spinner, document.createTextNode(` ${t("status.compacting")}`));
   messagesContainer.appendChild(el);
   scrollToBottom();
 }
@@ -1383,8 +1674,9 @@ async function updateSuperAgentTask(port, taskId, updateTask) {
 function handleCompactionEnd(event) {
   const indicator = document.getElementById("compaction-indicator");
   if (indicator) {
-    const summary = event.summary ? ` — ${event.summary}` : "";
-    indicator.innerHTML = `✓ Context compacted${summary}`;
+    indicator.textContent = event.summary
+      ? t("status.compactedWithSummary", { summary: event.summary })
+      : t("status.compacted");
     indicator.classList.add("compaction-done");
   }
   // Reset token tracking — next message will update
@@ -1479,6 +1771,7 @@ function handleAgentEnd(event = null) {
   state.setStreaming(false);
   showTypingIndicator(false);
   currentStreamingElement = null;
+  chatHistoryNavigation.completeAssistantMessage();
   currentStreamingText = "";
   updateUI();
 
@@ -1492,7 +1785,7 @@ function handleAgentEnd(event = null) {
     foregroundPort = findPortForSession(liveInstances, targetPath, foregroundPort);
     syncWorkspaceIndicatorFromInstances();
     transport.switchSession(targetPath, foregroundPort).catch((e) => {
-      messageRenderer.renderError(`Failed to switch session: ${e}`);
+      messageRenderer.renderError(t("errors.failedToSwitchSession", { error: e }));
     });
     return;
   }
@@ -1521,14 +1814,12 @@ function handleMessageStart(message) {
     currentStreamingText = "";
     currentStreamingThinking = "";
     currentStreamingElement = messageRenderer.renderAssistantMessage({ content: "" }, true);
+    chatHistoryNavigation.beginAssistantMessage();
   } else if (message.role === "user") {
-    // In mirror mode, user messages from TUI appear via events
-    // Only render if we didn't just send this message ourselves
     if (!lastSentMessage || getMessageText(message) !== lastSentMessage) {
       const content = getMessageText(message);
-      if (content) {
-        messageRenderer.renderUserMessage({ content });
-      }
+      const images = getMessageImages(message);
+      if (content || images.length > 0) renderNavigableUserMessage({ content, images });
     }
     lastSentMessage = null;
   }
@@ -1543,6 +1834,26 @@ function getMessageText(message) {
       .join("\n");
   }
   return "";
+}
+
+function getMessageImages(message) {
+  if (!Array.isArray(message?.content)) return [];
+  return message.content
+    .filter((block) => block?.type === "image")
+    .map((block) => ({
+      data: block.source?.data || block.data || "",
+      mimeType: block.source?.media_type || block.media_type || "image/png",
+    }));
+}
+
+function renderNavigableUserMessage({ content, images, isHistory = false }) {
+  const element = messageRenderer.renderUserMessage({ content: content || "", images }, isHistory);
+  chatHistoryNavigation.addUserTurn({
+    element,
+    text: content || "",
+    hasImage: Array.isArray(images) && images.length > 0,
+  });
+  return element;
 }
 
 function getAssistantText(message) {
@@ -1594,6 +1905,7 @@ function handleMessageUpdate(event) {
     if (currentStreamingElement) {
       messageRenderer.updateStreamingMessage(currentStreamingElement, currentStreamingText);
     }
+    chatHistoryNavigation.updateAssistantMessage(currentStreamingText);
   }
 }
 
@@ -1603,8 +1915,10 @@ function handleMessageEnd(message) {
     const model = message?.model ? String(message.model) : "unknown";
     const errorMessage = message?.errorMessage
       ? String(message.errorMessage)
-      : "Model request failed";
-    messageRenderer.renderError(`[${provider}/${model}] ${errorMessage}`);
+      : t("errors.modelRequestFailed");
+    messageRenderer.renderError(
+      t("errors.modelRequestFailedDetail", { provider, model, message: errorMessage }),
+    );
     // Latch the error so a subsequent model switch aborts the stuck run
     // (pi may still be auto-retrying this same failing model).
     lastTurnErrored = true;
@@ -1638,6 +1952,7 @@ function handleMessageEnd(message) {
     updateTokenUsage();
     showNewMessageBadge();
   }
+  chatHistoryNavigation.completeAssistantMessage();
 }
 
 function handleToolExecutionStart(event) {
@@ -1750,117 +2065,42 @@ messageInput.addEventListener("input", () => {
 const attachBtn = document.getElementById("attach-btn");
 const imageInput = document.getElementById("image-input");
 const imagePreviews = document.getElementById("image-previews");
-let pendingImages = []; // Array of { data: base64, mimeType: string }
-
-// Max dimension — resize images larger than this to reduce token cost & avoid API limits
-const MAX_IMAGE_DIM = 2048;
-const VALID_MIME_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
-
-function processImageFile(file) {
-  return new Promise((resolve, reject) => {
-    // Validate mime type
-    const mimeType = VALID_MIME_TYPES.includes(file.type) ? file.type : "image/png";
-
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        // Resize if too large
-        let { width, height } = img;
-        if (width > MAX_IMAGE_DIM || height > MAX_IMAGE_DIM) {
-          const scale = MAX_IMAGE_DIM / Math.max(width, height);
-          width = Math.round(width * scale);
-          height = Math.round(height * scale);
-        }
-
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
-
-        // Output as PNG for screenshots/diagrams, JPEG for photos
-        const outputMime = mimeType === "image/jpeg" ? "image/jpeg" : "image/png";
-        const quality = outputMime === "image/jpeg" ? 0.85 : undefined;
-        const dataUrl = canvas.toDataURL(outputMime, quality);
-        const base64 = dataUrl.split(",")[1];
-
-        if (!base64) {
-          reject(new Error("Failed to encode image"));
-          return;
-        }
-
-        resolve({ data: base64, mimeType: outputMime });
-      };
-      img.onerror = () => reject(new Error("Failed to decode image"));
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-async function addImageFiles(files) {
-  for (const file of files) {
-    if (!file.type.startsWith("image/")) continue;
-    try {
-      const img = await processImageFile(file);
-      pendingImages.push(img);
-    } catch (e) {
-      console.error("[Picot] Image processing failed:", e);
-    }
-  }
-  renderImagePreviews();
-}
-
-attachBtn.addEventListener("click", () => imageInput.click());
-
-imageInput.addEventListener("change", () => {
-  addImageFiles(imageInput.files);
-  imageInput.value = "";
-});
-
-// Drag & drop anywhere on the composer card
 const composerCard = document.getElementById("composer-card");
-composerCard.addEventListener("dragover", (e) => {
-  e.preventDefault();
-});
-composerCard.addEventListener("drop", (e) => {
-  e.preventDefault();
-  addImageFiles(e.dataTransfer.files);
-});
 
-// Paste images
-messageInput.addEventListener("paste", (e) => {
-  const files = [];
-  for (const item of e.clipboardData.items) {
-    if (!item.type.startsWith("image/")) continue;
-    files.push(item.getAsFile());
-  }
-  if (files.length) addImageFiles(files);
+// Image attachments: attach button, native picker, paste/drop, previews.
+// Uses the shared helper so the main chat and ephemeral chats stay in lockstep.
+// The file-tree drag handler (text/plain path mention) stays inline because it
+// is main-chat-only behavior; only the image portion delegates to the helper.
+const mainImageAttachments = setupComposerImageAttachments({
+  document,
+  composerCard,
+  textarea: messageInput,
+  attachBtn,
+  imageInput,
+  imagePreviews,
+  processImageFile,
+  processImagePayload,
+  pickImageFiles: (cwd) => transport.pickImageFiles(cwd),
+  getWorkspacePath: getCurrentWorkspacePath,
+  isNativeAvailable: nativeAvailable,
+  onError: (message) => messageRenderer.renderError(message),
+  t,
 });
-
-function renderImagePreviews() {
-  imagePreviews.innerHTML = "";
-  if (pendingImages.length === 0) {
-    imagePreviews.classList.add("hidden");
-    return;
-  }
-  imagePreviews.classList.remove("hidden");
-  pendingImages.forEach((img, i) => {
-    const el = document.createElement("div");
-    el.className = "image-preview";
-    el.innerHTML = `
-      <img src="data:${img.mimeType};base64,${img.data}" />
-      <button class="image-preview-remove" data-index="${i}">✕</button>
-    `;
-    el.querySelector(".image-preview-remove").addEventListener("click", () => {
-      pendingImages.splice(i, 1);
-      renderImagePreviews();
-    });
-    imagePreviews.appendChild(el);
-  });
-}
+composerCard.addEventListener(
+  "drop",
+  (e) => {
+    // File Tree drag: text/plain carries an absolute path. Image drops are
+    // handled by mainImageAttachments already; this listener only intercepts
+    // text/plain path mentions before the helper runs.
+    const rawPath = e.dataTransfer.getData("text/plain");
+    if (rawPath?.startsWith("/")) {
+      if (fileBrowser.insertFileMention(rawPath)) {
+        e.stopPropagation();
+      }
+    }
+  },
+  true,
+);
 
 // ═══════════════════════════════════════
 // Send message (with images)
@@ -1912,17 +2152,9 @@ function sendMessage() {
     message,
   };
 
-  if (pendingImages.length > 0) {
-    cmd.images = pendingImages.map((img) => {
-      console.log(`[Picot] Sending image: mimeType=${img.mimeType}, dataLen=${img.data?.length}`);
-      return {
-        type: "image",
-        data: img.data,
-        mimeType: img.mimeType || "image/png",
-      };
-    });
-    pendingImages = [];
-    renderImagePreviews();
+  const images = mainImageAttachments.consumePendingImages();
+  if (images.length > 0) {
+    cmd.images = images;
   }
 
   if (state.isStreaming) {
@@ -1934,7 +2166,11 @@ function sendMessage() {
   }
 
   lastSentMessage = message;
-  messageRenderer.renderUserMessage({ content: message, images: cmd.images });
+  renderNavigableUserMessage({ content: message, images: cmd.images });
+  if (!hasAnySessionsLoaded()) {
+    pendingNewSessionRefresh = true;
+  }
+
   trackPromptDelivery(wsClient.send(cmd), message);
   refreshSidebarAfterUserPrompt();
 }
@@ -1942,41 +2178,42 @@ function sendMessage() {
 const queuedMessagesEl = document.getElementById("queued-messages");
 
 function renderQueuedMessages() {
-  queuedMessagesEl.innerHTML = "";
+  queuedMessagesEl.replaceChildren();
   if (messageQueue.length === 0) {
     queuedMessagesEl.classList.add("hidden");
     return;
   }
   queuedMessagesEl.classList.remove("hidden");
   messageQueue.forEach((cmd, i) => {
-    const el = document.createElement("div");
-    el.className = "queued-msg";
-    el.innerHTML = `
-      <span class="queued-msg-label">Queued</span>
-      <span class="queued-msg-text">${escapeHtml(cmd.message)}</span>
-      <button class="queued-msg-cancel" title="Cancel">×</button>
-    `;
-    el.querySelector(".queued-msg-cancel").addEventListener("click", () => {
+    const item = document.createElement("div");
+    item.className = "queued-msg";
+    const label = document.createElement("span");
+    label.className = "queued-msg-label";
+    label.textContent = t("queue.queued");
+    const message = document.createElement("span");
+    message.className = "queued-msg-text";
+    message.textContent = cmd.message;
+    const cancel = document.createElement("button");
+    cancel.className = "queued-msg-cancel";
+    cancel.title = t("queue.cancelTitle");
+    cancel.textContent = "×";
+    cancel.addEventListener("click", () => {
       messageQueue.splice(i, 1);
       renderQueuedMessages();
     });
-    queuedMessagesEl.appendChild(el);
+    item.append(label, message, cancel);
+    queuedMessagesEl.appendChild(item);
   });
-}
-
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 function flushQueue() {
   if (messageQueue.length > 0 && !state.isStreaming) {
+    if (!hasAnySessionsLoaded()) {
+      pendingNewSessionRefresh = true;
+    }
+
     const cmd = messageQueue.shift();
-    messageRenderer.renderUserMessage({
-      content: cmd.message,
-      images: cmd.images,
-    });
+    renderNavigableUserMessage({ content: cmd.message, images: cmd.images });
     renderQueuedMessages();
     trackPromptDelivery(wsClient.send(cmd), cmd.message);
     refreshSidebarAfterUserPrompt();
@@ -1999,65 +2236,44 @@ const commandList = document.getElementById("command-list");
 const commands = [
   {
     icon: "🗜️",
-    label: "Compact",
-    desc: "Compact context to save tokens",
-    action: () => rpcCommand({ type: "compact" }, "Compacting…"),
+    label: t("input.compact"),
+    desc: t("input.compactDesc"),
+    action: () => rpcCommand({ type: "compact" }, t("status.compacting")),
   },
   {
     icon: "📋",
-    label: "Export HTML",
-    desc: "Export session as HTML file",
+    label: t("input.exportHtml"),
+    desc: t("input.exportHtmlDesc"),
     action: () => rpcExportHtml(),
   },
   {
     icon: "📊",
-    label: "Session Stats",
-    desc: "Show session statistics",
+    label: t("input.sessionStats"),
+    desc: t("input.sessionStatsDesc"),
     action: () => showSessionStats(),
   },
   {
     icon: "⬇️",
-    label: "Expand All Tools",
-    desc: "Expand all tool cards",
+    label: t("input.expandAllTools"),
+    desc: t("input.expandAllToolsDesc"),
     action: () => toolCardRenderer.expandAll(),
   },
   {
     icon: "⬆️",
-    label: "Collapse All Tools",
-    desc: "Collapse all tool cards",
+    label: t("input.collapseAllTools"),
+    desc: t("input.collapseAllToolsDesc"),
     action: () => toolCardRenderer.collapseAll(),
   },
 ];
-
-function openCommandPalette() {
-  commandList.innerHTML = "";
-  commands.forEach((cmd) => {
-    const el = document.createElement("div");
-    el.className = "command-item";
-    el.innerHTML = `
-      <div class="command-icon">${cmd.icon}</div>
-      <div>
-        <div class="command-label">${cmd.label}</div>
-        <div class="command-desc">${cmd.desc}</div>
-      </div>
-    `;
-    el.addEventListener("click", () => {
-      closeCommandPalette();
-      cmd.action();
-    });
-    commandList.appendChild(el);
-  });
-  commandPalette.classList.remove("hidden");
-  commandPaletteOverlay.classList.remove("hidden");
-}
-
-function closeCommandPalette() {
-  commandPalette.classList.add("hidden");
-  commandPaletteOverlay.classList.add("hidden");
-}
-
-commandBtn.addEventListener("click", openCommandPalette);
-commandPaletteOverlay.addEventListener("click", closeCommandPalette);
+const mainCommandMenu = setupComposerCommandMenu({
+  button: commandBtn,
+  menu: commandPalette,
+  list: commandList,
+  getCommands: () => commands,
+  document,
+  overlay: commandPaletteOverlay,
+});
+commandPaletteOverlay.addEventListener("click", mainCommandMenu.close);
 
 async function rpcCommand(cmd, statusMsg, silent = false) {
   try {
@@ -2069,16 +2285,16 @@ async function rpcCommand(cmd, statusMsg, silent = false) {
     });
     const data = await resp.json();
     if (data.success && !silent) {
-      statusText.textContent = "Done";
+      statusText.textContent = t("status.done");
       setTimeout(() => {
-        statusText.textContent = "Connected";
+        statusText.textContent = t("status.connected");
       }, 2000);
     } else if (!data.success) {
       console.error("rpcCommand failed:", cmd.type, data.error);
       if (!silent) {
-        statusText.textContent = data.error || "Failed";
+        statusText.textContent = data.error || t("status.failed");
         setTimeout(() => {
-          statusText.textContent = "Connected";
+          statusText.textContent = t("status.connected");
         }, 3000);
       }
     }
@@ -2086,35 +2302,39 @@ async function rpcCommand(cmd, statusMsg, silent = false) {
   } catch (e) {
     console.error("rpcCommand error:", cmd.type, e);
     if (!silent) {
-      statusText.textContent = "Error";
+      statusText.textContent = t("status.error");
       setTimeout(() => {
-        statusText.textContent = "Connected";
+        statusText.textContent = t("status.connected");
       }, 3000);
     }
   }
 }
 
 async function rpcExportHtml() {
-  const data = await rpcCommand({ type: "export_html" }, "Exporting…");
+  const data = await rpcCommand({ type: "export_html" }, t("status.exporting"));
   if (data?.success && data.data?.path) {
-    statusText.textContent = `Exported: ${data.data.path}`;
+    statusText.textContent = t("status.exported", { path: data.data.path });
     setTimeout(() => {
-      statusText.textContent = "Connected";
+      statusText.textContent = t("status.connected");
     }, 4000);
   }
 }
 
 async function showSessionStats() {
-  const data = await rpcCommand({ type: "get_session_stats" }, "Loading stats…");
+  const data = await rpcCommand({ type: "get_session_stats" }, t("status.loadingStats"));
   if (data?.success && data.data) {
     const s = data.data;
     const lines = [
-      `📊 Session Stats`,
-      `Messages: ${s.totalMessages} (${s.userMessages} user, ${s.assistantMessages} assistant)`,
-      `Tool calls: ${s.toolCalls}`,
+      t("status.sessionStatsTitle"),
+      t("status.sessionStatsMessages", {
+        total: s.totalMessages,
+        user: s.userMessages,
+        assistant: s.assistantMessages,
+      }),
+      t("status.sessionStatsToolCalls", { count: s.toolCalls }),
     ];
     if (s.tokens) {
-      lines.push(`Context: ~${(s.tokens.input / 1000).toFixed(1)}k tokens`);
+      lines.push(t("status.sessionStatsContext", { tokens: (s.tokens.input / 1000).toFixed(1) }));
     }
     messageRenderer.renderSystemMessage(lines.join("\n"));
   }
@@ -2130,14 +2350,14 @@ const modelDropdownLabel = document.getElementById("model-dropdown-label");
 const modelDropdownMenu = document.getElementById("model-dropdown-menu");
 const thinkingBtn = document.getElementById("thinking-btn");
 function formatCompactThinkingLevelLabel(level) {
-  return `Think ${level || "off"}`;
+  return t("settings.thinkingCompact", { level: level || t("settings.off") });
 }
 function updateThinkingBtn() {
   thinkingBtn.textContent = formatCompactThinkingLevelLabel(currentThinkingLevel);
-  thinkingBtn.title = "Thinking effort controls reasoning depth. Click to cycle.";
+  thinkingBtn.title = t("settings.thinkingTitle");
   thinkingBtn.setAttribute(
     "aria-label",
-    `Thinking effort: ${currentThinkingLevel}. Click to cycle reasoning depth.`,
+    t("settings.thinkingAriaLabel", { level: currentThinkingLevel || t("settings.off") }),
   );
   thinkingBtn.classList.toggle("off", currentThinkingLevel === "off");
   renderThinkingEffort(currentThinkingLevel || "off", {
@@ -2178,6 +2398,22 @@ function updateOnboardingUI() {
 
 async function fetchModelInfo() {
   try {
+    // Populate models from the host-wide cache first so the dropdown renders
+    // instantly on cold start. The active Pi's get_state call below still
+    // runs in parallel; whichever returns models first wins. The cache is
+    // warmed by the host after the first session registers and is shared
+    // across all windows, Side Chats, and Quick Chats.
+    try {
+      const cached = await transport.getCachedModels();
+      if (Array.isArray(cached?.models) && cached.models.length > 0) {
+        availableModels = cached.models;
+        hasLoadedAvailableModels = true;
+        didAutoOpenEmptyModelsDropdown = false;
+      }
+    } catch (_cacheErr) {
+      // Cache miss or host not ready — fall through to the live query below.
+    }
+
     const [modelsResp, stateResp] = await Promise.all([
       fetch("/api/rpc", {
         method: "POST",
@@ -2254,7 +2490,7 @@ function maybeAutoOpenEmptyModelsDropdown() {
 
 function updateModelLabel() {
   const shortName = currentModelId.replace(/^claude-/, "").replace(/-\d{8}$/, "");
-  modelDropdownLabel.textContent = shortName || "model";
+  modelDropdownLabel.textContent = shortName || t("misc.model");
 }
 
 function toggleModelDropdown() {
@@ -2267,12 +2503,12 @@ function toggleModelDropdown() {
 }
 
 function openModelDropdown() {
-  modelDropdownMenu.innerHTML = "";
+  modelDropdownMenu.replaceChildren();
 
   // Search input
   const search = document.createElement("input");
   search.className = "model-dropdown-search";
-  search.placeholder = "Search models…";
+  search.placeholder = t("models.searchPlaceholder");
   search.type = "text";
   modelDropdownMenu.appendChild(search);
 
@@ -2282,7 +2518,7 @@ function openModelDropdown() {
   modelDropdownMenu.appendChild(itemsContainer);
 
   function renderItems(filter) {
-    itemsContainer.innerHTML = "";
+    itemsContainer.replaceChildren();
     const query = (filter || "").toLowerCase();
     // Empty-state: no API keys configured anywhere. Surface this loudly
     // instead of leaving the dropdown blank — empty dropdowns look like
@@ -2290,16 +2526,24 @@ function openModelDropdown() {
     if (availableModels.length === 0) {
       const empty = document.createElement("div");
       empty.className = "model-dropdown-empty";
-      empty.innerHTML = `
-        <div style="padding:14px;color:var(--text-dim);font-size:12px;line-height:1.5">
-          <div style="color:var(--text-primary);margin-bottom:6px">No models available</div>
-          <div>No API keys configured. Set a key in Settings &rarr; Configuration.</div>
-          <button type="button" class="btn-primary" style="margin-top:10px">Open Settings</button>
-        </div>`;
-      empty.querySelector("button").addEventListener("click", () => {
+      const content = document.createElement("div");
+      content.style.cssText = "padding:14px;color:var(--text-dim);font-size:12px;line-height:1.5";
+      const title = document.createElement("div");
+      title.style.cssText = "color:var(--text-primary);margin-bottom:6px";
+      title.textContent = t("models.emptyTitle");
+      const help = document.createElement("div");
+      help.textContent = t("models.emptyHelp");
+      const settingsButton = document.createElement("button");
+      settingsButton.type = "button";
+      settingsButton.className = "btn-primary";
+      settingsButton.style.marginTop = "10px";
+      settingsButton.textContent = t("settings.openSettings");
+      settingsButton.addEventListener("click", () => {
         closeModelDropdown();
         openConfigurationSettings().catch(() => {});
       });
+      content.append(title, help, settingsButton);
+      empty.appendChild(content);
       itemsContainer.appendChild(empty);
       return;
     }
@@ -2316,11 +2560,18 @@ function openModelDropdown() {
       const el = document.createElement("div");
       el.className = `model-dropdown-item${m.id === currentModelId ? " active" : ""}`;
       const ctxK = m.contextWindow ? `${(m.contextWindow / 1000).toFixed(0)}k` : "";
-      const providerLabel =
-        m.provider && m.provider !== "anthropic"
-          ? `<span class="model-dropdown-item-provider">${m.provider}</span>`
-          : "";
-      el.innerHTML = `<span>${shortName}${providerLabel}</span><span class="model-dropdown-item-ctx">${ctxK}</span>`;
+      const name = document.createElement("span");
+      name.textContent = shortName;
+      if (m.provider && m.provider !== "anthropic") {
+        const provider = document.createElement("span");
+        provider.className = "model-dropdown-item-provider";
+        provider.textContent = m.provider;
+        name.appendChild(provider);
+      }
+      const context = document.createElement("span");
+      context.className = "model-dropdown-item-ctx";
+      context.textContent = ctxK;
+      el.append(name, context);
       el.addEventListener("click", async () => {
         closeModelDropdown();
         // If the session is stuck auto-retrying the current (failing) model, or
@@ -2445,8 +2696,8 @@ document.addEventListener("keydown", (e) => {
   // so we don't shadow Cmd+Shift+N (reserved for future "new window").
   if ((e.key === "n" || e.key === "N") && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
     e.preventDefault();
-    newSession().catch((err) => {
-      messageRenderer.renderError(`Failed to start new session: ${err}`);
+    newSession().catch((_err) => {
+      messageRenderer.renderError(t("errors.newSessionFailed"));
     });
   }
 
@@ -2455,7 +2706,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     if (nativeAvailable()) {
       transport.openDevtools().catch((err) => {
-        messageRenderer.renderError(`Failed to open inspector: ${err}`);
+        messageRenderer.renderError(t("errors.failedToOpenInspector", { error: err }));
       });
     }
   }
@@ -2602,8 +2853,7 @@ async function resetUiForNewSession() {
     liveInstances.find((i) => i?.port === foregroundPort)?.sessionFile ||
     null;
   state.reset();
-  messageRenderer.clear();
-  toolCardRenderer.clear();
+  clearConversationRenderers();
   renderWorkspaceWelcome();
   sidebar.clearActive();
   updateSuperAgentActiveState(null, null);
@@ -2628,6 +2878,7 @@ async function activateNewParallelSession(port, cwd) {
   if (cwd) {
     foregroundWorkspacePath = cwd;
     updateWorkspaceIndicator(cwd);
+    refreshFileBrowserForWorkspace(cwd);
   }
   wsClient.setRoutingContext({
     workspaceId: `workspace:${cwd || getCurrentWorkspacePath() || "unknown"}`,
@@ -2674,8 +2925,8 @@ async function newSession() {
     try {
       await transport.newSession(getActivePort());
       await resetUiForNewSession();
-    } catch (err) {
-      messageRenderer.renderError(`Failed to start new session: ${err}`);
+    } catch (_err) {
+      messageRenderer.renderError(t("errors.newSessionFailed"));
       return;
     }
     if (isMobile()) {
@@ -2691,9 +2942,9 @@ async function newSession() {
   lastInputTokens = 0;
   updateCostDisplay();
   updateTokenUsage();
-  const data = await rpcCommand({ type: "new_session" }, "Starting new session…");
+  const data = await rpcCommand({ type: "new_session" }, t("status.startingNewSession"));
   if (data?.success === false || data?.data?.cancelled) {
-    messageRenderer.renderError(data?.error || "New session was cancelled");
+    messageRenderer.renderError(data?.error || t("errors.newSessionCancelled"));
     return;
   }
   await resetUiForNewSession();
@@ -2723,9 +2974,7 @@ async function handleNewProjectChat(project) {
       if (isCurrentProject) {
         await newSession();
       } else {
-        messageRenderer.renderError(
-          "Starting a new chat in another project requires the desktop broker. Reopen the mobile QR code.",
-        );
+        messageRenderer.renderError(t("errors.mobileBrokerRequired"));
       }
       if (isMobile()) {
         sidebarEl.classList.add("collapsed");
@@ -2750,6 +2999,8 @@ async function handleNewProjectChat(project) {
       fetchInstances,
       navigate: navigateInWindow,
       onBeforeSwap: onBeforeInstanceSwap,
+      beforeWorkspaceTransition: prepareEphemeralWorkspaceTransition,
+      onWorkspaceTransitionCancelled: cancelEphemeralWorkspaceTransition,
       renderError: (message) => messageRenderer.renderError(message),
     });
     if (!launched) return;
@@ -2799,6 +3050,14 @@ async function handleSessionSelectImpl(session, project) {
   );
   foregroundPort = findPortForSession(liveInstances, session.filePath, foregroundPort);
   syncWorkspaceIndicatorFromInstances();
+  pendingFileBrowserWorkspace = deferFileBrowserWorkspace(
+    session.filePath,
+    project?.path,
+    fileBrowserWorkspacePath,
+  );
+  // Do not load the target workspace yet. `switch_session` only acknowledges
+  // the RPC write; the current server remains scoped to the previous
+  // workspace until its replacement extension sends a mirror snapshot.
   if (session.filePath) {
     wsClient.setRoutingContext({
       workspaceId: `workspace:${project?.path || getCurrentWorkspacePath() || "unknown"}`,
@@ -2817,6 +3076,7 @@ async function handleSessionSelectImpl(session, project) {
 
   // Native host: switch session via control command to the current pi instance
   if (nativeAvailable() && session.filePath) {
+    pendingMirrorSessionFile = session.filePath;
     const wasStreaming = state.isStreaming;
     clearMessageQueue();
     state.reset();
@@ -2910,7 +3170,8 @@ async function handleSessionSelectImpl(session, project) {
       await transport.switchSession(session.filePath, foregroundPort);
       wsClient.send({ type: "mirror_sync_request" });
     } catch (e) {
-      messageRenderer.renderError(`Failed to switch session: ${e}`);
+      if (pendingMirrorSessionFile === session.filePath) pendingMirrorSessionFile = null;
+      messageRenderer.renderError(t("errors.failedToSwitchSession", { error: e }));
     }
     if (isMobile()) {
       sidebarEl.classList.add("collapsed");
@@ -2929,14 +3190,13 @@ async function handleSessionSelectImpl(session, project) {
 }
 
 async function renderSelectedSessionHistory(session, project) {
-  messageRenderer.clear();
-  toolCardRenderer.clear();
+  clearConversationRenderers();
   if (!session || !project) {
     renderWorkspaceWelcome();
     return;
   }
 
-  messageRenderer.renderSystemMessage("Loading session…");
+  messageRenderer.renderSystemMessage(t("status.loadingSession"));
   const dirName = project?.dirName;
   const file = session.file;
   if (!dirName || !file) {
@@ -2963,7 +3223,7 @@ async function renderSelectedSessionHistory(session, project) {
       ok: res.ok,
     });
     const data = await res.json();
-    messageRenderer.clear();
+    clearConversationRenderers();
     logSessionRoute("history:render", {
       selectedSession: session.filePath,
       entries: data.entries?.length || 0,
@@ -2976,18 +3236,17 @@ async function renderSelectedSessionHistory(session, project) {
       selectedSession: session?.filePath,
       error: e,
     });
-    messageRenderer.renderError(`Failed to load session: ${e}`);
+    messageRenderer.renderError(t("errors.failedToLoadSession", { error: e }));
   }
 }
 
 async function switchSession(sessionFile, session = null, project = null) {
   try {
     state.reset();
-    messageRenderer.clear();
-    toolCardRenderer.clear();
+    clearConversationRenderers();
 
     if (sessionFile && session) {
-      messageRenderer.renderSystemMessage("Loading session…");
+      messageRenderer.renderSystemMessage(t("status.loadingSession"));
 
       const dirName = project?.dirName;
       const file = session.file;
@@ -3000,10 +3259,8 @@ async function switchSession(sessionFile, session = null, project = null) {
           const data = await res.json();
           console.log("[App] History entries:", data.entries?.length || 0);
 
-          messageRenderer.clear();
-          renderSessionHistory(data.entries || [], {
-            searchQuery: sidebar.searchQuery,
-          });
+          clearConversationRenderers();
+          renderSessionHistory(data.entries || [], { searchQuery: sidebar.searchQuery });
         } catch (e) {
           console.error("[App] History fetch error:", e);
         }
@@ -3049,12 +3306,12 @@ async function switchSession(sessionFile, session = null, project = null) {
 
       if (!res.ok) {
         const err = await res.json();
-        messageRenderer.renderError(`Failed to switch session: ${err.error}`);
+        messageRenderer.renderError(t("errors.failedToSwitchSession", { error: err.error }));
       }
     }
   } catch (error) {
     console.error("[App] Failed to switch session:", error);
-    messageRenderer.renderError("Failed to switch session");
+    messageRenderer.renderError(t("errors.failedToSwitchSessionShort"));
   }
 }
 
@@ -3084,7 +3341,19 @@ function handleMirrorSync(data) {
   // process's session/port, causing the user's next message to be sent into
   // that previous session instead of the one they're now viewing.
   const syncPort = typeof data.port === "number" ? data.port : null;
-  if (syncPort !== null && typeof foregroundPort === "number" && syncPort !== foregroundPort) {
+  const appliedForegroundSession = applyForegroundMirrorSession({
+    syncPort,
+    foregroundPort,
+    sessionFile: data.sessionFile,
+    expectedSessionFile: pendingMirrorSessionFile,
+    setMirrorActiveSessionFile: (filePath) => {
+      mirrorActiveSessionFile = filePath;
+    },
+    setSidebarActive: (filePath) => {
+      sidebar.setActive(filePath);
+    },
+  });
+  if (!appliedForegroundSession) {
     logSessionRoute("mirrorSync:ignored-background", {
       syncPort,
       foregroundPort,
@@ -3099,20 +3368,39 @@ function handleMirrorSync(data) {
     return;
   }
 
+  if (
+    pendingMirrorSessionFile &&
+    isExpectedMirrorSession(pendingMirrorSessionFile, data.sessionFile)
+  ) {
+    pendingMirrorSessionFile = null;
+  }
+
   console.log("[Mirror] Received state snapshot:", data.entries?.length, "entries");
   isMirrorMode = true;
-
-  // Track the active session
-  mirrorActiveSessionFile = data.sessionFile || null;
   if (data.sessionFile) portSessionMap.set(foregroundPort, data.sessionFile);
-  const syncWorkspacePath = workspacePathFromId(data.workspaceId);
+
+  // Track the foreground session route.
+  const pendingWorkspace = confirmDeferredFileBrowserWorkspace(
+    pendingFileBrowserWorkspace,
+    data.sessionFile,
+  );
+  const syncWorkspacePath = pendingWorkspace?.path || workspacePathFromId(data.workspaceId);
   if (syncWorkspacePath) {
     foregroundWorkspacePath = syncWorkspacePath;
     updateWorkspaceIndicator(syncWorkspacePath);
     updateSuperAgentActiveStateFromWorkspace();
   }
+  if (pendingWorkspace) {
+    pendingFileBrowserWorkspace = null;
+    void refreshFileBrowserForWorkspace(pendingWorkspace.path, { force: true }).catch((error) => {
+      console.error("[App] Failed to refresh file browser after session switch:", error);
+    });
+  }
   wsClient.setRoutingContext({
-    workspaceId: data.workspaceId || `workspace:${getCurrentWorkspacePath() || "unknown"}`,
+    workspaceId:
+      (syncWorkspacePath && `workspace:${syncWorkspacePath}`) ||
+      data.workspaceId ||
+      `workspace:${getCurrentWorkspacePath() || "unknown"}`,
     sessionId: data.sessionId || data.sessionFile || null,
     sourcePort: data.port || foregroundPort,
   });
@@ -3149,7 +3437,7 @@ function handleMirrorSync(data) {
   }
 
   // Clear and render message history
-  messageRenderer.clear();
+  clearConversationRenderers();
   sessionTotalCost = 0;
   lastInputTokens = 0;
 
@@ -3210,11 +3498,11 @@ function updateMirrorInputState() {
   const inputArea = document.querySelector(".input-area");
   if (viewingActiveSession) {
     messageInput.disabled = false;
-    messageInput.placeholder = COMPOSER_PLACEHOLDER;
+    messageInput.placeholder = t("input.messagePlaceholder");
     inputArea?.classList.remove("mirror-readonly");
   } else {
     messageInput.disabled = true;
-    messageInput.placeholder = "Viewing historical session (read-only)";
+    messageInput.placeholder = t("input.mirrorReadOnly");
     inputArea?.classList.add("mirror-readonly");
   }
 }
@@ -3255,16 +3543,14 @@ function renderSessionHistory(entries, { searchQuery = "" } = {}) {
         : [];
       if (content || images.length > 0) {
         userCount++;
-        messageRenderer.renderUserMessage(
-          {
-            content: content || "",
-            images: images.length > 0 ? images : undefined,
-          },
-          true,
-          { entryId: entry.id || null },
-        );
+        renderNavigableUserMessage({
+          content: content || "",
+          images: images.length > 0 ? images : undefined,
+          isHistory: true,
+        });
       }
     } else if (msg.role === "assistant") {
+      chatHistoryNavigation.beginAssistantMessage();
       const textBlocks = (msg.content || []).filter((b) => b.type === "text");
       const thinkingBlocks = (msg.content || []).filter((b) => b.type === "thinking");
       const toolCalls = (msg.content || []).filter((b) => b.type === "toolCall");
@@ -3278,6 +3564,8 @@ function renderSessionHistory(entries, { searchQuery = "" } = {}) {
       }
 
       const text = textBlocks.map((b) => b.text).join("\n");
+      if (text) chatHistoryNavigation.updateAssistantMessage(text);
+      chatHistoryNavigation.completeAssistantMessage();
 
       if (text || thinkingBlocks.length > 0) {
         assistantCount++;
@@ -3323,6 +3611,7 @@ function renderSessionHistory(entries, { searchQuery = "" } = {}) {
       );
     }
   }
+  chatHistoryNavigation.completeAssistantMessage();
 
   console.log(
     `[History] Done: ${userCount} users, ${assistantCount} assistants, ${toolCardCount} tools, ${toolResultCount} results`,
@@ -3356,7 +3645,7 @@ function showTypingIndicator(show) {
 
 function abortCurrentRun() {
   wsClient.send({ type: "abort" });
-  messageRenderer.renderError("Aborted by user");
+  messageRenderer.renderError(t("errors.abortedByUser"));
   showTypingIndicator(false);
 
   // In some abort paths, backend agent_end can be delayed or missing.
@@ -3372,7 +3661,7 @@ function abortCurrentRun() {
 
 function updateCostDisplay() {
   if (sessionTotalCost > 0) {
-    sessionCostEl.textContent = `$${sessionTotalCost.toFixed(4)} (sub)`;
+    sessionCostEl.textContent = t("usage.costSub", { amount: `$${sessionTotalCost.toFixed(4)}` });
     sessionCostEl.classList.add("visible");
   } else {
     sessionCostEl.classList.remove("visible");
@@ -3390,7 +3679,10 @@ function updateTokenUsage() {
     } else if (pct >= 60) {
       tokenUsageEl.classList.add("warning");
     }
-    tokenUsageEl.title = `Context: ${(lastInputTokens / 1000).toFixed(1)}k / ${(contextWindowSize / 1000).toFixed(0)}k tokens`;
+    tokenUsageEl.title = t("usage.contextTokens", {
+      used: (lastInputTokens / 1000).toFixed(1),
+      limit: (contextWindowSize / 1000).toFixed(0),
+    });
     if (pct >= 80) {
       showCompactButton();
     } else {
@@ -3409,10 +3701,10 @@ function showCompactButton() {
   const btn = document.createElement("button");
   btn.id = "compact-btn";
   btn.className = "compact-btn";
-  btn.textContent = "Compact";
-  btn.title = "Context is over 80% — compact to save tokens";
+  btn.textContent = t("misc.compact");
+  btn.title = t("misc.compactTitle");
   btn.addEventListener("click", () => {
-    rpcCommand({ type: "compact" }, "Compacting…");
+    rpcCommand({ type: "compact" }, t("status.compacting"));
     hideCompactButton();
   });
   // Insert next to token usage in header
@@ -3472,7 +3764,7 @@ async function openLanQrModal() {
     }
     if (lanQrLoading) lanQrLoading.style.display = "none";
   } catch {
-    if (lanQrLoading) lanQrLoading.textContent = "QR code unavailable";
+    if (lanQrLoading) lanQrLoading.textContent = t("misc.qrUnavailable");
   }
 }
 
@@ -3507,10 +3799,10 @@ async function refreshLanUrl() {
     lanUrl = typeof data?.lanUrl === "string" ? data.lanUrl : "";
     if (!lanUrl && lanUrls.length > 0) lanUrl = lanUrls[0];
     if (tailscaleUrl) {
-      statusText.textContent = "Connected • TS";
+      statusText.textContent = t("status.connectedTS");
       statusText.title = tailscaleUrl;
     } else if (lanUrl) {
-      statusText.textContent = "Connected • LAN";
+      statusText.textContent = t("status.connectedLAN");
       statusText.title = lanUrl;
     }
     updateLanQrButton(lanUrl);
@@ -3524,13 +3816,13 @@ function updateConnectionStatus(status) {
 
   if (status === "connected") {
     if (tailscaleUrl) {
-      statusText.textContent = "Connected • TS";
+      statusText.textContent = t("status.connectedTS");
       statusText.title = tailscaleUrl;
     } else if (lanUrl) {
-      statusText.textContent = "Connected • LAN";
+      statusText.textContent = t("status.connectedLAN");
       statusText.title = lanUrl;
     } else {
-      statusText.textContent = "Connected";
+      statusText.textContent = t("status.connected");
       statusText.title = "";
     }
     // Fetch network link metadata on first connect
@@ -3538,7 +3830,7 @@ function updateConnectionStatus(status) {
       void refreshLanUrl();
     }
   } else if (status === "disconnected") {
-    statusText.textContent = "Disconnected";
+    statusText.textContent = t("status.disconnected");
   }
 }
 
@@ -3551,11 +3843,11 @@ function updateUI() {
   if (isStreaming) {
     statusIndicator.classList.add("streaming");
     statusIndicator.classList.remove("connected");
-    statusText.textContent = "Working…";
+    statusText.textContent = t("status.working");
   } else {
     statusIndicator.classList.remove("streaming");
     statusIndicator.classList.add("connected");
-    statusText.textContent = "Connected";
+    statusText.textContent = t("status.connected");
   }
 
   messageInput.disabled = !onboarding.canType;
@@ -3576,9 +3868,9 @@ function updateUI() {
     messageInput.disabled = true;
     sendBtn.disabled = true;
     abortBtn.classList.add("hidden");
-    messageInput.placeholder = "Waiting for current session to finish…";
+    messageInput.placeholder = t("input.waitingForSession");
   } else if (onboarding.canQuery) {
-    messageInput.placeholder = COMPOSER_PLACEHOLDER;
+    messageInput.placeholder = t("input.typeMessage");
   }
 }
 
@@ -3601,6 +3893,7 @@ const settingsClose = document.getElementById("settings-close");
 const settingsNavItems = Array.from(document.querySelectorAll(".settings-nav-item"));
 const settingsTabs = Array.from(document.querySelectorAll(".settings-tab"));
 const themeGrid = document.getElementById("theme-grid");
+const languageOptions = document.getElementById("settings-language-options");
 
 const toggleAutoCompact = document.getElementById("toggle-auto-compact");
 const thinkingEffortSteps = document.getElementById("thinking-effort-steps");
@@ -3678,7 +3971,7 @@ async function loadPiVersion() {
           piVersionCache = version;
           piVersionValue.textContent = piVersionCache;
         } else {
-          piVersionValue.textContent = "Unavailable (empty version)";
+          piVersionValue.textContent = t("status.unavailableVersion");
         }
       } else {
         const data = await rpcCommand({ type: "get_pi_version" });
@@ -3688,13 +3981,13 @@ async function loadPiVersion() {
         } else {
           const reason = formatPiVersionError(data?.error, "version missing in response");
           console.error("[settings] failed to load pi version:", data);
-          piVersionValue.textContent = `Unavailable (${reason})`;
+          piVersionValue.textContent = t("status.unavailableReason", { reason });
         }
       }
     } catch (err) {
       const reason = formatPiVersionError(err);
       console.error("[settings] failed to load pi version:", err);
-      piVersionValue.textContent = `Unavailable (${reason})`;
+      piVersionValue.textContent = t("status.unavailableReason", { reason });
     } finally {
       piVersionInflight = null;
     }
@@ -3704,9 +3997,12 @@ async function loadPiVersion() {
 function setExtensionActionButton(button, label, loading = false) {
   if (!button) return;
   if (loading) {
-    button.innerHTML = '<span class="settings-btn-spinner" aria-hidden="true"></span><span></span>';
-    const text = button.querySelector("span:last-child");
-    if (text) text.textContent = label;
+    const spinner = document.createElement("span");
+    spinner.className = "settings-btn-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    const text = document.createElement("span");
+    text.textContent = label;
+    button.replaceChildren(spinner, text);
     return;
   }
   button.textContent = label;
@@ -3752,8 +4048,10 @@ async function loadBrowsePackages(force = false) {
     return;
   }
   browseLoading = true;
-  browseListEl.innerHTML =
-    '<div class="settings-api-keys-loading pkg-browse-full-row">Loading packages...</div>';
+  const loading = document.createElement("div");
+  loading.className = "settings-api-keys-loading pkg-browse-full-row";
+  loading.textContent = t("extensions.loadingPackages");
+  browseListEl.replaceChildren(loading);
   try {
     const [packages, installed] = await Promise.all([
       fetchBrowsePackages(),
@@ -3764,10 +4062,19 @@ async function loadBrowsePackages(force = false) {
     browseLoaded = true;
     renderBrowsePackages();
   } catch (err) {
-    const message = String(err?.message || err || "Failed to load packages");
-    browseListEl.innerHTML = `<div class="settings-api-keys-empty pkg-browse-full-row">${escapeHtml(message)} <button type="button" class="settings-value-btn" id="pkg-browse-retry">Retry</button></div>`;
-    const retry = document.getElementById("pkg-browse-retry");
-    if (retry) retry.addEventListener("click", () => loadBrowsePackages(true));
+    const message = String(err?.message || err || t("extensions.failedToLoadPackages"));
+    const error = document.createElement("div");
+    error.className = "settings-api-keys-empty pkg-browse-full-row";
+    const messageText = document.createElement("span");
+    messageText.textContent = message;
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "settings-value-btn";
+    retry.id = "pkg-browse-retry";
+    retry.textContent = t("actions.retry");
+    retry.addEventListener("click", () => loadBrowsePackages(true));
+    error.append(messageText, document.createTextNode(" "), retry);
+    browseListEl.replaceChildren(error);
   } finally {
     browseLoading = false;
   }
@@ -3818,17 +4125,70 @@ function openExternalLink(url) {
     transport.openExternal(url).catch((err) => {
       console.error("[browse] failed to open external link:", err);
     });
-  } else {
-    window.open(url, "_blank", "noopener");
+    return;
   }
+  // Non-native (LAN/mobile): no native opener and no popup window. Show a
+  // transient inline toast with a clickable link the user can follow.
+  showExternalLinkToast(url);
 }
 
-const BROWSE_LINK_SVGS = {
-  npm: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M0 0v24h24v-24h-24zm19.2 19.2h-2.4v-9.6h-4.8v9.6h-7.2v-14.4h14.4v14.4z"/></svg>',
-  github:
-    '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>',
-  link: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+function showExternalLinkToast(url) {
+  const host = document.body;
+  if (!host) return;
+  const toast = document.createElement("div");
+  toast.className = "external-link-toast";
+  const label = document.createElement("span");
+  label.textContent = t("browse.openExternalPrompt");
+  const link = document.createElement("a");
+  link.className = "external-link-toast-link";
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = url;
+  toast.append(label, link);
+  host.appendChild(toast);
+  setTimeout(() => toast.remove(), 8000);
+}
+
+const BROWSE_LINK_PATHS = {
+  npm: [{ d: "M0 0v24h24v-24h-24zm19.2 19.2h-2.4v-9.6h-4.8v9.6h-7.2v-14.4h14.4v14.4z" }],
+  github: [
+    {
+      d: "M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z",
+    },
+  ],
+  link: [
+    { d: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" },
+    { d: "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" },
+  ],
 };
+
+function createBrowseIcon(kind) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const isLink = kind === "link";
+  for (const [name, value] of Object.entries({
+    viewBox: "0 0 24 24",
+    width: "14",
+    height: "14",
+    fill: isLink ? "none" : "currentColor",
+    ...(isLink
+      ? {
+          stroke: "currentColor",
+          "stroke-width": "2",
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+        }
+      : {}),
+  })) {
+    svg.setAttribute(name, value);
+  }
+  for (const attrs of BROWSE_LINK_PATHS[kind] || BROWSE_LINK_PATHS.link) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", attrs.d);
+    svg.appendChild(path);
+  }
+  return svg;
+}
 
 function createBrowseLinkButton(kind, label, url) {
   const btn = document.createElement("button");
@@ -3836,7 +4196,9 @@ function createBrowseLinkButton(kind, label, url) {
   btn.className = "pkg-browse-link";
   btn.title = label;
   btn.setAttribute("aria-label", label);
-  btn.innerHTML = `${BROWSE_LINK_SVGS[kind] || BROWSE_LINK_SVGS.link}<span>${escapeHtml(label)}</span>`;
+  const labelElement = document.createElement("span");
+  labelElement.textContent = label;
+  btn.append(createBrowseIcon(kind), labelElement);
   btn.addEventListener("click", (event) => {
     event.stopPropagation();
     openExternalLink(url);
@@ -3925,18 +4287,24 @@ function renderBrowsePackages() {
 
   if (browseCountEl) {
     if (results.length === 0) {
-      browseCountEl.textContent = `0 of ${results.length}`;
+      browseCountEl.textContent = t("extensions.browseCountZero", { total: results.length });
     } else {
       const rangeStart = start + 1;
       const rangeEnd = start + pageResults.length;
-      browseCountEl.textContent = `${rangeStart}–${rangeEnd} of ${results.length}`;
+      browseCountEl.textContent = t("extensions.browseCountRange", {
+        start: rangeStart,
+        end: rangeEnd,
+        total: results.length,
+      });
     }
   }
 
-  browseListEl.innerHTML = "";
+  browseListEl.replaceChildren();
   if (!results.length) {
-    browseListEl.innerHTML =
-      '<div class="settings-api-keys-empty pkg-browse-full-row">No packages match your filters.</div>';
+    const empty = document.createElement("div");
+    empty.className = "settings-api-keys-empty pkg-browse-full-row";
+    empty.textContent = t("extensions.noPackagesMatch");
+    browseListEl.appendChild(empty);
     renderBrowsePagination(totalPages);
     return;
   }
@@ -3950,11 +4318,11 @@ function renderBrowsePagination(totalPages) {
   if (!browsePaginationEl) return;
   if (totalPages <= 1) {
     browsePaginationEl.hidden = true;
-    browsePaginationEl.innerHTML = "";
+    browsePaginationEl.replaceChildren();
     return;
   }
   browsePaginationEl.hidden = false;
-  browsePaginationEl.innerHTML = "";
+  browsePaginationEl.replaceChildren();
 
   const goTo = (page) => {
     browsePage = page;
@@ -4031,7 +4399,9 @@ function createBrowseRow(pkg) {
   }
   const downloads = document.createElement("span");
   downloads.className = "pkg-browse-meta";
-  downloads.textContent = `${(pkg.downloads || 0).toLocaleString()}/mo`;
+  downloads.textContent = t("extensions.downloadsPerMonth", {
+    count: (pkg.downloads || 0).toLocaleString(),
+  });
   badges.appendChild(downloads);
   info.appendChild(badges);
 
@@ -4051,17 +4421,21 @@ function createBrowseRow(pkg) {
   const canManage = nativeAvailable();
   if (!canManage) {
     button.disabled = true;
-    setExtensionActionButton(button, "Desktop only");
+    setExtensionActionButton(button, t("extensions.desktopOnly"));
   } else {
-    setExtensionActionButton(button, installed ? "Uninstall" : "Install");
+    setExtensionActionButton(button, installed ? t("actions.uninstall") : t("actions.install"));
     button.addEventListener("click", async () => {
       button.disabled = true;
       button.classList.add("loading");
-      const previous = installed ? "Uninstall" : "Install";
-      setExtensionActionButton(button, installed ? "Uninstalling…" : "Installing…", true);
+      const previous = installed ? t("actions.uninstall") : t("actions.install");
+      setExtensionActionButton(
+        button,
+        installed ? t("status.uninstalling") : t("status.installing"),
+        true,
+      );
       status.hidden = false;
       status.classList.remove("is-error");
-      status.textContent = installed ? "Removing…" : "Installing…";
+      status.textContent = installed ? t("status.removing") : t("status.installing");
       status.title = status.textContent;
       try {
         if (installed) {
@@ -4158,19 +4532,29 @@ wsClient.addEventListener("capabilities", () => {
   refreshHeaderOpenAppButton();
   void loadHeaderOpenApps();
   void updater.initUpdaterUI();
+  // Ephemeral chat entry points are native-only.
+  const showEphemeral = nativeAvailable();
+  document.getElementById("side-chat-btn")?.classList.toggle("hidden", !showEphemeral);
+  document.getElementById("quick-chat-btn")?.classList.toggle("hidden", !showEphemeral);
+  filePreviewPanel.setTabBarActionVisible?.("new-side-chat", showEphemeral);
 });
 
 function buildThemeGrid() {
-  themeGrid.innerHTML = "";
+  themeGrid.replaceChildren();
   const current = getCurrentTheme();
 
   for (const [id, theme] of Object.entries(themes)) {
     const btn = document.createElement("button");
     btn.className = `theme-swatch${current === id ? " active" : ""}`;
-    const dots = (theme.colors || [])
-      .map((c) => `<span class="swatch-dot" style="background:${c}"></span>`)
-      .join("");
-    btn.innerHTML = `<span class="swatch-colors">${dots}</span>`;
+    const colors = document.createElement("span");
+    colors.className = "swatch-colors";
+    for (const color of theme.colors || []) {
+      const dot = document.createElement("span");
+      dot.className = "swatch-dot";
+      dot.style.background = color;
+      colors.appendChild(dot);
+    }
+    btn.appendChild(colors);
     btn.addEventListener("click", () => {
       applyTheme(id);
       themeGrid.querySelectorAll(".theme-swatch").forEach((s) => {
@@ -4181,6 +4565,42 @@ function buildThemeGrid() {
     themeGrid.appendChild(btn);
   }
 }
+
+function refreshUsageIframeLocale() {
+  const iframe = document.querySelector(".settings-usage-iframe");
+  if (!iframe?.contentWindow) return;
+  iframe.contentWindow.location.reload();
+}
+
+function buildLanguageSelector() {
+  if (!languageOptions) return;
+  languageOptions.replaceChildren();
+  const current = getLanguagePreference();
+
+  for (const lang of LANGUAGES) {
+    const btn = document.createElement("button");
+    btn.className = `theme-swatch${current === lang.value ? " active" : ""}`;
+    btn.textContent = lang.nativeLabel ?? t(lang.labelKey);
+    btn.addEventListener("click", () => {
+      setLocale(lang.value).then(() => {
+        buildLanguageSelector();
+        refreshUsageIframeLocale();
+      });
+    });
+    languageOptions.appendChild(btn);
+  }
+}
+
+onLocaleChange(buildLanguageSelector);
+
+onLocaleChange(() => {
+  updateThinkingBtn();
+  renderQueuedMessages();
+  updateUI();
+  updateTokenUsage();
+  refreshGitBranch();
+  repaintContextViz();
+});
 
 function normalizeSettingsTabKey(tabKey) {
   const rawTabKey = typeof tabKey === "string" ? tabKey : "general";
@@ -4219,8 +4639,9 @@ async function openSettings(tabKey = "general", options = {}) {
   document.querySelector(".mode-link:first-child")?.classList.remove("active");
   selectSettingsTab(targetTabKey);
   buildThemeGrid();
+  buildLanguageSelector();
   if (piVersionValue) {
-    piVersionValue.textContent = piVersionCache || "Loading…";
+    piVersionValue.textContent = piVersionCache || t("status.loading");
   }
   setTimeout(() => {
     if (!settingsPanel.classList.contains("hidden")) loadPiVersion();
@@ -4323,7 +4744,6 @@ setupSettingsToggles({
 
 ({ loadApiKeysPanel, loadInlineConfigEditor, loadInlineModelsEditor } = setupSettingsEditors({
   rpcCommand,
-  closeSettings,
   onModelConfigurationChanged: async () => {
     await fetchModelInfo();
     updateUI();
@@ -4334,9 +4754,14 @@ setupSettingsToggles({
   showSettingsSaveSuccess,
 }));
 
-// Restore saved theme
+// Restore saved theme, then initialize i18n before any UI setup that calls t()
 const savedTheme = getCurrentTheme();
 applyTheme(savedTheme);
+await initI18n();
+
+// Expose rpcCommand for modules that need to send Pi commands without a
+// circular import (e.g. the context-viz compact button).
+window.__picotRpcCommand = rpcCommand;
 
 setupContextViz({
   tokenUsageEl,
@@ -4394,6 +4819,8 @@ async function handleOpenFolder() {
       getCurrentPort: getActivePort,
       navigate: navigateInWindow,
       onBeforeSwap: onBeforeInstanceSwap,
+      beforeWorkspaceTransition: prepareEphemeralWorkspaceTransition,
+      onWorkspaceTransitionCancelled: cancelEphemeralWorkspaceTransition,
       renderError: (message) => messageRenderer.renderError(message),
     });
   } finally {

@@ -1,5 +1,31 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { initI18n, setLocale } from "../i18n.js";
 import { renderMarkdown, renderStreamingMarkdown } from "./markdown.js";
+
+beforeEach(async () => {
+  document.body.innerHTML = "";
+  document.cookie.split(";").forEach((c) => {
+    const name = c.split("=")[0].trim();
+    if (name) document.cookie = `${name}=; Max-Age=0; Path=/`;
+  });
+  vi.stubGlobal("fetch", async (url) => {
+    const u = String(url);
+    if (u.includes("/locales/en.json"))
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ messages: { copy: "Copy", copied: "Copied!" } }),
+      };
+    if (u.includes("/locales/zh.json"))
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ messages: { copy: "复制", copied: "已复制!" } }),
+      };
+    return { ok: false, status: 404, json: async () => ({}) };
+  });
+  await initI18n();
+});
 
 describe("renderStreamingMarkdown", () => {
   it("renders complete markdown identically to renderMarkdown", () => {
@@ -70,5 +96,45 @@ describe("renderMarkdown", () => {
       expect(html).toContain("echo ok");
       expect(html).not.toContain("%%CODEBLOCK_");
     }
+  });
+});
+
+describe("markdown copy button locale change", () => {
+  it("uses messages.copy for the code block copy button after initI18n", () => {
+    const html = renderMarkdown("```js\nconst a = 1;\n```");
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    document.body.appendChild(container);
+
+    const copyBtn = container.querySelector(".copy-btn");
+    expect(copyBtn.textContent).toBe("Copy");
+  });
+
+  it("updates .copy-btn:not(.copied) text on locale change", async () => {
+    const html = renderMarkdown("```js\nconst a = 1;\n```");
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    document.body.appendChild(container);
+
+    const copyBtn = container.querySelector(".copy-btn");
+    expect(copyBtn.textContent).toBe("Copy");
+
+    await setLocale("zh");
+    expect(copyBtn.textContent).toBe("复制");
+  });
+
+  it("does not overwrite .copied buttons during locale change", async () => {
+    const html = renderMarkdown("```js\nconst a = 1;\n```");
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    document.body.appendChild(container);
+
+    const copyBtn = container.querySelector(".copy-btn");
+    copyBtn.textContent = "Copied!";
+    copyBtn.classList.add("copied");
+
+    await setLocale("zh");
+    expect(copyBtn.textContent).toBe("Copied!");
+    expect(copyBtn.classList.contains("copied")).toBe(true);
   });
 });

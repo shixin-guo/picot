@@ -1,3 +1,8 @@
+// ABOUTME: Coordinates workspace/session navigation and native transition permits.
+// ABOUTME: Keeps same-window activation separate from cross-workspace navigation.
+
+import { t } from "../i18n.js";
+
 // Multi-task model
 // ──────────────────
 // A `pi --mode rpc` process can only drive ONE active session at a time.
@@ -84,6 +89,8 @@ async function attachToWorkspace({
   getCurrentPort,
   navigate,
   onBeforeSwap,
+  beforeWorkspaceTransition,
+  onWorkspaceTransitionCancelled,
   renderError,
 }) {
   const instances = await fetchInstances();
@@ -96,24 +103,54 @@ async function attachToWorkspace({
 
   const existing = instances.find((i) => i.cwd === targetCwd);
   let targetPort = existing?.port;
-
-  const dismissOverlay = runOnBeforeSwap(onBeforeSwap, "Opening workspace…");
-  if (!targetPort) {
-    try {
+  let prepared = null;
+  let dismissOverlay = () => {};
+  try {
+    if (typeof transport.prepareWorkspaceTarget === "function") {
       targetPort = await transport.openWorkspace(targetCwd, {
         forceNewSession: false,
         openWindow: false,
         waitForSessions: false,
       });
-    } catch (e) {
-      dismissOverlay();
-      if (renderError) renderError(`Failed to attach to workspace: ${e}`);
-      return null;
+      prepared = await transport.prepareWorkspaceTarget(targetCwd, { targetPort });
+      const crossWorkspace = prepared?.classification === "cross";
+      if (crossWorkspace && typeof beforeWorkspaceTransition === "function") {
+        const settled = await beforeWorkspaceTransition(prepared);
+        if (!settled) {
+          onWorkspaceTransitionCancelled?.();
+          await transport.cancelWorkspaceTransition(prepared.transitionGeneration).catch(() => {});
+          return null;
+        }
+      }
+      if (typeof prepared?.transitionGeneration !== "number") {
+        throw new Error("Workspace transition was not prepared");
+      }
+      dismissOverlay = runOnBeforeSwap(onBeforeSwap, "Opening workspace…");
+      await transport.commitWorkspaceTransition(prepared.transitionGeneration);
+      targetPort = Number(new URL(prepared.targetOrigin).port);
+      navigate(withBrokerWs(buildWorkspaceUrl(targetPort), transport));
+      return { samePort: false, port: targetPort };
     }
-  }
 
-  navigate(withBrokerWs(buildWorkspaceUrl(targetPort), transport));
-  return { samePort: false, port: targetPort };
+    dismissOverlay = runOnBeforeSwap(onBeforeSwap, "Opening workspace…");
+    if (!targetPort) {
+      targetPort = await transport.openWorkspace(targetCwd, {
+        forceNewSession: false,
+        openWindow: false,
+        waitForSessions: false,
+      });
+    }
+    navigate(withBrokerWs(buildWorkspaceUrl(targetPort), transport));
+    return { samePort: false, port: targetPort };
+  } catch (e) {
+    dismissOverlay();
+    if (prepared?.transitionGeneration != null) {
+      onWorkspaceTransitionCancelled?.();
+      await transport.cancelWorkspaceTransition(prepared.transitionGeneration).catch(() => {});
+    }
+    if (renderError) renderError(`${t("errors.attachWorkspaceFailed")}: ${String(e)}`);
+    return null;
+  }
 }
 
 // "+ New Session" button in the current window's header.
@@ -131,10 +168,12 @@ export async function startInWindowNewSession({
   shouldSpawnParallel,
   onInPlaceSessionCreated,
   onParallelSessionCreated,
+  beforeWorkspaceTransition,
+  onWorkspaceTransitionCancelled,
   renderError,
 }) {
   if (!transport) {
-    renderError("New session is only supported with a native host.");
+    renderError(t("errors.newSessionOnlyNative"));
     return false;
   }
 
@@ -158,12 +197,12 @@ export async function startInWindowNewSession({
   }
 
   if (!targetCwd) {
-    renderError("Failed to start new session: current workspace path is unavailable");
+    renderError(t("errors.newSessionPathUnavailable"));
     return false;
   }
 
   if (typeof navigate !== "function") {
-    renderError("Failed to start new session: navigation is unavailable");
+    renderError(t("errors.newSessionNavUnavailable"));
     return false;
   }
 
@@ -187,7 +226,7 @@ export async function startInWindowNewSession({
       // If the in-place target port has drifted to a dead/unmanaged process,
       // don't fail — recover by spawning a fresh process for this workspace.
       if (!isDeadPortError(e)) {
-        renderError(`Failed to start new session: ${e}`);
+        renderError(`${t("errors.newSessionFailed")}: ${String(e)}`);
         return false;
       }
       console.warn("[Session route] newSession:in-place-dead-port, spawning fresh process", {
@@ -202,9 +241,12 @@ export async function startInWindowNewSession({
     transport,
     navigate,
     onBeforeSwap,
+    getCurrentCwd,
+    beforeWorkspaceTransition,
+    onWorkspaceTransitionCancelled,
     onParallelSessionCreated,
     renderError,
-    label: "Starting session…",
+    label: t("sidebar.startingSession"),
     debugTag: "newSession",
   });
 }
@@ -218,13 +260,20 @@ async function spawnFreshSession({
   transport,
   navigate,
   onBeforeSwap,
+  getCurrentCwd,
+  beforeWorkspaceTransition,
+  onWorkspaceTransitionCancelled,
   onParallelSessionCreated,
   renderError,
   label,
   debugTag,
-  errorLabel = "Failed to start new session",
+  errorLabel = t("errors.newSessionFailed"),
 }) {
-  const dismissOverlay = runOnBeforeSwap(onBeforeSwap, label);
+  const currentCwd = typeof getCurrentCwd === "function" ? getCurrentCwd() : null;
+  const canActivateInPlace =
+    typeof onParallelSessionCreated === "function" && (!currentCwd || currentCwd === targetCwd);
+  let dismissOverlay = () => {};
+  let prepared = null;
   try {
     // Wait before both in-place activation and full-page navigation. Otherwise
     // remote/mobile clients can land on a not-yet-listening embedded port and
@@ -236,11 +285,26 @@ async function spawnFreshSession({
       waitForHealth,
       waitForSessions: false,
     });
+    if (!canActivateInPlace && typeof transport.prepareWorkspaceTarget === "function") {
+      prepared = await transport.prepareWorkspaceTarget(targetCwd, { targetPort: newPort });
+      if (prepared?.classification === "cross" && typeof beforeWorkspaceTransition === "function") {
+        const settled = await beforeWorkspaceTransition(prepared);
+        if (!settled) {
+          onWorkspaceTransitionCancelled?.();
+          await transport.cancelWorkspaceTransition(prepared.transitionGeneration).catch(() => {});
+          return false;
+        }
+      }
+      dismissOverlay = runOnBeforeSwap(onBeforeSwap, label);
+      await transport.commitWorkspaceTransition(prepared.transitionGeneration);
+    } else {
+      dismissOverlay = runOnBeforeSwap(onBeforeSwap, label);
+    }
     console.debug(`[Session route] ${debugTag}:parallel-created`, {
       targetCwd,
       newPort,
     });
-    if (typeof onParallelSessionCreated === "function") {
+    if (canActivateInPlace) {
       // In-place activation: no full-page navigation happens, so the swap
       // overlay would otherwise stay up forever. Dismiss it ourselves once
       // the new parallel session is wired up.
@@ -251,10 +315,17 @@ async function spawnFreshSession({
       }
       return true;
     }
-    navigate(withBrokerWs(buildWorkspaceUrl(newPort), transport));
+    const targetPort = prepared?.targetOrigin
+      ? Number(new URL(prepared.targetOrigin).port)
+      : newPort;
+    navigate(withBrokerWs(buildWorkspaceUrl(targetPort), transport));
     return true;
   } catch (e) {
     dismissOverlay();
+    if (prepared?.transitionGeneration != null) {
+      onWorkspaceTransitionCancelled?.();
+      await transport.cancelWorkspaceTransition(prepared.transitionGeneration).catch(() => {});
+    }
     renderError(`${errorLabel}: ${e}`);
     return false;
   }
@@ -282,21 +353,23 @@ export async function startNewProjectChat({
   fetchInstances,
   navigate,
   onBeforeSwap,
+  beforeWorkspaceTransition,
+  onWorkspaceTransitionCancelled,
   renderError,
 }) {
   if (!transport) {
-    renderError("Project new chat is only supported with a native host.");
+    renderError(t("errors.newChatOnlyNative"));
     return false;
   }
 
   const targetCwd = resolveProjectCwd(project);
   if (!targetCwd) {
-    renderError("Failed to start new chat: project path is unavailable");
+    renderError(t("errors.newChatPathUnavailable"));
     return false;
   }
 
   if (typeof navigate !== "function") {
-    renderError("Failed to start new chat: navigation is unavailable");
+    renderError(t("errors.newChatNavUnavailable"));
     return false;
   }
 
@@ -329,7 +402,7 @@ export async function startNewProjectChat({
       // Drifted/dead foreground port: fall through to spawning a fresh
       // process for this workspace instead of surfacing the raw RPC error.
       if (!isDeadPortError(e)) {
-        renderError(`Failed to start new chat: ${e}`);
+        renderError(`${t("errors.newChatFailed")}: ${String(e)}`);
         return false;
       }
       console.warn("[Session route] projectNewChat:in-place-dead-port, spawning fresh process", {
@@ -341,11 +414,14 @@ export async function startNewProjectChat({
         transport,
         navigate,
         onBeforeSwap,
+        getCurrentCwd,
+        beforeWorkspaceTransition,
+        onWorkspaceTransitionCancelled,
         onParallelSessionCreated,
         renderError,
-        label: "Starting new chat…",
+        label: t("sidebar.startingSession"),
         debugTag: "projectNewChat",
-        errorLabel: "Failed to start new chat",
+        errorLabel: t("errors.newChatFailed"),
       });
     }
   }
@@ -358,6 +434,8 @@ export async function startNewProjectChat({
       getCurrentPort,
       navigate,
       onBeforeSwap,
+      beforeWorkspaceTransition,
+      onWorkspaceTransitionCancelled,
       renderError,
     });
     return result !== null;
@@ -368,11 +446,14 @@ export async function startNewProjectChat({
     transport,
     navigate,
     onBeforeSwap,
+    getCurrentCwd,
+    beforeWorkspaceTransition,
+    onWorkspaceTransitionCancelled,
     onParallelSessionCreated,
     renderError,
-    label: "Starting new chat…",
+    label: t("sidebar.startingSession"),
     debugTag: "projectNewChat",
-    errorLabel: "Failed to start new chat",
+    errorLabel: t("errors.newChatFailed"),
   });
 }
 
@@ -387,16 +468,18 @@ export async function openProjectWorkspace({
   getCurrentPort,
   navigate,
   onBeforeSwap,
+  beforeWorkspaceTransition,
+  onWorkspaceTransitionCancelled,
   renderError,
 }) {
   if (!transport) {
-    renderError("Open project is only supported with a native host.");
+    renderError(t("errors.openProjectOnlyNative"));
     return false;
   }
 
   const targetCwd = resolveProjectCwd(project);
   if (!targetCwd) {
-    renderError("Failed to open project: project path is unavailable");
+    renderError(t("errors.openProjectPathUnavailable"));
     return false;
   }
 
@@ -408,11 +491,13 @@ export async function openProjectWorkspace({
       getCurrentPort,
       navigate,
       onBeforeSwap,
+      beforeWorkspaceTransition,
+      onWorkspaceTransitionCancelled,
       renderError,
     });
     return result !== null;
   } catch (e) {
-    renderError(`Failed to open project: ${e}`);
+    renderError(`${t("errors.openProjectFailed")}: ${String(e)}`);
     return false;
   }
 }
@@ -423,10 +508,12 @@ export async function openFolderAsWorkspace({
   getCurrentPort,
   navigate,
   onBeforeSwap,
+  beforeWorkspaceTransition,
+  onWorkspaceTransitionCancelled,
   renderError,
 }) {
   if (!transport) {
-    renderError("Open folder is only supported with a native host.");
+    renderError(t("errors.openFolderOnlyNative"));
     return false;
   }
 
@@ -441,11 +528,13 @@ export async function openFolderAsWorkspace({
       getCurrentPort,
       navigate,
       onBeforeSwap,
+      beforeWorkspaceTransition,
+      onWorkspaceTransitionCancelled,
       renderError,
     });
     return result !== null;
   } catch (e) {
-    renderError(`Failed to open folder: ${e}`);
+    renderError(`${t("errors.openFolderFailed")}: ${String(e)}`);
     return false;
   }
 }

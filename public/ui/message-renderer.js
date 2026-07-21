@@ -1,74 +1,49 @@
+// ABOUTME: Renders user and assistant chat messages for the Picot WebView.
+// ABOUTME: Preserves renderer behavior while exposing user elements for navigation.
 /**
  * Message Renderer - Renders chat messages with markdown support
  */
 
-import {
-  initCodeCopyDelegation,
-  renderMarkdown,
-  renderStreamingMarkdown,
-  renderUserMarkdown,
-} from "./markdown.js";
-
-/**
- * Detect and clean up pi-chat transcript format.
- *
- * Old format: `- [ISO-timestamp] [uid:ID] name: text`
- * New format:  `- [uid:ID] name: text`
- *
- * Returns the cleaned text (just `name: text` per line, deduplicated when
- * all lines share the same speaker), or null if the content doesn't look
- * like a chat transcript.
- */
-function cleanChatTranscript(text) {
-  if (!text || typeof text !== "string") return null;
-  // Match both old (with timestamp) and new (without) formats
-  const lineRe = /^- (?:\[[\dT:.Z+-]+\] )?\[uid:[^\]]+\] ([^:]+): (.*)$/;
-  const lines = text.split("\n").filter((l) => l.trim());
-  if (lines.length === 0) return null;
-  const parsed = lines.map((l) => {
-    const m = l.match(lineRe);
-    return m ? { name: m[1].trim(), text: m[2] } : null;
-  });
-  if (parsed.some((p) => p === null)) return null; // mixed content – don't touch
-  const names = [...new Set(parsed.map((p) => p.name))];
-  // Single speaker: just show the text lines
-  if (names.length === 1) {
-    return parsed.map((p) => p.text).join("\n");
-  }
-  // Multiple speakers: show `name: text`
-  return parsed.map((p) => `**${p.name}**: ${p.text}`).join("\n\n");
-}
+import { onLocaleChange, t } from "../i18n.js";
+import { renderMarkdown, renderStreamingMarkdown, renderUserMarkdown } from "./markdown.js";
 
 export class MessageRenderer {
   constructor(container) {
     this.container = container;
     this.isNearBottom = true;
+    this.lastWelcomeOptions = null;
+    this._destroyed = false;
 
-    // Wire up code-block copy buttons via event delegation
-    initCodeCopyDelegation(this.container);
-
-    // Wire up thinking-block toggle buttons via event delegation
-    this.container.addEventListener("click", (e) => {
-      const toggle = e.target.closest("[data-thinking-toggle]");
-      if (!toggle) return;
-      const block = toggle.closest(".thinking-block");
-      if (!block) return;
-      const content = block.querySelector(".thinking-content");
-      if (content) content.classList.toggle("expanded");
-      toggle.classList.toggle("expanded");
-    });
-
-    // Track scroll position for smart auto-scroll
-    this.container.addEventListener("scroll", () => {
+    // Track scroll position for smart auto-scroll. Store the handler so destroy()
+    // can remove it; an anonymous listener would leak across view recreations.
+    this._scrollHandler = () => {
       const threshold = 100;
       this.isNearBottom =
         this.container.scrollHeight - this.container.scrollTop - this.container.clientHeight <
         threshold;
+    };
+    this.container.addEventListener("scroll", this._scrollHandler);
+
+    // Update already-rendered DOM when the locale changes without re-rendering
+    // streaming content.
+    this.unsubscribeLocaleChange = onLocaleChange(() => {
+      if (!this.container) return;
+      this.container.querySelectorAll(".message-copy-btn").forEach((btn) => {
+        btn.setAttribute("aria-label", t("messages.copyMessage"));
+        btn.title = t("messages.copyMessage");
+      });
+      this.container.querySelectorAll(".thinking-label-text").forEach((el) => {
+        el.textContent = t("messages.thinking");
+      });
+      if (this.container.querySelector(".welcome")) {
+        this.renderWelcome(this.lastWelcomeOptions || {});
+      }
     });
   }
 
   clear() {
-    this.container.innerHTML = "";
+    if (!this.container) return;
+    this.container.replaceChildren();
     // Session switches reuse the same renderer instance. If the previous session
     // left the viewport away from bottom, keep new renders from inheriting that
     // stale anchor state (which can suppress auto-scroll until the user scrolls).
@@ -128,24 +103,40 @@ export class MessageRenderer {
   }
 
   renderWelcome({ workspacePath } = {}) {
-    const workspaceHtml = workspacePath
-      ? `<p class="hint welcome-workspace">Current workspace: <code>${this.escapeHtml(workspacePath)}</code></p>`
-      : "";
-    this.container.innerHTML = `
-      <div class="welcome">
-        <div class="welcome-icon"><img src="icons/logo-dark.svg" alt="Picot logo" class="tau-icon-welcome"></div>
-        <p>Welcome to Picot</p>
-        <p class="hint">Type a message below to start chatting with Pi, or select a session from the sidebar.</p>
-        ${workspaceHtml}
-        <div class="shortcuts-hint">
-          <span>/ Focus input</span>
-          <span>Esc Abort</span>
-        </div>
-      </div>
-    `;
+    this.lastWelcomeOptions = { workspacePath };
+    const welcome = document.createElement("div");
+    welcome.className = "welcome";
+
+    const icon = document.createElement("div");
+    icon.className = "welcome-icon";
+    const logo = document.createElement("img");
+    logo.src = "icons/logo-dark.svg";
+    logo.alt = "Picot logo";
+    logo.className = "tau-icon-welcome";
+    icon.appendChild(logo);
+    welcome.appendChild(icon);
+
+    welcome.appendChild(this._textElement("p", t("app.welcome")));
+    welcome.appendChild(this._textElement("p", t("app.welcomeHint"), "hint"));
+    if (workspacePath) {
+      const workspace = document.createElement("p");
+      workspace.className = "hint welcome-workspace";
+      workspace.appendChild(document.createTextNode(`${t("app.currentWorkspace")} `));
+      const code = document.createElement("code");
+      code.textContent = workspacePath;
+      workspace.appendChild(code);
+      welcome.appendChild(workspace);
+    }
+
+    const shortcuts = document.createElement("div");
+    shortcuts.className = "shortcuts-hint";
+    shortcuts.appendChild(this._textElement("span", `/ ${t("shortcuts.focusInput")}`));
+    shortcuts.appendChild(this._textElement("span", `Esc ${t("shortcuts.abort")}`));
+    welcome.appendChild(shortcuts);
+    this.container.replaceChildren(welcome);
   }
 
-  renderUserMessage(message, isHistory = false, { entryId = null } = {}) {
+  renderUserMessage(message, isHistory = false) {
     // Remove welcome message if present
     const welcome = this.container.querySelector(".welcome");
     if (welcome) welcome.remove();
@@ -153,34 +144,28 @@ export class MessageRenderer {
     const div = document.createElement("div");
     div.className = `message user${isHistory ? " history" : ""}`;
 
-    let imagesHtml = "";
-    if (message.images && message.images.length > 0) {
-      imagesHtml =
-        '<div class="message-images">' +
-        message.images
-          .map((img) => {
-            const src = img.data.startsWith("data:")
-              ? img.data
-              : `data:${img.mimeType || "image/png"};base64,${img.data}`;
-            return `<img class="message-image" src="${src}" alt="Attached image" />`;
-          })
-          .join("") +
-        "</div>";
+    const content = document.createElement("div");
+    content.className = "message-content";
+    if (message.images?.length > 0) {
+      const images = document.createElement("div");
+      images.className = "message-images";
+      for (const image of message.images) {
+        const imageElement = document.createElement("img");
+        imageElement.className = "message-image";
+        imageElement.src = this._imageSource(image);
+        imageElement.alt = t("messages.attachedImage");
+        images.appendChild(imageElement);
+      }
+      content.appendChild(images);
     }
-
-    const displayContent = cleanChatTranscript(message.content) ?? message.content;
-    if (entryId) div.dataset.entryId = entryId;
-    const forkBtnHtml = entryId
-      ? `<button class="message-fork-btn" aria-label="Fork session from here" title="Fork session from here"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></button>`
-      : "";
-    div.innerHTML = `
-      <div class="message-content">${imagesHtml}${renderUserMarkdown(displayContent)}</div>
-      <div class="message-footer"><button class="message-copy-btn" aria-label="Copy message"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>${forkBtnHtml}</div>
-    `;
-    this._setupCopyBtn(div);
-    if (entryId) this._setupForkBtn(div);
+    this._appendMarkup(content, renderUserMarkdown(message.content));
+    div.appendChild(content);
+    div.appendChild(this._createCopyButton());
     this.container.appendChild(div);
+    this._setupCodeCopyButtons(div);
+    this._setupCopyBtn(div);
     if (!isHistory) this.scrollToBottom();
+    return div;
   }
 
   renderAssistantMessage(message, isStreaming = false, isHistory = false) {
@@ -229,11 +214,15 @@ export class MessageRenderer {
 
     const streamingClass = isStreaming ? " streaming" : "";
 
-    div.innerHTML = `
+    const markup = `
       <div class="message-content${streamingClass}">${contentHtml}</div>
-      ${!isStreaming ? `<div class="message-footer"><button class="message-copy-btn" aria-label="Copy message"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>${usageHtml}</div>` : ""}
+      ${usageHtml}
+      ${!isStreaming ? `<button class="message-copy-btn" aria-label="${this.escapeHtml(t("messages.copyMessage"))}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>` : ""}
     `;
+    this._replaceMarkup(div, markup);
 
+    this._setupThinkingToggles(div);
+    this._setupCodeCopyButtons(div);
     if (!isStreaming) this._setupCopyBtn(div);
     this.container.appendChild(div);
     if (!isHistory) this.scrollToBottom();
@@ -242,11 +231,34 @@ export class MessageRenderer {
   }
 
   renderThinkingBlock(thinking) {
-    // Returns an HTML string — callers concatenate it into contentHtml.
-    // Click handling is wired via event delegation in initThinkingToggleDelegation.
-    const chevronSvg = `<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" aria-hidden="true"><path d="M2 1l4 3-4 3z"/></svg>`;
-    const brainSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px" aria-hidden="true"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 5v13"/><path d="M6.5 9h11"/><path d="M7 13h10"/></svg>`;
-    return `<div class="thinking-block"><div class="thinking-toggle" data-thinking-toggle><span class="chevron">${chevronSvg}</span><span class="thinking-label">${brainSvg} Thinking</span></div><div class="thinking-content">${this.escapeHtml(thinking)}</div></div>`;
+    return `<div class="thinking-block">
+<div class="thinking-toggle" data-thinking-toggle="true" role="button" tabindex="0">
+<span class="chevron"><svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M2 1l4 3-4 3z"/></svg></span>
+<span class="thinking-label"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 5v13"/><path d="M6.5 9h11"/><path d="M7 13h10"/></svg> <span class="thinking-label-text">${this.escapeHtml(t("messages.thinking"))}</span></span>
+</div>
+<div class="thinking-content">${this.escapeHtml(thinking)}</div>
+</div>`;
+  }
+
+  _setupThinkingToggles(root) {
+    root.querySelectorAll(".thinking-label-text").forEach((label) => {
+      label.textContent = t("messages.thinking");
+    });
+    root.querySelectorAll("[data-thinking-toggle]").forEach((toggle) => {
+      if (toggle.dataset.bound === "true") return;
+      const toggleThinking = () => {
+        toggle.nextElementSibling?.classList.toggle("expanded");
+        toggle.classList.toggle("expanded");
+      };
+      toggle.addEventListener("click", toggleThinking);
+      toggle.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggleThinking();
+        }
+      });
+      toggle.dataset.bound = "true";
+    });
   }
 
   updateStreamingThinking(messageElement, thinking) {
@@ -256,13 +268,15 @@ export class MessageRenderer {
       if (!contentDiv) return;
       thinkingDiv = document.createElement("div");
       thinkingDiv.className = "thinking-block streaming-thinking";
-      thinkingDiv.innerHTML = `
-        <div class="thinking-toggle expanded" data-thinking-toggle>
+      const markup = `
+        <div class="thinking-toggle expanded" data-thinking-toggle="true" role="button" tabindex="0">
           <span class="chevron"><svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M2 1l4 3-4 3z"/></svg></span>
-          <span class="thinking-label"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 5v13"/><path d="M6.5 9h11"/><path d="M7 13h10"/></svg> Thinking</span>
+          <span class="thinking-label"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 0 2.526 5.77 4 4 0 0 0-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 5v13"/><path d="M6.5 9h11"/><path d="M7 13h10"/></svg> <span class="thinking-label-text"></span></span>
         </div>
         <div class="thinking-content expanded"></div>`;
+      this._appendMarkup(thinkingDiv, markup);
       contentDiv.prepend(thinkingDiv);
+      this._setupThinkingToggles(thinkingDiv);
     }
     const contentEl = thinkingDiv.querySelector(".thinking-content");
     if (contentEl) {
@@ -286,10 +300,11 @@ export class MessageRenderer {
           textNode.className = "streaming-text";
           contentDiv.appendChild(textNode);
         }
-        textNode.innerHTML = rendered;
+        this._replaceMarkup(textNode, rendered);
       } else {
-        contentDiv.innerHTML = rendered;
+        this._replaceMarkup(contentDiv, rendered);
       }
+      this._setupCodeCopyButtons(contentDiv);
       this.scrollToBottom();
     }
   }
@@ -314,39 +329,32 @@ export class MessageRenderer {
         html += this.renderThinkingBlock(thinking);
       }
       html += renderMarkdown(rawText);
-      contentDiv.innerHTML = html;
+      this._replaceMarkup(contentDiv, html);
+      this._setupThinkingToggles(contentDiv);
+      this._setupCodeCopyButtons(contentDiv);
     }
 
-    // Add footer (usage + copy button) after streaming finishes
-    if (!messageElement.querySelector(".message-footer")) {
-      const copyableText = this.getCopyableText(messageElement);
-      const hasUsage = Boolean(usage?.cost && usage.cost.total > 0);
-      if (!copyableText && !hasUsage) {
-        messageElement.remove();
-        return;
-      }
+    // Add copy button after streaming finishes
+    if (!messageElement.querySelector(".message-copy-btn")) {
+      const btn = document.createElement("button");
+      btn.className = "message-copy-btn";
+      btn.setAttribute("aria-label", t("messages.copyMessage"));
+      this._appendMarkup(
+        btn,
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+      );
+      messageElement.appendChild(btn);
+      this._setupCopyBtn(messageElement);
+    }
 
-      const footer = document.createElement("div");
-      footer.className = "message-footer";
-
-      if (copyableText) {
-        const btn = document.createElement("button");
-        btn.className = "message-copy-btn";
-        btn.setAttribute("aria-label", "Copy message");
-        btn.innerHTML =
-          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-        footer.appendChild(btn);
-      }
-
-      if (hasUsage) {
+    // Add usage info if available
+    if (usage?.cost && usage.cost.total > 0) {
+      if (!messageElement.querySelector(".message-usage")) {
         const span = document.createElement("span");
         span.className = "message-usage";
         span.textContent = `$${usage.cost.total.toFixed(4)}`;
-        footer.appendChild(span);
+        messageElement.appendChild(span);
       }
-
-      messageElement.appendChild(footer);
-      this._setupCopyBtn(messageElement);
     }
   }
 
@@ -366,27 +374,13 @@ export class MessageRenderer {
     this.scrollToBottom();
   }
 
-  _setupForkBtn(messageEl) {
-    const btn = messageEl.querySelector(".message-fork-btn");
-    if (!btn) return;
-    const entryId = messageEl.dataset.entryId;
-    if (!entryId) return;
-    btn.addEventListener("click", () => {
-      messageEl.dispatchEvent(
-        new CustomEvent("messagefork", {
-          bubbles: true,
-          detail: { entryId },
-        }),
-      );
-    });
-  }
-
   _setupCopyBtn(messageEl) {
     const btn = messageEl.querySelector(".message-copy-btn");
     if (!btn) return;
     btn.addEventListener("click", () => {
-      const text = this.getCopyableText(messageEl);
-      if (!text) return;
+      const content = messageEl.querySelector(".message-content");
+      if (!content) return;
+      const text = content.textContent;
       // Fallback for non-HTTPS (LAN access)
       const copyText = (t) => {
         if (navigator.clipboard) return navigator.clipboard.writeText(t);
@@ -408,14 +402,106 @@ export class MessageRenderer {
     });
   }
 
-  getCopyableText(messageEl) {
-    const content = messageEl.querySelector(".message-content");
-    if (!content) return "";
-    const copyContent = content.cloneNode(true);
-    copyContent.querySelectorAll(".thinking-block").forEach((block) => {
-      block.remove();
+  _textElement(tagName, text, className = "") {
+    const element = document.createElement(tagName);
+    if (className) element.className = className;
+    element.textContent = text;
+    return element;
+  }
+
+  _createCopyButton() {
+    const button = document.createElement("button");
+    button.className = "message-copy-btn";
+    button.setAttribute("aria-label", t("messages.copyMessage"));
+    this._appendMarkup(
+      button,
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9v1"/></svg>',
+    );
+    return button;
+  }
+
+  _imageSource(image) {
+    const data = typeof image?.data === "string" ? image.data : "";
+    if (/^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(data)) return data;
+    const mime = /^image\/(?:png|jpe?g|gif|webp)$/i.test(image?.mimeType || "")
+      ? image.mimeType
+      : "image/png";
+    return `data:${mime};base64,${data}`;
+  }
+
+  _appendMarkup(parent, markup) {
+    const parsed = new DOMParser().parseFromString(String(markup || ""), "text/html");
+    this._sanitizeMarkup(parsed.body);
+    parent.append(...Array.from(parsed.body.childNodes));
+  }
+
+  _replaceMarkup(parent, markup) {
+    parent.replaceChildren();
+    this._appendMarkup(parent, markup);
+  }
+
+  _sanitizeMarkup(root) {
+    const blockedTags = new Set([
+      "SCRIPT",
+      "STYLE",
+      "IFRAME",
+      "OBJECT",
+      "EMBED",
+      "FOREIGNOBJECT",
+      "ANIMATE",
+      "SET",
+      "USE",
+    ]);
+    root.querySelectorAll("*").forEach((element) => {
+      if (blockedTags.has(element.tagName)) {
+        element.remove();
+        return;
+      }
+      for (const attribute of Array.from(element.attributes)) {
+        const name = attribute.name.toLowerCase();
+        const value = attribute.value.trim();
+        if (
+          name.startsWith("on") ||
+          name === "srcdoc" ||
+          name === "formaction" ||
+          (name === "href" && !/^(https?:|mailto:|#)/i.test(value)) ||
+          (name === "src" && !/^(https?:\/\/|data:image\/(?:png|jpe?g|gif|webp);)/i.test(value)) ||
+          (name === "style" && /url\s*\(/i.test(value))
+        ) {
+          element.removeAttribute(attribute.name);
+        }
+      }
     });
-    return copyContent.textContent.trim();
+  }
+
+  _setupCodeCopyButtons(root) {
+    root.querySelectorAll(".copy-btn").forEach((button) => {
+      if (button.dataset.bound === "true") return;
+      button.addEventListener("click", () => {
+        const code = button.closest(".code-block-wrapper")?.querySelector("code");
+        if (!code) return;
+        const copy = (text) => {
+          if (navigator.clipboard) return navigator.clipboard.writeText(text);
+          const textarea = document.createElement("textarea");
+          textarea.value = text;
+          textarea.style.cssText = "position:fixed;left:-9999px";
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          textarea.remove();
+          return Promise.resolve();
+        };
+        copy(code.textContent || "").then(() => {
+          button.textContent = t("messages.copied");
+          button.classList.add("copied");
+          setTimeout(() => {
+            button.textContent = t("messages.copy");
+            button.classList.remove("copied");
+          }, 2000);
+        });
+      });
+      button.dataset.bound = "true";
+    });
   }
 
   highlightTextNode(node, pattern, onMatch) {
@@ -458,16 +544,40 @@ export class MessageRenderer {
   }
 
   escapeHtml(text) {
-    const div = document.createElement("div");
-    div.textContent = text;
-    return div.innerHTML;
+    return String(text ?? "").replace(/[&<>"']/g, (character) => {
+      const entities = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      };
+      return entities[character];
+    });
   }
 
   scrollToBottom() {
-    if (this.isNearBottom) {
+    if (this.isNearBottom && this.container) {
       requestAnimationFrame(() => {
-        this.container.scrollTop = this.container.scrollHeight;
+        if (this.container) this.container.scrollTop = this.container.scrollHeight;
       });
     }
+  }
+
+  // Tear down listeners and release the container reference. Idempotent:
+  // hiding/deactivating a view must NOT destroy it; only an explicit destroy()
+  // removes the scroll + locale listeners so a recreated view stays clean.
+  destroy() {
+    if (this._destroyed) return;
+    this._destroyed = true;
+    if (this.container && this._scrollHandler) {
+      this.container.removeEventListener("scroll", this._scrollHandler);
+    }
+    if (typeof this.unsubscribeLocaleChange === "function") {
+      this.unsubscribeLocaleChange();
+      this.unsubscribeLocaleChange = null;
+    }
+    this._scrollHandler = null;
+    this.container = null;
   }
 }

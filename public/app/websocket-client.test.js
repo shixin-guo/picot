@@ -129,15 +129,78 @@ describe("WebSocketClient control commands", () => {
     ]);
   });
 
-  test("the capabilities handshake updates client.capabilities and emits an event", () => {
+  test("the capabilities handshake authenticates and derives native from class", () => {
     const client = new WebSocketClient("ws://broker/ui-ws");
     const seen = [];
     client.addEventListener("capabilities", (event) => seen.push(event.detail));
 
-    client.handleMessage({ type: "capabilities", native: true });
+    client.handleMessage({ type: "capabilities", class: "native" });
 
-    expect(client.capabilities).toEqual({ native: true });
-    expect(seen).toEqual([{ native: true }]);
+    expect(client.authenticated).toBe(true);
+    expect(client.capabilities).toEqual({ native: true, class: "native" });
+    expect(seen).toEqual([{ native: true, class: "native" }]);
+  });
+
+  test("a remote capabilities frame reports native=false", () => {
+    const client = new WebSocketClient("ws://broker/ui-ws");
+    client.handleMessage({ type: "capabilities", class: "remote" });
+    expect(client.capabilities).toEqual({ native: false, class: "remote" });
+  });
+
+  test("client_hello presents the injected capability once, then connected fires only after capabilities", () => {
+    const sent = [];
+    globalThis.__PICOT_NATIVE_CAPABILITY__ = "secret-cap";
+    const client = new WebSocketClient("ws://broker/ui-ws");
+    const connected = [];
+    client.addEventListener("connected", () => connected.push(true));
+    client.ws = { readyState: WebSocket.OPEN, send: (m) => sent.push(JSON.parse(m)) };
+    client._pendingConnect = true;
+    client._sendClientHello();
+    expect(sent[0]).toMatchObject({ type: "client_hello", capability: "secret-cap" });
+    expect(globalThis.__PICOT_NATIVE_CAPABILITY__).toBeUndefined();
+    expect(connected).toEqual([]);
+    client.handleMessage({ type: "capabilities", class: "native" });
+    expect(client.authenticated).toBe(true);
+    expect(connected).toEqual([true]);
+    delete globalThis.__PICOT_NATIVE_CAPABILITY__;
+  });
+
+  test("a remote client_hello omits the capability", () => {
+    const sent = [];
+    const client = new WebSocketClient("ws://broker/ui-ws");
+    client.ws = { readyState: WebSocket.OPEN, send: (m) => sent.push(JSON.parse(m)) };
+    client._sendClientHello();
+    expect(sent[0]).toEqual({ type: "client_hello", protocolVersion: 1 });
+    expect(sent[0].capability).toBeUndefined();
+  });
+
+  test("sendEphemeral wraps an ephemeral_command envelope and returns its requestId", () => {
+    const sent = [];
+    const client = new WebSocketClient("ws://broker/ui-ws");
+    client.ws = { readyState: WebSocket.OPEN, send: (m) => sent.push(JSON.parse(m)) };
+    const id = client.sendEphemeral("inst-1", 3, { type: "prompt", message: "hi" });
+    expect(id).toBe("ep-1");
+    expect(sent[0]).toMatchObject({
+      type: "ephemeral_command",
+      ephemeralInstanceId: "inst-1",
+      generation: 3,
+      payload: { type: "prompt", message: "hi" },
+    });
+    expect(sent[0].ownerId).toBeUndefined();
+    expect(sent[0].cwd).toBeUndefined();
+    expect(sent[0].sourcePort).toBeUndefined();
+  });
+
+  test("ephemeral_event and ephemeral_command_failed dispatch distinct events", () => {
+    const client = new WebSocketClient("ws://broker/ui-ws");
+    const events = [];
+    const fails = [];
+    client.addEventListener("ephemeralEvent", (e) => events.push(e.detail));
+    client.addEventListener("ephemeralCommandFailed", (e) => fails.push(e.detail));
+    client.handleMessage({ type: "ephemeral_event", instanceId: "i", generation: 1, payload: {} });
+    client.handleMessage({ type: "ephemeral_command_failed", requestId: "ep-1", error: "x" });
+    expect(events).toHaveLength(1);
+    expect(fails).toHaveLength(1);
   });
 
   test("disconnecting rejects pending control requests", async () => {

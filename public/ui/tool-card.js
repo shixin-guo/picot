@@ -1,14 +1,19 @@
-/**
- * Tool Card - Renders and updates tool execution cards (collapsible)
- */
+// ABOUTME: Renders collapsible tool execution cards and their streaming output.
+// ABOUTME: Uses container-level event delegation so dynamically added cards need no per-element listeners.
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+import { onLocaleChange, t } from "../i18n.js";
 
 export class ToolCardRenderer {
   constructor(container) {
     this.container = container;
     this.toolCards = new Map(); // toolCallId -> element
+    this._destroyed = false;
 
-    // Toggle header expand/collapse via event delegation
-    this.container.addEventListener("click", (e) => {
+    // Toggle header expand/collapse via event delegation. A single listener on
+    // the container handles every card, including ones added later for history.
+    this._onContainerClickToggle = (e) => {
       const header = e.target.closest(".tool-card-header");
       if (!header) return;
       // Don't toggle when clicking action buttons inside the header
@@ -17,19 +22,49 @@ export class ToolCardRenderer {
       if (!card) return;
       card.querySelector(".tool-card-body")?.classList.toggle("expanded");
       header.querySelector(".tool-card-chevron")?.classList.toggle("expanded");
-    });
+    };
 
-    // Copy output via event delegation
-    this.container.addEventListener("click", (e) => {
+    // Copy output via event delegation, with a legacy execCommand fallback for
+    // contexts where the async Clipboard API is unavailable.
+    this._onContainerClickCopy = (e) => {
       const btn = e.target.closest(".copy-output-btn");
       if (!btn) return;
       e.stopPropagation();
       const output = btn.closest(".tool-card")?.querySelector(".tool-output");
-      if (!output?.textContent.trim()) return;
-      navigator.clipboard.writeText(output.textContent).then(() => {
+      const text = output?.textContent?.trim();
+      if (!text) return;
+      const copy = navigator.clipboard?.writeText
+        ? navigator.clipboard.writeText(text)
+        : new Promise((resolve) => {
+            const textarea = document.createElement("textarea");
+            textarea.value = text;
+            textarea.style.cssText = "position:fixed;left:-9999px";
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand("copy");
+            textarea.remove();
+            resolve();
+          });
+      copy.then(() => {
         btn.classList.add("copied");
         setTimeout(() => btn.classList.remove("copied"), 1500);
       });
+    };
+
+    this.container.addEventListener("click", this._onContainerClickToggle);
+    this.container.addEventListener("click", this._onContainerClickCopy);
+
+    // Re-localize rendered status text and copy-button labels on locale change.
+    this.unsubscribeLocaleChange = onLocaleChange(() => {
+      if (!this.container) return;
+      for (const el of this.container.querySelectorAll(".tool-status[data-status]")) {
+        el.textContent = t(`tools.${el.dataset.status}`);
+      }
+      for (const el of this.container.querySelectorAll(".copy-output-btn")) {
+        const label = t("tools.copyOutput");
+        el.title = label;
+        el.setAttribute("aria-label", label);
+      }
     });
   }
 
@@ -50,38 +85,112 @@ export class ToolCardRenderer {
       (args.oldText || args.old_text) &&
       (args.newText || args.new_text);
 
-    card.innerHTML = `
-      <div class="tool-card-header">
-        <div class="tool-header-left">
-          <span class="tool-card-chevron${isExpanded ? " expanded" : ""}"><svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M2 1l4 3-4 3z"/></svg></span>
-          <span class="tool-name">${this.escapeHtml(toolName)}</span>
-          ${argsPreview ? `<span class="tool-args-preview">${this.escapeHtml(argsPreview)}</span>` : ""}
-        </div>
-        <div class="tool-header-right">
-          <button class="tool-action-btn copy-output-btn" title="Copy output" aria-label="Copy output"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
-          <div class="tool-status ${status}">${status}</div>
-        </div>
-      </div>
-      <div class="tool-card-body${isExpanded ? " expanded" : ""}">
-        ${!isEdit && argsJson ? `<div class="tool-args">${this.escapeHtml(argsJson)}</div>` : ""}
-        <div class="tool-output-wrapper">
-          <div class="tool-output"></div>
-        </div>
-      </div>
-    `;
+    const header = document.createElement("div");
+    header.className = "tool-card-header";
 
-    // Insert diff view for Edit tools
-    if (isEdit) {
-      const diffEl = this.renderDiff(args.oldText || args.old_text, args.newText || args.new_text);
-      const body = card.querySelector(".tool-card-body");
-      body.insertBefore(diffEl, body.firstChild);
+    const headerLeft = document.createElement("div");
+    headerLeft.className = "tool-header-left";
+    const chevron = this._createChevron(isExpanded);
+    headerLeft.appendChild(chevron);
+
+    const name = document.createElement("span");
+    name.className = "tool-name";
+    name.textContent = toolName;
+    headerLeft.appendChild(name);
+    if (argsPreview) {
+      const preview = document.createElement("span");
+      preview.className = "tool-args-preview";
+      preview.textContent = argsPreview;
+      headerLeft.appendChild(preview);
     }
+    header.appendChild(headerLeft);
 
+    const headerRight = document.createElement("div");
+    headerRight.className = "tool-header-right";
+    headerRight.appendChild(this._createCopyButton());
+
+    const statusElement = document.createElement("div");
+    statusElement.className = `tool-status ${status}`;
+    statusElement.dataset.status = status;
+    statusElement.textContent = t(`tools.${status}`);
+    headerRight.appendChild(statusElement);
+    header.appendChild(headerRight);
+
+    const body = document.createElement("div");
+    body.className = `tool-card-body${isExpanded ? " expanded" : ""}`;
+    if (isEdit) {
+      body.appendChild(
+        this.renderDiff(args.oldText || args.old_text, args.newText || args.new_text),
+      );
+    } else if (argsJson) {
+      const argsElement = document.createElement("div");
+      argsElement.className = "tool-args";
+      argsElement.textContent = argsJson;
+      body.appendChild(argsElement);
+    }
+    const outputWrapper = document.createElement("div");
+    outputWrapper.className = "tool-output-wrapper";
+    const output = document.createElement("div");
+    output.className = "tool-output";
+    outputWrapper.appendChild(output);
+    body.appendChild(outputWrapper);
+
+    card.append(header, body);
     this.container.appendChild(card);
     this.toolCards.set(toolCallId, card);
     this.scrollToBottom();
 
     return card;
+  }
+
+  _createChevron(expanded = false) {
+    const chevron = document.createElement("span");
+    chevron.className = `tool-card-chevron${expanded ? " expanded" : ""}`;
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("width", "8");
+    svg.setAttribute("height", "8");
+    svg.setAttribute("viewBox", "0 0 8 8");
+    svg.setAttribute("fill", "currentColor");
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", "M2 1l4 3-4 3z");
+    svg.appendChild(path);
+    chevron.appendChild(svg);
+    return chevron;
+  }
+
+  _createCopyButton() {
+    const copyButton = document.createElement("button");
+    copyButton.className = "tool-action-btn copy-output-btn";
+    const label = t("tools.copyOutput");
+    copyButton.title = label;
+    copyButton.setAttribute("aria-label", label);
+
+    const svg = document.createElementNS(SVG_NS, "svg");
+    for (const [name, value] of [
+      ["width", "13"],
+      ["height", "13"],
+      ["viewBox", "0 0 24 24"],
+      ["fill", "none"],
+      ["stroke", "currentColor"],
+      ["stroke-width", "2"],
+      ["stroke-linecap", "round"],
+      ["stroke-linejoin", "round"],
+    ]) {
+      svg.setAttribute(name, value);
+    }
+    const rect = document.createElementNS(SVG_NS, "rect");
+    rect.setAttribute("width", "14");
+    rect.setAttribute("height", "14");
+    rect.setAttribute("x", "8");
+    rect.setAttribute("y", "8");
+    rect.setAttribute("rx", "2");
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2");
+    svg.append(rect, path);
+    copyButton.appendChild(svg);
+    // Click handling is delegated to the container listener; no per-button
+    // listener is needed here.
+    return copyButton;
   }
 
   updateToolCard(toolExecution) {
@@ -95,7 +204,8 @@ export class ToolCardRenderer {
     const statusElement = card.querySelector(".tool-status");
     if (statusElement) {
       statusElement.className = `tool-status ${toolExecution.status}`;
-      statusElement.textContent = toolExecution.status;
+      statusElement.dataset.status = toolExecution.status;
+      statusElement.textContent = t(`tools.${toolExecution.status}`);
     }
 
     // Auto-expand when streaming
@@ -123,7 +233,8 @@ export class ToolCardRenderer {
     if (statusElement) {
       const status = isError ? "error" : "complete";
       statusElement.className = `tool-status ${status}`;
-      statusElement.textContent = status;
+      statusElement.dataset.status = status;
+      statusElement.textContent = t(`tools.${status}`);
     }
 
     // Update output with final result
@@ -159,10 +270,7 @@ export class ToolCardRenderer {
     const headerLeft = document.createElement("div");
     headerLeft.className = "tool-header-left";
 
-    const chevron = document.createElement("span");
-    chevron.className = "tool-card-chevron";
-    chevron.innerHTML =
-      '<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M2 1l4 3-4 3z"/></svg>';
+    const chevron = this._createChevron();
     headerLeft.appendChild(chevron);
 
     const name = document.createElement("span");
@@ -184,47 +292,16 @@ export class ToolCardRenderer {
     const headerRight = document.createElement("div");
     headerRight.className = "tool-header-right";
 
-    const copyBtn = document.createElement("button");
-    copyBtn.className = "tool-action-btn copy-output-btn";
-    copyBtn.title = "Copy output";
-    copyBtn.innerHTML =
-      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
-    copyBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const output = card.querySelector(".tool-output");
-      if (!output?.textContent.trim()) return;
-      const text = output.textContent;
-      (navigator.clipboard
-        ? navigator.clipboard.writeText(text)
-        : new Promise((r) => {
-            const ta = document.createElement("textarea");
-            ta.value = text;
-            ta.style.cssText = "position:fixed;left:-9999px";
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand("copy");
-            document.body.removeChild(ta);
-            r();
-          })
-      ).then(() => {
-        copyBtn.classList.add("copied");
-        setTimeout(() => copyBtn.classList.remove("copied"), 1500);
-      });
-    });
+    const copyBtn = this._createCopyButton();
     headerRight.appendChild(copyBtn);
 
     const status = document.createElement("div");
     status.className = "tool-status complete";
-    status.textContent = "complete";
+    status.dataset.status = "complete";
+    status.textContent = t("tools.complete");
     headerRight.appendChild(status);
 
     header.appendChild(headerRight);
-
-    // Toggle expand on click
-    header.addEventListener("click", () => {
-      body.classList.toggle("expanded");
-      chevron.classList.toggle("expanded");
-    });
 
     card.appendChild(header);
 
@@ -275,7 +352,8 @@ export class ToolCardRenderer {
       const statusEl = card.querySelector(".tool-status");
       if (statusEl) {
         statusEl.className = "tool-status error";
-        statusEl.textContent = "error";
+        statusEl.dataset.status = "error";
+        statusEl.textContent = t("tools.error");
       }
     }
 
@@ -369,6 +447,7 @@ export class ToolCardRenderer {
         threshold;
       if (isNear) {
         requestAnimationFrame(() => {
+          if (!this.container) return;
           this.container.scrollTop = this.container.scrollHeight;
         });
       }
@@ -394,5 +473,25 @@ export class ToolCardRenderer {
       card.remove();
     });
     this.toolCards.clear();
+  }
+
+  // Tear down the locale subscription and container listeners, drop tool-card
+  // state, and release the container. Idempotent. clear() empties cards without
+  // unsubscribing; destroy() is the full teardown used when a view is discarded.
+  destroy() {
+    if (this._destroyed) return;
+    this._destroyed = true;
+    if (typeof this.unsubscribeLocaleChange === "function") {
+      this.unsubscribeLocaleChange();
+      this.unsubscribeLocaleChange = null;
+    }
+    if (this.container) {
+      this.container.removeEventListener("click", this._onContainerClickToggle);
+      this.container.removeEventListener("click", this._onContainerClickCopy);
+    }
+    this._onContainerClickToggle = null;
+    this._onContainerClickCopy = null;
+    this.toolCards.clear();
+    this.container = null;
   }
 }

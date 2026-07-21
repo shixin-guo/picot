@@ -68,6 +68,32 @@ describe("WsTransport", () => {
     );
   });
 
+  test("pickImageFiles sends a pick_image_files control command with initialDir and no timeout", async () => {
+    const ws = fakeWsClient();
+    const transport = createTransport({ wsClient: ws, env: { location: { port: "47821" } } });
+
+    await transport.pickImageFiles("/tmp/workspace");
+
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "pick_image_files",
+      { initialDir: "/tmp/workspace" },
+      { timeoutMs: 0 },
+    );
+  });
+
+  test("pickImageFiles sends null initialDir when no path is provided", async () => {
+    const ws = fakeWsClient();
+    const transport = createTransport({ wsClient: ws, env: { location: { port: "47821" } } });
+
+    await transport.pickImageFiles();
+
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "pick_image_files",
+      { initialDir: null },
+      { timeoutMs: 0 },
+    );
+  });
+
   test("capabilities reflect the underlying ws client", () => {
     const transport = new WsTransport(fakeWsClient({ native: false }), {});
     expect(transport.capabilities.native).toBe(false);
@@ -107,5 +133,80 @@ describe("WsTransport", () => {
     const transport = new WsTransport(ws, {});
 
     await expect(transport.relaunchApp()).resolves.toBeUndefined();
+  });
+
+  test("ephemeral lifecycle methods issue their control commands", async () => {
+    const ws = fakeWsClient();
+    const transport = new WsTransport(ws, {});
+
+    await transport.createEphemeral("side-chat");
+    await transport.replaceQuickChat();
+    await transport.closeEphemeral("inst-1", 2);
+    await transport.getEphemeralBootstrap();
+    await transport.updateEphemeralUi("inst-1", 2, { title: "Hi", unread: true });
+
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "ephemeral_create",
+      { kind: "side-chat" },
+      expect.objectContaining({ timeoutMs: expect.any(Number) }),
+    );
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "ephemeral_close",
+      {
+        instanceId: "inst-1",
+        generation: 2,
+      },
+      {},
+    );
+    expect(ws.sendControl).toHaveBeenCalledWith("ephemeral_bootstrap", {}, {});
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "ephemeral_update_ui",
+      {
+        instanceId: "inst-1",
+        generation: 2,
+        title: "Hi",
+        unread: true,
+      },
+      {},
+    );
+  });
+
+  test("workspace transition + close methods issue their control commands", async () => {
+    const ws = fakeWsClient();
+    const transport = new WsTransport(ws, {});
+
+    await transport.prepareWorkspaceTarget("/tmp/b", { forceNewSession: true });
+    await transport.commitWorkspaceTransition(7);
+    await transport.cancelWorkspaceTransition(7);
+    await transport.approveWindowClose("close-1");
+
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "workspace_target_prepare",
+      expect.objectContaining({ targetCwd: "/tmp/b", forceNewSession: true }),
+      expect.objectContaining({ timeoutMs: expect.any(Number) }),
+    );
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "workspace_transition_commit",
+      {
+        transitionGeneration: 7,
+      },
+      {},
+    );
+    expect(ws.sendControl).toHaveBeenCalledWith(
+      "window_close_approve",
+      { requestId: "close-1" },
+      {},
+    );
+  });
+
+  test("sendEphemeral forwards to the wsClient and returns its requestId", () => {
+    const ws = {
+      capabilities: { native: true },
+      sendControl: vi.fn(),
+      sendEphemeral: vi.fn(() => "ep-9"),
+    };
+    const transport = new WsTransport(ws, {});
+    expect(transport.sendEphemeral("inst-1", 3, { type: "prompt" })).toBe("ep-9");
+    expect(ws.sendEphemeral).toHaveBeenCalledWith("inst-1", 3, { type: "prompt" });
   });
 });

@@ -1,4 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// ABOUTME: Picot Tauri host entry point: spawns per-workspace Pi processes and
+// ABOUTME: owns windows, the broker, ephemeral chats, and the native close lifecycle.
 
 mod broker_ws;
 mod host_data;
@@ -6,18 +8,29 @@ mod host_router;
 mod host_server;
 mod metadata_store;
 mod native_pi_manager;
+// Public API staged for the broker (Task 5) and host lifecycle (Task 7a).
+#[allow(dead_code)]
+mod command_policy;
+mod ephemeral_registry;
 mod pi_manager;
 mod pi_rpc_bridge;
 mod remote_auth;
 mod runtime_coordinator;
 mod settings_store;
+mod window_owner;
 
 use broker_ws::BrokerWs;
+use ephemeral_registry::{
+    CleanupLease, CreateReservation, EphemeralKind, EphemeralRegistry, EphemeralUiPatch,
+    OwnedProcess,
+};
 use host_server::HostServer;
 use metadata_store::MetadataStore;
 use native_pi_manager::NativePiManager;
 use pi_manager::{
-    locked_pi_version, wait_for_endpoint, wait_for_health as wait_for_pi_health, PiManager,
+    build_ephemeral_environment, canonical_temp_root, cleanup_quick_chat_dir,
+    create_quick_chat_temp_dir, locked_pi_version, wait_for_endpoint,
+    wait_for_health as wait_for_pi_health, PiManager, PiSpawnSpec,
 };
 use remote_auth::RemoteAuth;
 use runtime_coordinator::RuntimeTarget;
@@ -31,10 +44,15 @@ use tauri::image::Image;
 use tauri::{AppHandle, Manager, State, TitleBarStyle, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_dialog::MessageDialogKind;
+use window_owner::WindowOwnerRegistry;
 
 type PiManagerState = Arc<PiManager>;
 type BrokerWsState = Arc<BrokerWs>;
 type NativePiManagerState = NativePiManager;
+#[allow(dead_code)]
+type OwnerRegistryState = Arc<WindowOwnerRegistry>;
+#[allow(dead_code)]
+type EphemeralRegistryState = Arc<EphemeralRegistry>;
 
 // ─── Tauri Commands ───────────────────────────────────────────────────────────
 
@@ -47,6 +65,69 @@ fn new_session_core(port: u16, manager: &PiManager, broker: &BrokerWs) -> Result
     result
 }
 
+/// Ask the Pi instance at `port` for its available models. The response lands
+/// on stdout and is captured by the RPC output subscriber loop, which stores
+/// it in the shared model cache. Called once per session registration so the
+/// cache is populated by the time any Side Chat / Quick Chat / new session
+/// needs to render a model dropdown.
+fn warm_model_cache(manager: &PiManager, port: u16) {
+    if manager.cached_models().is_some() {
+        return; // already populated by an earlier session
+    }
+    let cmd = serde_json::json!({ "type": "get_available_models" });
+    if let Err(e) = manager.send_rpc(port, cmd) {
+        log::warn!("[pi-desktop] model cache warm-up rpc failed: {}", e);
+    }
+}
+
+/// Pre-spawn a Side Chat standby pi so the next "New Side Chat" feels
+/// instant. The standby uses the workspace cwd and keeps tools enabled.
+/// It's parked in the standby pool until adopted by ephemeral_create.
+/// Called after the main session registers; failures are logged but never
+/// surfaced — the synchronous fallback path still works if warming fails.
+fn warm_side_chat_standby(manager: Arc<PiManager>, cwd: PathBuf) {
+    let Some(lease) = manager.begin_standby_warm(Some(&cwd), false) else {
+        return;
+    };
+    tauri::async_runtime::spawn(async move {
+        let env = build_ephemeral_environment("side-chat", "standby", 0);
+        match manager.spawn_standby(lease, cwd.clone(), false, None, env) {
+            Ok(()) => log::info!("[pi-desktop] side-chat standby warmed"),
+            Err(e) => log::warn!("[pi-desktop] side-chat standby warm failed: {}", e),
+        }
+    });
+}
+
+/// Pre-spawn a Quick Chat standby pi. Quick Chat uses a throwaway temp dir
+/// as cwd (it has --no-tools, so the cwd is just an isolated scratch space).
+/// We pre-create the temp dir, spawn the standby against it, and store the
+/// dir alongside the standby so cleanup works after adoption. Warming a
+/// Quick Chat standby is best-effort: if it fails, ephemeral_create falls
+/// back to the synchronous spawn path.
+fn warm_quick_chat_standby(manager: Arc<PiManager>) {
+    let Some(lease) = manager.begin_standby_warm(None, true) else {
+        return;
+    };
+    tauri::async_runtime::spawn(async move {
+        // Pre-create the temp dir here so the standby's cwd matches the dir
+        // the caller would have created. If temp-dir creation fails we skip
+        // warming; the synchronous fallback will create its own.
+        let created = match create_quick_chat_temp_dir() {
+            Ok(c) => c,
+            Err(e) => {
+                manager.cancel_standby_warm(&lease);
+                log::warn!("[pi-desktop] quick-chat standby temp dir failed: {}", e);
+                return;
+            }
+        };
+        let cwd = created.0.clone();
+        let env = build_ephemeral_environment("quick-chat", "standby", 0);
+        match manager.spawn_standby(lease, cwd.clone(), true, Some(created), env) {
+            Ok(()) => log::info!("[pi-desktop] quick-chat standby warmed"),
+            Err(e) => log::warn!("[pi-desktop] quick-chat standby warm failed: {}", e),
+        }
+    });
+}
 /// Resume (switch to) an existing session file within the current workspace
 fn switch_session_core(
     port: u16,
@@ -60,6 +141,7 @@ fn switch_session_core(
     );
     if result.is_ok() {
         broker.register_session(port, session_path);
+        warm_model_cache(manager, port);
     }
     result
 }
@@ -147,7 +229,12 @@ async fn open_workspace_core(
     // Registering earlier would start the upstream reconnect loop against a
     // port that may never come up, leaking a 750ms-interval reconnect spinner
     // on any spawn failure path that returns without unregistering.
-    broker.register_session(port, session_path.unwrap_or(""));
+    if open_window {
+        broker.register_session(port, session_path.unwrap_or(""));
+        warm_model_cache(manager, port);
+    } else {
+        broker.track_background_session(port, session_path.unwrap_or(""));
+    }
     if force_new_session {
         let new_session_started_at = Instant::now();
         manager.send_rpc(port, serde_json::json!({ "type": "new_session" }))?;
@@ -174,7 +261,7 @@ async fn open_workspace_core(
     }
     if open_window {
         if let Some(app) = app {
-            open_workspace_window(app, port, &broker.url())?;
+            open_workspace_window(app, port, cwd, &broker.url())?;
         } else {
             log::warn!(
                 "[pi-desktop] open_workspace requested a window but no AppHandle is available (port {})",
@@ -227,6 +314,121 @@ async fn pick_folder_core(app: &AppHandle) -> Option<String> {
         let _ = tx.send(result);
     });
     rx.await.ok().flatten()
+}
+
+/// Maximum per-image file size accepted by the native picker (20 MB raw).
+/// Images are read fully into memory and base64-encoded before being sent
+/// over the control channel, so a cap prevents memory spikes on large photos.
+const MAX_IMAGE_FILE_SIZE: u64 = 20 * 1024 * 1024;
+
+/// Maximum number of images selectable in a single picker invocation.
+const MAX_IMAGE_COUNT: usize = 10;
+
+/// One selected image from the native multi-file picker. `data` is raw base64
+/// of the file bytes (no `data:` prefix); the frontend image pipeline wraps it.
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PickedImageFile {
+    name: String,
+    mime_type: String,
+    data: String,
+}
+
+/// Map a file path's extension to a supported image MIME type. Case-insensitive.
+/// Returns `None` for anything that is not a recognized image type.
+fn image_mime_from_path(path: &std::path::Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    match ext.as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
+/// Native multi-file image picker. Opens a dialog filtered to image types,
+/// optionally starting at `initial_dir`. Returns `Ok(None)` when the user
+/// cancels. Each selected file is read and base64-encoded; unsupported or
+/// unreadable selections are surfaced as an error rather than silently dropped.
+/// Enforces a per-file size limit (`MAX_IMAGE_FILE_SIZE`) and a count limit
+/// (`MAX_IMAGE_COUNT`) before reading any bytes.
+async fn pick_image_files_core(
+    app: &AppHandle,
+    initial_dir: Option<String>,
+) -> Result<Option<Vec<PickedImageFile>>, String> {
+    use base64::Engine;
+
+    let mut dialog = app
+        .dialog()
+        .file()
+        .add_filter("Images", &["png", "jpg", "jpeg", "gif", "webp"]);
+
+    if let Some(dir) = initial_dir.as_deref() {
+        let p = std::path::Path::new(dir);
+        if p.is_dir() {
+            dialog = dialog.set_directory(p);
+        }
+    }
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    dialog.pick_files(move |paths| {
+        let _ = tx.send(paths);
+    });
+    let picked = rx.await.ok().flatten();
+
+    let Some(paths) = picked else {
+        return Ok(None);
+    };
+
+    if paths.len() > MAX_IMAGE_COUNT {
+        return Err(format!(
+            "Too many images selected: {}; maximum is {}",
+            paths.len(),
+            MAX_IMAGE_COUNT
+        ));
+    }
+
+    let mut files = Vec::with_capacity(paths.len());
+    for fp in paths {
+        let pb = match fp {
+            tauri_plugin_fs::FilePath::Path(pb) => pb,
+            tauri_plugin_fs::FilePath::Url(url) => url
+                .to_file_path()
+                .map_err(|_| "Only local image files can be attached".to_string())?,
+        };
+
+        let mime = image_mime_from_path(&pb)
+            .ok_or_else(|| format!("Unsupported image type: {}", pb.display()))?;
+
+        let metadata = std::fs::metadata(&pb)
+            .map_err(|e| format!("Failed to stat image {}: {}", pb.display(), e))?;
+        if metadata.len() > MAX_IMAGE_FILE_SIZE {
+            return Err(format!(
+                "Image is too large: {} is {} MB; maximum is {} MB",
+                pb.display(),
+                metadata.len() / (1024 * 1024),
+                MAX_IMAGE_FILE_SIZE / (1024 * 1024)
+            ));
+        }
+
+        let bytes = std::fs::read(&pb)
+            .map_err(|e| format!("Failed to read image {}: {}", pb.display(), e))?;
+
+        let name = pb
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("image")
+            .to_string();
+
+        files.push(PickedImageFile {
+            name,
+            mime_type: mime.to_string(),
+            data: base64::engine::general_purpose::STANDARD.encode(&bytes),
+        });
+    }
+
+    Ok(Some(files))
 }
 
 /// A launchable external app target (editor / terminal / file manager).
@@ -471,7 +673,12 @@ fn encode_query_value(value: &str) -> String {
     percent_encoding::utf8_percent_encode(value, percent_encoding::NON_ALPHANUMERIC).to_string()
 }
 
-fn open_workspace_window(app: &AppHandle, port: u16, broker_ws_url: &str) -> Result<(), String> {
+fn open_workspace_window(
+    app: &AppHandle,
+    port: u16,
+    cwd: &str,
+    broker_ws_url: &str,
+) -> Result<(), String> {
     let label = format!("workspace-{}", port);
     let url = format!(
         "http://localhost:{}?brokerWs={}",
@@ -481,13 +688,33 @@ fn open_workspace_window(app: &AppHandle, port: u16, broker_ws_url: &str) -> Res
     let icon = Image::from_bytes(include_bytes!("../icons/32x32.png"))
         .map_err(|e| format!("Failed to load window icon: {}", e))?;
 
+    // Create the window owner before build so the capability and exact-origin
+    // navigation boundary exist for the first document load. The owner binds
+    // this window label, its canonical workspace cwd, and its primary Pi origin.
+    let Some(registry) = app.try_state::<OwnerRegistryState>() else {
+        return Err("owner registry is not available".to_string());
+    };
+    let registry = registry.inner().clone();
+    let canonical_cwd = fs::canonicalize(cwd).unwrap_or_else(|_| PathBuf::from(cwd));
+    let origin = format!("http://localhost:{port}");
+    let (owner, capability) = registry
+        .create_owner(label.clone(), canonical_cwd, port, origin)
+        .map_err(|e| format!("Failed to create window owner: {e}"))?;
+    let init_script =
+        window_owner::capability_initialization_script("localhost", port, &capability);
+
+    let nav_registry = registry.clone();
+    let nav_owner = owner.clone();
     let builder =
         WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url.parse().unwrap()))
             .title("Picot")
             .inner_size(1300.0, 860.0)
             .min_inner_size(800.0, 600.0)
             .icon(icon)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?
+            .initialization_script(init_script)
+            .on_navigation(move |url| nav_registry.authorize_navigation(&nav_owner, url))
+            .on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Deny);
 
     // macOS: extend WebView into title bar; traffic lights float on top.
     #[cfg(target_os = "macos")]
@@ -646,7 +873,8 @@ fn list_session_files(root: &PathBuf) -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_static_dir;
+    use super::{image_mime_from_path, resolve_static_dir, side_chat_startup_rpc_commands};
+    use serde_json::json;
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -680,6 +908,78 @@ mod tests {
         assert_eq!(resolved, fs::canonicalize(&workspace_public).unwrap());
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn image_mime_from_path_maps_known_extensions() {
+        assert_eq!(
+            image_mime_from_path(std::path::Path::new("photo.png")),
+            Some("image/png")
+        );
+        assert_eq!(
+            image_mime_from_path(std::path::Path::new("photo.JPG")),
+            Some("image/jpeg")
+        );
+        assert_eq!(
+            image_mime_from_path(std::path::Path::new("photo.Jpeg")),
+            Some("image/jpeg")
+        );
+        assert_eq!(
+            image_mime_from_path(std::path::Path::new("anim.gif")),
+            Some("image/gif")
+        );
+        assert_eq!(
+            image_mime_from_path(std::path::Path::new("modern.webp")),
+            Some("image/webp")
+        );
+    }
+
+    #[test]
+    fn image_mime_from_path_rejects_unknown_and_missing_extensions() {
+        assert_eq!(image_mime_from_path(std::path::Path::new("doc.pdf")), None);
+        assert_eq!(image_mime_from_path(std::path::Path::new("img.bmp")), None);
+        assert_eq!(image_mime_from_path(std::path::Path::new("noext")), None);
+        assert_eq!(image_mime_from_path(std::path::Path::new("/")), None);
+    }
+
+    #[test]
+    fn side_chat_startup_rpc_emits_set_model_and_thinking_for_active_profile() {
+        let profile = json!({
+            "provider": "openai-codex",
+            "modelId": "gpt-5.6-terra",
+            "thinkingLevel": "medium",
+        });
+        let cmds = side_chat_startup_rpc_commands(&profile);
+        assert_eq!(cmds.len(), 2);
+        assert_eq!(
+            cmds[0],
+            json!({"type":"set_model","provider":"openai-codex","modelId":"gpt-5.6-terra"})
+        );
+        assert_eq!(
+            cmds[1],
+            json!({"type":"set_thinking_level","level":"medium"})
+        );
+    }
+
+    #[test]
+    fn side_chat_startup_rpc_omits_thinking_when_off() {
+        let profile = json!({
+            "provider": "anthropic",
+            "modelId": "claude-sonnet-4",
+            "thinkingLevel": "off",
+        });
+        let cmds = side_chat_startup_rpc_commands(&profile);
+        assert_eq!(cmds.len(), 1);
+        assert_eq!(
+            cmds[0],
+            json!({"type":"set_model","provider":"anthropic","modelId":"claude-sonnet-4"})
+        );
+    }
+
+    #[test]
+    fn side_chat_startup_rpc_drops_profile_without_model_identity() {
+        assert!(side_chat_startup_rpc_commands(&json!({"thinkingLevel":"medium"})).is_empty());
+        assert!(side_chat_startup_rpc_commands(&json!({"provider":"","modelId":""})).is_empty());
     }
 }
 
@@ -810,12 +1110,7 @@ async fn cmd_retry_startup(
     let initial_port = manager.next_port();
     manager.spawn(&cwd, initial_port, session_path.as_deref())?;
     broker.register_session(initial_port, session_path.as_deref().unwrap_or(""));
-    if let Err(e) = wait_for_pi_health(initial_port, 30).await {
-        // Tear down the upstream reconnect loop started by register_session so it
-        // doesn't spin forever against a dead port every 750ms.
-        broker.unregister_port(initial_port);
-        return Err(e);
-    }
+    warm_model_cache(&manager, initial_port);
     Ok(initial_port)
 }
 
@@ -919,12 +1214,23 @@ fn resolve_control_port(port: Option<u16>, broker: &BrokerWs) -> Result<u16, Str
 /// regardless of transport. Native ops (folder picker, devtools, updater,
 /// open-in-app/external) require an OS host and are only meaningful when this
 /// handler is installed — which is exactly what `capabilities.native` advertises.
-fn install_control_handler(broker: &Arc<BrokerWs>, manager: Arc<PiManager>, app: AppHandle) {
+fn install_control_handler(
+    broker: &Arc<BrokerWs>,
+    manager: Arc<PiManager>,
+    owner_registry: Arc<WindowOwnerRegistry>,
+    ephemeral_registry: Arc<EphemeralRegistry>,
+    app: AppHandle,
+) {
     let broker_for_handler = broker.clone();
     let handler: broker_ws::ControlHandler = Arc::new(
-        move |command: String, args: Value, progress: broker_ws::ProgressSink| {
+        move |ctx: broker_ws::VerifiedClientContext,
+              command: String,
+              args: Value,
+              progress: broker_ws::ProgressSink| {
             let manager = manager.clone();
             let broker = broker_for_handler.clone();
+            let owner_registry = owner_registry.clone();
+            let ephemeral_registry = ephemeral_registry.clone();
             let app = app.clone();
             Box::pin(async move {
                 let arg = |key: &str| args.get(key).cloned().unwrap_or(Value::Null);
@@ -952,6 +1258,8 @@ fn install_control_handler(broker: &Arc<BrokerWs>, manager: Arc<PiManager>, app:
                             Some(&app),
                         )
                         .await?;
+                        warm_side_chat_standby(manager.clone(), PathBuf::from(&cwd));
+                        warm_quick_chat_standby(manager.clone());
                         Ok(Value::from(port))
                     }
                     "new_session" => {
@@ -1000,6 +1308,13 @@ fn install_control_handler(broker: &Arc<BrokerWs>, manager: Arc<PiManager>, app:
                         Some(path) => Value::from(path),
                         None => Value::Null,
                     }),
+                    "pick_image_files" => {
+                        let initial_dir = arg_str("initialDir");
+                        match pick_image_files_core(&app, initial_dir).await? {
+                            Some(files) => Ok(serde_json::to_value(files).unwrap_or(Value::Null)),
+                            None => Ok(Value::Null),
+                        }
+                    }
                     "list_installed_apps" => {
                         Ok(serde_json::to_value(list_installed_apps_core()).unwrap_or(Value::Null))
                     }
@@ -1024,12 +1339,17 @@ fn install_control_handler(broker: &Arc<BrokerWs>, manager: Arc<PiManager>, app:
                         let sources = manager.list_configured_package_sources()?;
                         Ok(serde_json::to_value(sources).unwrap_or(Value::Null))
                     }
+                    "get_cached_models" => Ok(manager
+                        .cached_models()
+                        .map(|c| c.payload)
+                        .unwrap_or(Value::Null)),
                     "install_pi_package" => {
                         let source = arg_str("source").unwrap_or_default();
                         if source.trim().is_empty() {
                             return Err("Package source cannot be empty".to_string());
                         }
                         manager.install_package_source(source.trim())?;
+                        manager.invalidate_cached_models();
                         Ok(Value::Null)
                     }
                     "remove_pi_package" => {
@@ -1038,11 +1358,454 @@ fn install_control_handler(broker: &Arc<BrokerWs>, manager: Arc<PiManager>, app:
                             return Err("Package source cannot be empty".to_string());
                         }
                         manager.remove_package_source(source.trim())?;
+                        manager.invalidate_cached_models();
                         Ok(Value::Null)
                     }
                     "check_for_update" => check_for_update_core(&app).await,
                     "download_and_install_update" => {
                         download_and_install_update_core(&app, progress).await
+                    }
+                    "rpc_extension_ui_response" => {
+                        let port = arg_u16("port").ok_or("port is required")?;
+                        let response = arg("response");
+                        if response.get("type").and_then(Value::as_str)
+                            != Some("extension_ui_response")
+                        {
+                            return Err("invalid extension UI response".to_string());
+                        }
+                        manager.send_rpc(port, response)?;
+                        Ok(Value::Null)
+                    }
+                    "ephemeral_extension_ui_response" => {
+                        let Some(owner) = ctx.owner_id.clone() else {
+                            return Err("ephemeral chats require a native owner".to_string());
+                        };
+                        let instance_id = arg_str("instanceId").ok_or("instanceId is required")?;
+                        let generation =
+                            arg("generation").as_u64().ok_or("generation is required")?;
+                        let port = broker
+                            .ephemeral_port(&owner, &instance_id, generation)
+                            .ok_or("ephemeral instance is unavailable")?;
+                        let response = arg("response");
+                        if response.get("type").and_then(Value::as_str)
+                            != Some("extension_ui_response")
+                        {
+                            return Err("invalid extension UI response".to_string());
+                        }
+                        manager.send_rpc(port, response)?;
+                        Ok(Value::Null)
+                    }
+                    "ephemeral_create" => {
+                        let Some(owner) = ctx.owner_id.clone() else {
+                            return Err("ephemeral chats require a native owner".to_string());
+                        };
+                        let kind_str = arg_str("kind").unwrap_or_default();
+                        let kind = match kind_str.as_str() {
+                            "side-chat" => EphemeralKind::SideChat,
+                            "quick-chat" => EphemeralKind::QuickChat,
+                            _ => return Err("invalid ephemeral kind".to_string()),
+                        };
+                        if owner_registry.workspace_transition_in_progress(&owner) {
+                            return Err("workspace transition is in progress".to_string());
+                        }
+                        let reservation = ephemeral_registry.reserve_create(&owner, kind)?;
+                        let transition_generation = owner_registry
+                            .current_workspace_generation(&owner)
+                            .unwrap_or(0);
+                        let (cwd, temp_dir) = match kind {
+                            EphemeralKind::SideChat => {
+                                let (ws_cwd, _) = owner_registry
+                                    .current_workspace(&owner)
+                                    .ok_or("owner has no workspace")?;
+                                (ws_cwd, None)
+                            }
+                            EphemeralKind::QuickChat => {
+                                let created = create_quick_chat_temp_dir()?;
+                                let cwd = created.0.clone();
+                                (cwd, Some(created))
+                            }
+                        };
+                        let startup_profile = if kind == EphemeralKind::SideChat {
+                            let profile = arg("startupProfile");
+                            let provider = profile.get("provider").and_then(Value::as_str);
+                            let model_id = profile.get("modelId").and_then(Value::as_str);
+                            match (provider, model_id) {
+                                (Some(provider), Some(model_id))
+                                    if !provider.trim().is_empty()
+                                        && !model_id.trim().is_empty() =>
+                                {
+                                    let thinking = profile
+                                        .get("thinkingLevel")
+                                        .and_then(Value::as_str)
+                                        .unwrap_or("off");
+                                    Some(serde_json::json!({
+                                        "provider": provider.trim(),
+                                        "modelId": model_id.trim(),
+                                        "thinkingLevel": thinking,
+                                    }))
+                                }
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        };
+                        let no_tools = kind == EphemeralKind::QuickChat;
+                        // Try to adopt a pre-warmed standby pi first. The
+                        // standby was spawned with the same cwd and no_tools
+                        // flags but a placeholder ephemeral env; the broker
+                        // route (registered below) maps its port to the real
+                        // instance id, so the placeholder never leaks to the
+                        // frontend. If no standby matches, fall back to a
+                        // synchronous spawn + health-wait.
+                        let standby = manager.take_standby(&cwd, no_tools);
+                        let cwd_for_refill = cwd.clone();
+                        let descriptor = if let Some((spawned, standby_temp_dir)) = standby {
+                            log::info!(
+                                "[pi-desktop] adopting standby pi: port={} kind={}",
+                                spawned.port,
+                                kind_str
+                            );
+                            // Use the standby's pre-created temp dir for Quick
+                            // Chat; for Side Chat the temp_dir from the caller
+                            // is None and the standby also carries None. If
+                            // the standby carries its own temp dir (Quick Chat
+                            // standby), clean up the one the caller created to
+                            // avoid leaking it.
+                            let adopted_temp_dir = if standby_temp_dir.is_some() {
+                                if let Some((path, token)) = &temp_dir {
+                                    let _ =
+                                        cleanup_quick_chat_dir(&canonical_temp_root(), path, token);
+                                }
+                                standby_temp_dir
+                            } else {
+                                temp_dir
+                            };
+                            // The standby's cwd is what pi actually runs in.
+                            // Override the caller's cwd so the registry records
+                            // the real one.
+                            let adopted_cwd = if adopted_temp_dir.is_some() {
+                                adopted_temp_dir
+                                    .as_ref()
+                                    .map(|(p, _)| p.clone())
+                                    .unwrap_or(cwd.clone())
+                            } else {
+                                cwd.clone()
+                            };
+                            ephemeral_adopt_standby(
+                                &manager,
+                                &broker,
+                                &ephemeral_registry,
+                                &reservation,
+                                spawned,
+                                adopted_temp_dir,
+                                transition_generation,
+                                adopted_cwd.clone(),
+                                startup_profile,
+                            )
+                            .await?
+                        } else {
+                            let port = manager.next_port();
+                            let env = build_ephemeral_environment(
+                                &kind_str,
+                                &reservation.instance_id,
+                                reservation.generation,
+                            );
+                            let spec = PiSpawnSpec {
+                                cwd,
+                                port,
+                                session_path: None,
+                                no_session: true,
+                                no_tools,
+                                environment: env,
+                            };
+                            ephemeral_spawn_commit(
+                                &manager,
+                                &broker,
+                                &ephemeral_registry,
+                                &reservation,
+                                spec,
+                                port,
+                                temp_dir,
+                                transition_generation,
+                                startup_profile,
+                            )
+                            .await?
+                        };
+                        // Refill the standby pool after consumption so the
+                        // next Side/Quick Chat is also instant.
+                        if kind == EphemeralKind::SideChat {
+                            warm_side_chat_standby(manager.clone(), cwd_for_refill);
+                        } else {
+                            warm_quick_chat_standby(manager.clone());
+                        }
+                        Ok(serde_json::to_value(descriptor).map_err(|e| e.to_string())?)
+                    }
+                    "ephemeral_replace_quick" => {
+                        let Some(owner) = ctx.owner_id.clone() else {
+                            return Err("ephemeral chats require a native owner".to_string());
+                        };
+                        if owner_registry.workspace_transition_in_progress(&owner) {
+                            return Err("workspace transition is in progress".to_string());
+                        }
+                        let replacement = ephemeral_registry.reserve_quick_replacement(&owner)?;
+                        let (old_id, old_gen) = replacement
+                            .old_instance
+                            .clone()
+                            .ok_or("no quick chat to replace")?;
+                        let candidate = replacement.candidate.clone();
+                        let created = create_quick_chat_temp_dir()?;
+                        let cwd = created.0.clone();
+                        let port = manager.next_port();
+                        let env = build_ephemeral_environment(
+                            "quick-chat",
+                            &candidate.instance_id,
+                            candidate.generation,
+                        );
+                        let spec = PiSpawnSpec {
+                            cwd,
+                            port,
+                            session_path: None,
+                            no_session: true,
+                            no_tools: true,
+                            environment: env,
+                        };
+                        let transition_generation = owner_registry
+                            .current_workspace_generation(&owner)
+                            .unwrap_or(0);
+                        let descriptor = ephemeral_spawn_commit(
+                            &manager,
+                            &broker,
+                            &ephemeral_registry,
+                            &candidate,
+                            spec,
+                            port,
+                            Some(created),
+                            transition_generation,
+                            None,
+                        )
+                        .await?;
+                        close_ephemeral_instance(
+                            &manager,
+                            &broker,
+                            &ephemeral_registry,
+                            &owner,
+                            &old_id,
+                            old_gen,
+                        );
+                        Ok(serde_json::to_value(descriptor).map_err(|e| e.to_string())?)
+                    }
+                    "ephemeral_close" => {
+                        let Some(owner) = ctx.owner_id.clone() else {
+                            return Err("ephemeral chats require a native owner".to_string());
+                        };
+                        let instance_id = arg_str("instanceId").ok_or("instanceId is required")?;
+                        let generation =
+                            arg("generation").as_u64().ok_or("generation is required")?;
+                        close_ephemeral_instance(
+                            &manager,
+                            &broker,
+                            &ephemeral_registry,
+                            &owner,
+                            &instance_id,
+                            generation,
+                        );
+                        Ok(Value::Null)
+                    }
+                    "ephemeral_bootstrap" => {
+                        let Some(owner) = ctx.owner_id.clone() else {
+                            return Err("ephemeral chats require a native owner".to_string());
+                        };
+                        Ok(serde_json::to_value(ephemeral_registry.descriptors(&owner))
+                            .map_err(|e| e.to_string())?)
+                    }
+                    "ephemeral_update_ui" => {
+                        let Some(owner) = ctx.owner_id.clone() else {
+                            return Err("ephemeral chats require a native owner".to_string());
+                        };
+                        let instance_id = arg_str("instanceId").ok_or("instanceId is required")?;
+                        let generation =
+                            arg("generation").as_u64().ok_or("generation is required")?;
+                        let patch = EphemeralUiPatch {
+                            title: arg_str("title"),
+                            unread: arg_bool("unread"),
+                        };
+                        ephemeral_registry.update_ui_metadata(
+                            &owner,
+                            &instance_id,
+                            generation,
+                            patch,
+                        )?;
+                        Ok(Value::Null)
+                    }
+                    "workspace_target_prepare" => {
+                        let Some(owner) = ctx.owner_id.clone() else {
+                            return Err("workspace navigation requires a native owner".to_string());
+                        };
+                        let target_cwd = arg_str("targetCwd").ok_or("targetCwd is required")?;
+                        let canonical_target = fs::canonicalize(&target_cwd)
+                            .map_err(|e| format!("Invalid targetCwd: {e}"))?;
+                        let session_path = arg_str("sessionPath");
+                        let force_new = arg_bool("forceNewSession").unwrap_or(false);
+                        let (current_cwd, _) = owner_registry
+                            .current_workspace(&owner)
+                            .ok_or("owner has no workspace")?;
+                        let target_port = if let Some(existing_port) = arg_u16("targetPort") {
+                            if !manager.owns_process(existing_port) {
+                                return Err("target process is not owned by Picot".to_string());
+                            }
+                            if let Some(status) = manager.check_exited(existing_port) {
+                                return Err(format!(
+                                    "Target Pi process exited (port {existing_port}, status: {status})"
+                                ));
+                            }
+                            wait_for_pi_health(existing_port, 30).await?;
+                            existing_port
+                        } else {
+                            spawn_target_process(
+                                &canonical_target.to_string_lossy(),
+                                session_path.as_deref(),
+                                force_new,
+                                &manager,
+                                &broker,
+                            )
+                            .await?
+                        };
+                        let target_origin = format!("http://localhost:{target_port}");
+                        let same_cwd = canonical_target == current_cwd;
+                        let transition_generation = if same_cwd {
+                            owner_registry.prepare_navigation(
+                                &owner,
+                                target_port,
+                                canonical_target.clone(),
+                                target_origin.clone(),
+                                std::time::Duration::from_secs(30),
+                            )?
+                        } else {
+                            let gen = owner_registry.begin_workspace_transition(
+                                &owner,
+                                canonical_target.clone(),
+                                target_port,
+                            )?;
+                            owner_registry.prepare_navigation(
+                                &owner,
+                                target_port,
+                                canonical_target.clone(),
+                                target_origin.clone(),
+                                std::time::Duration::from_secs(30),
+                            )?;
+                            gen
+                        };
+                        Ok(serde_json::json!({
+                            "classification": if same_cwd { "same" } else { "cross" },
+                            "transitionGeneration": transition_generation,
+                            "targetOrigin": target_origin,
+                            "settleRequired": !same_cwd,
+                        }))
+                    }
+                    "workspace_transition_commit" => {
+                        let Some(owner) = ctx.owner_id.clone() else {
+                            return Err("workspace navigation requires a native owner".to_string());
+                        };
+                        let gen = arg("transitionGeneration")
+                            .as_u64()
+                            .ok_or("transitionGeneration is required")?;
+                        // Safety net: generation-checked cleanup of any old-workspace
+                        // side chats the frontend did not settle before committing.
+                        let is_cross_workspace = owner_registry
+                            .current_workspace(&owner)
+                            .zip(owner_registry.pending_target_cwd(&owner))
+                            .is_none_or(|((current_cwd, _), target_cwd)| current_cwd != target_cwd);
+                        if is_cross_workspace {
+                            let stray =
+                                ephemeral_registry.side_chat_cleanup_for_transition(&owner, gen);
+                            for lease in stray {
+                                cleanup_ephemeral_lease(
+                                    &manager,
+                                    &broker,
+                                    &ephemeral_registry,
+                                    lease,
+                                );
+                            }
+                        }
+                        // Also discard any Side Chat standby pre-warmed for
+                        // the old workspace cwd — they'd never be adopted now.
+                        if let Some((old_cwd, _)) = owner_registry.current_workspace(&owner) {
+                            manager.kill_standby_for_cwd(&old_cwd);
+                        }
+                        // Pre-warm a Side Chat standby for the new workspace
+                        // so the first Side Chat after the transition is instant.
+                        if let Some(target_cwd) = owner_registry.pending_target_cwd(&owner) {
+                            warm_side_chat_standby(manager.clone(), target_cwd);
+                        }
+                        let target_origin = owner_registry
+                            .pending_target_origin(&owner)
+                            .ok_or("no pending workspace transition")?;
+                        let target_port = owner_registry
+                            .pending_target_port(&owner)
+                            .ok_or("no pending workspace transition")?;
+                        owner_registry.commit_workspace_transition(
+                            &owner,
+                            gen,
+                            target_origin.clone(),
+                        )?;
+                        broker.set_active_port(target_port);
+                        Ok(serde_json::json!({ "targetOrigin": target_origin }))
+                    }
+                    "workspace_transition_cancel" => {
+                        let Some(owner) = ctx.owner_id.clone() else {
+                            return Err("workspace navigation requires a native owner".to_string());
+                        };
+                        let gen = arg("transitionGeneration")
+                            .as_u64()
+                            .ok_or("transitionGeneration is required")?;
+                        if let Some(target_port) = owner_registry.pending_target_port(&owner) {
+                            manager.kill(target_port);
+                            broker.unregister_port(target_port);
+                        }
+                        owner_registry.cancel_workspace_transition(&owner, gen)?;
+                        Ok(Value::Null)
+                    }
+                    "window_close_cancel" => {
+                        let Some(owner) = ctx.owner_id.clone() else {
+                            return Err("window close requires a native owner".to_string());
+                        };
+                        let request_id = arg_str("requestId").ok_or("requestId is required")?;
+                        let mut guard = close_approvals().lock().unwrap();
+                        if guard
+                            .get(&owner)
+                            .is_some_and(|pending| pending.request_id == request_id)
+                        {
+                            guard.remove(&owner);
+                        }
+                        Ok(Value::Null)
+                    }
+                    "window_close_approve" => {
+                        let Some(owner) = ctx.owner_id.clone() else {
+                            return Err("window close requires a native owner".to_string());
+                        };
+                        let request_id = arg_str("requestId").ok_or("requestId is required")?;
+                        {
+                            let mut guard = close_approvals().lock().unwrap();
+                            let Some(pending) = guard.get_mut(&owner) else {
+                                return Err("no pending window close".to_string());
+                            };
+                            if pending.request_id != request_id {
+                                return Err("request id mismatch".to_string());
+                            }
+                            pending.approved = true;
+                        }
+                        if let Some(label) = owner_registry.label_for_owner(&owner) {
+                            if let Some(win) = app.get_webview_window(&label) {
+                                let _ = win.close();
+                            }
+                        }
+                        Ok(Value::Null)
+                    }
+                    "window_close_risk_response" => {
+                        // The frontend close coordinator owns the risk dialog and
+                        // per-participant settlement; the host only acts on the
+                        // final window_close_approve, so this is acknowledged.
+                        Ok(Value::Null)
                     }
                     "relaunch_app" => app.restart(),
                     other => Err(format!("Unknown control command: {other}")),
@@ -1051,6 +1814,444 @@ fn install_control_handler(broker: &Arc<BrokerWs>, manager: Arc<PiManager>, app:
         },
     );
     broker.set_control_handler(handler);
+}
+
+/// Spawn a workspace Pi process for an in-window navigation WITHOUT promoting
+/// it to the broker active_port; the target only becomes the main session once
+/// the workspace transition commits. Mirrors open_workspace_core's spawn +
+/// readiness checks but registers the upstream as a background session.
+async fn spawn_target_process(
+    cwd: &str,
+    session_path: Option<&str>,
+    force_new_session: bool,
+    manager: &PiManager,
+    broker: &BrokerWs,
+) -> Result<u16, String> {
+    let port = manager.next_port();
+    manager.spawn(cwd, port, session_path)?;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    if let Some(status) = manager.check_exited(port) {
+        return Err(format!(
+            "Pi process exited immediately (port {port}, status: {status})"
+        ));
+    }
+    wait_for_pi_health(port, 30).await?;
+    if force_new_session {
+        manager.send_rpc(port, serde_json::json!({ "type": "new_session" }))?;
+    }
+    broker.track_background_session(port, session_path.unwrap_or(""));
+    Ok(port)
+}
+
+/// Spawn an ephemeral candidate, wait for readiness, and compare-and-commit it.
+/// On any failure the candidate process, broker route, registry record, and
+/// (for Quick Chat) temp directory are cleaned up before returning the error.
+#[allow(clippy::too_many_arguments)]
+async fn ephemeral_spawn_commit(
+    manager: &PiManager,
+    broker: &BrokerWs,
+    registry: &EphemeralRegistry,
+    reservation: &CreateReservation,
+    spec: PiSpawnSpec,
+    port: u16,
+    temp_dir: Option<(PathBuf, String)>,
+    transition_generation: u64,
+    startup_profile: Option<Value>,
+) -> Result<ephemeral_registry::EphemeralDescriptor, String> {
+    let owner = reservation.owner_id.clone();
+    let spawned = match manager.spawn_with_spec(&spec) {
+        Ok(spawned) => spawned,
+        Err(e) => {
+            cleanup_ephemeral_candidate(
+                registry,
+                &owner,
+                &reservation.instance_id,
+                reservation.generation,
+                temp_dir,
+            );
+            return Err(e);
+        }
+    };
+    if let Err(e) = wait_for_pi_health(port, 30).await {
+        manager.kill(port);
+        cleanup_ephemeral_candidate(
+            registry,
+            &owner,
+            &reservation.instance_id,
+            reservation.generation,
+            temp_dir,
+        );
+        return Err(e);
+    }
+    let process = OwnedProcess {
+        port,
+        pid: spawned.pid,
+        child_identity: spawned.identity,
+        canonical_cwd: spec.cwd.clone(),
+        transition_generation,
+        temporary_directory: temp_dir.clone(),
+    };
+    let descriptor = match registry.commit_ready(reservation, process) {
+        Ok(descriptor) => descriptor,
+        Err(e) => {
+            manager.kill(port);
+            cleanup_ephemeral_candidate(
+                registry,
+                &owner,
+                &reservation.instance_id,
+                reservation.generation,
+                temp_dir,
+            );
+            return Err(e);
+        }
+    };
+    let _ = broker.register_ephemeral_route(broker_ws::EphemeralRoute {
+        owner_id: owner,
+        instance_id: reservation.instance_id.clone(),
+        generation: reservation.generation,
+        port,
+    });
+    // Defer set_model until after the frontend's initial runtime snapshot
+    // has been processed. The snapshot — fired when the descriptor arrives
+    // — reads Pi's advisor-restored model. Sending set_model before the
+    // snapshot returns means the Side Chat initially shows Pi's default
+    // model, not the inherited one. The 400ms delay lets the snapshot
+    // settle first; the set_model then sticks and a later state refresh
+    // picks up the new model.
+    apply_side_chat_startup_profile(manager, port, startup_profile);
+    Ok(descriptor)
+}
+
+/// Adopt a pre-warmed standby pi for an ephemeral chat. The standby is
+/// already spawned and healthy; we only register it with the broker and
+/// registry, then apply the startup profile. This is the fast path
+/// (~milliseconds) compared to spawn + health-wait (~seconds).
+#[allow(clippy::too_many_arguments)]
+async fn ephemeral_adopt_standby(
+    manager: &PiManager,
+    broker: &BrokerWs,
+    registry: &EphemeralRegistry,
+    reservation: &CreateReservation,
+    spawned: pi_manager::SpawnedPi,
+    temp_dir: Option<(PathBuf, String)>,
+    transition_generation: u64,
+    cwd: PathBuf,
+    startup_profile: Option<Value>,
+) -> Result<ephemeral_registry::EphemeralDescriptor, String> {
+    let owner = reservation.owner_id.clone();
+    let port = spawned.port;
+    let process = OwnedProcess {
+        port,
+        pid: spawned.pid,
+        child_identity: spawned.identity,
+        canonical_cwd: cwd,
+        transition_generation,
+        temporary_directory: temp_dir.clone(),
+    };
+    let descriptor = match registry.commit_ready(reservation, process) {
+        Ok(descriptor) => descriptor,
+        Err(e) => {
+            manager.kill(port);
+            cleanup_ephemeral_candidate(
+                registry,
+                &owner,
+                &reservation.instance_id,
+                reservation.generation,
+                temp_dir,
+            );
+            return Err(e);
+        }
+    };
+    let _ = broker.register_ephemeral_route(broker_ws::EphemeralRoute {
+        owner_id: owner,
+        instance_id: reservation.instance_id.clone(),
+        generation: reservation.generation,
+        port,
+    });
+    apply_side_chat_startup_profile(manager, port, startup_profile);
+    Ok(descriptor)
+}
+
+/// Build the RPC commands that mirror the active workspace session's model
+/// and thinking level into a freshly spawned Side Chat. Returns None when the
+/// profile is missing or incomplete so the caller can skip the round-trip.
+fn side_chat_startup_rpc_commands(profile: &Value) -> Vec<Value> {
+    let mut commands = Vec::new();
+    let provider = profile.get("provider").and_then(Value::as_str);
+    let model_id = profile.get("modelId").and_then(Value::as_str);
+    let thinking = profile.get("thinkingLevel").and_then(Value::as_str);
+    if let (Some(provider), Some(model_id)) = (provider, model_id) {
+        if !provider.is_empty() && !model_id.is_empty() {
+            commands.push(serde_json::json!({
+                "type": "set_model",
+                "provider": provider,
+                "modelId": model_id,
+            }));
+            if let Some(level) = thinking {
+                if !level.is_empty() && level != "off" {
+                    commands.push(serde_json::json!({
+                        "type": "set_thinking_level",
+                        "level": level,
+                    }));
+                }
+            }
+        }
+    }
+    commands
+}
+
+fn apply_side_chat_startup_profile(manager: &PiManager, port: u16, startup_profile: Option<Value>) {
+    let Some(profile) = startup_profile else {
+        return;
+    };
+    let commands = side_chat_startup_rpc_commands(&profile);
+    if commands.is_empty() {
+        log::info!(
+            "[pi-desktop] side-chat startup profile incomplete; skipping model RPC (port={})",
+            port
+        );
+        return;
+    }
+    let model = commands
+        .iter()
+        .find(|c| c.get("type").and_then(Value::as_str) == Some("set_model"))
+        .and_then(|c| c.get("modelId").and_then(Value::as_str))
+        .unwrap_or("");
+    log::info!(
+        "[pi-desktop] applying side-chat startup profile: port={} model={}",
+        port,
+        model
+    );
+    for cmd in commands {
+        if let Err(e) = manager.send_rpc(port, cmd) {
+            log::warn!("[pi-desktop] side-chat startup rpc failed: {}", e);
+        }
+    }
+}
+
+/// Remove an uncommitted/failed candidate: generation-checked registry cleanup
+/// plus exact Quick Chat temp directory deletion. Never touches another record.
+fn cleanup_ephemeral_candidate(
+    registry: &EphemeralRegistry,
+    owner: &window_owner::OwnerId,
+    instance_id: &str,
+    generation: u64,
+    temp_dir: Option<(PathBuf, String)>,
+) {
+    if let Ok(Some(lease)) = registry.begin_close(owner, instance_id, generation) {
+        registry.finish_cleanup(&lease);
+    }
+    if let Some((path, token)) = temp_dir {
+        let _ = cleanup_quick_chat_dir(&canonical_temp_root(), &path, &token);
+    }
+}
+
+/// Generation-checked close of a live ephemeral instance: mark closing, kill the
+/// exact (port, pid), unregister the route, delete an owned temp directory, and
+/// remove the record only when identity still matches.
+fn close_ephemeral_instance(
+    manager: &PiManager,
+    broker: &BrokerWs,
+    registry: &EphemeralRegistry,
+    owner: &window_owner::OwnerId,
+    instance_id: &str,
+    generation: u64,
+) {
+    let Ok(Some(lease)) = registry.begin_close(owner, instance_id, generation) else {
+        return;
+    };
+    cleanup_ephemeral_lease(manager, broker, registry, lease);
+}
+
+fn cleanup_ephemeral_lease(
+    manager: &PiManager,
+    broker: &BrokerWs,
+    registry: &EphemeralRegistry,
+    lease: CleanupLease,
+) {
+    // Stop the broker's reconnect loop before killing the child. Otherwise its
+    // next connect attempt races the intentional port shutdown and logs a
+    // spurious connection-refused warning.
+    broker.unregister_ephemeral_route(
+        &lease.owner_id,
+        &lease.instance_id,
+        lease.generation,
+        lease.port,
+    );
+    if lease.port != 0
+        && manager.matches_process_identity(lease.port, lease.pid, lease.child_identity)
+    {
+        manager.kill(lease.port);
+    }
+    if let Some((path, token)) = &lease.temporary_directory {
+        let _ = cleanup_quick_chat_dir(&canonical_temp_root(), path, token);
+    }
+    registry.finish_cleanup(&lease);
+}
+
+/// A pending window-close transaction: the request id issued to the frontend
+/// coordinator and whether its final approval has been received.
+#[derive(Clone)]
+struct PendingClose {
+    request_id: String,
+    approved: bool,
+}
+
+static CLOSE_REQUEST_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn close_approvals(
+) -> &'static std::sync::Mutex<std::collections::HashMap<window_owner::OwnerId, PendingClose>> {
+    static CLOSE_APPROVALS: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<window_owner::OwnerId, PendingClose>>,
+    > = std::sync::OnceLock::new();
+    CLOSE_APPROVALS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// Intercept the native close. The first request is prevented and one
+/// owner-targeted close_request is issued; a matching window_close_approve sets
+/// the one-shot approval consumed by the close triggered from the host. A
+/// disconnected WebView falls back to a native warning.
+fn handle_close_requested(window: &tauri::Window, api: &tauri::CloseRequestApi) {
+    let Some(registry) = window.try_state::<OwnerRegistryState>() else {
+        return;
+    };
+    let registry = registry.inner().clone();
+    let Some(owner) = registry.owner_for_label(window.label()) else {
+        return;
+    };
+
+    let approvals = close_approvals();
+    let mut guard = approvals.lock().unwrap();
+    if let Some(pending) = guard.get(&owner) {
+        if pending.approved {
+            // Consumed: allow this close.
+            guard.remove(&owner);
+            return;
+        }
+        // Still pending: prevent and let the existing dialog keep focus.
+        api.prevent_close();
+        return;
+    }
+    api.prevent_close();
+    let request_id = format!(
+        "close-{}",
+        CLOSE_REQUEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
+    guard.insert(
+        owner.clone(),
+        PendingClose {
+            request_id: request_id.clone(),
+            approved: false,
+        },
+    );
+    drop(guard);
+
+    let delivered = window
+        .try_state::<BrokerWsState>()
+        .map(|broker| {
+            broker.send_owner_event(
+                &owner,
+                serde_json::json!({ "type": "window_close_request", "requestId": request_id }),
+            )
+        })
+        .unwrap_or(false);
+    if delivered {
+        return;
+    }
+
+    // Disconnected WebView fallback: a native warning. Confirm closes (after
+    // settlement of host-owned state); cancel drops the pending request.
+    let app = window.app_handle().clone();
+    let owner_for_dialog = owner.clone();
+    let registry_for_dialog = registry.clone();
+    window
+        .app_handle()
+        .dialog()
+        .message("Closing this window will discard unsaved changes and any temporary chats.")
+        .title("Close window")
+        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+            "Close anyway".to_string(),
+            "Cancel".to_string(),
+        ))
+        .show(move |result| {
+            let mut g = close_approvals().lock().unwrap();
+            if result {
+                if let Some(pending) = g.get_mut(&owner_for_dialog) {
+                    pending.approved = true;
+                }
+                let label = registry_for_dialog.label_for_owner(&owner_for_dialog);
+                drop(g);
+                if let Some(label) = label {
+                    let _ = app.get_webview_window(&label).map(|w| w.close());
+                }
+            } else {
+                g.remove(&owner_for_dialog);
+            }
+        });
+}
+
+/// Final idempotent cleanup when a workspace window is destroyed: kill the
+/// workspace process, unregister its broker routes, run generation-checked
+/// ephemeral cleanup, drop any pending close, and revoke the owner.
+fn handle_window_destroyed(window: &tauri::Window) {
+    let label = window.label();
+    if let Some(workspace_id) = label.strip_prefix("native-workspace-") {
+        if let Some(manager) = window.try_state::<NativePiManagerState>() {
+            manager.stop_workspace(workspace_id);
+        }
+        return;
+    }
+    if let Some(port_str) = label.strip_prefix("workspace-") {
+        if let Ok(port) = port_str.parse::<u16>() {
+            if let Some(manager) = window.try_state::<PiManagerState>() {
+                manager.kill_workspace_dedicated(port);
+                manager.kill(port);
+            }
+            if let Some(broker) = window.try_state::<BrokerWsState>() {
+                broker.unregister_port(port);
+            }
+        }
+    }
+
+    let Some(registry) = window.try_state::<OwnerRegistryState>() else {
+        return;
+    };
+    let registry = registry.inner().clone();
+    let Some(owner) = registry.owner_for_label(label) else {
+        return;
+    };
+    if let Some(manager) = window.try_state::<PiManagerState>() {
+        if let Some((cwd, _)) = registry.current_workspace(&owner) {
+            manager.kill_standby_for_cwd(&cwd);
+        }
+        manager.kill_quick_standby();
+    }
+    if let Some(ephemeral) = window.try_state::<EphemeralRegistryState>() {
+        for lease in ephemeral.owner_cleanup(&owner) {
+            if let Some(broker) = window.try_state::<BrokerWsState>() {
+                broker.unregister_ephemeral_route(
+                    &owner,
+                    &lease.instance_id,
+                    lease.generation,
+                    lease.port,
+                );
+            }
+            if lease.port != 0 {
+                if let Some(manager) = window.try_state::<PiManagerState>() {
+                    if manager.matches_process_identity(lease.port, lease.pid, lease.child_identity)
+                    {
+                        manager.kill(lease.port);
+                    }
+                }
+            }
+            if let Some((path, token)) = &lease.temporary_directory {
+                let _ = cleanup_quick_chat_dir(&canonical_temp_root(), path, token);
+            }
+            ephemeral.finish_cleanup(&lease);
+        }
+    }
+    close_approvals().lock().unwrap().remove(&owner);
+    registry.revoke_owner(&owner);
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -1089,8 +2290,110 @@ fn main() {
             }
             let manager = Arc::new(PiManager::new(static_dir));
             let broker = Arc::new(BrokerWs::start().expect("failed to start broker websocket"));
+            let owner_registry = Arc::new(WindowOwnerRegistry::default());
+            let ephemeral_registry = Arc::new(EphemeralRegistry::default());
+            broker.set_owner_registry(owner_registry.clone());
+            let descriptor_registry = ephemeral_registry.clone();
+            broker.set_ephemeral_descriptor_provider(Arc::new(move |owner| {
+                serde_json::to_value(descriptor_registry.descriptors(owner))
+                    .unwrap_or_else(|_| Value::Array(Vec::new()))
+            }));
             std::env::set_var("PI_STUDIO_BROKER_PORT", broker.port().to_string());
-            install_control_handler(&broker, manager.clone(), app.handle().clone());
+            install_control_handler(
+                &broker,
+                manager.clone(),
+                owner_registry.clone(),
+                ephemeral_registry.clone(),
+                app.handle().clone(),
+            );
+
+            let manager_for_rpc_output = manager.clone();
+            let mut rpc_output_rx = manager.subscribe_rpc_outputs();
+            let broker_for_rpc_output = broker.clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    match rpc_output_rx.recv().await {
+                        Ok(output) => {
+                            // Forward extension UI requests to the broker.
+                            broker_for_rpc_output
+                                .publish_rpc_output(output.port, output.payload.clone());
+                            // Diagnostic: log set_model / set_thinking_level
+                            // responses so we can see whether Side Chat's
+                            // startup profile RPCs reach Pi and succeed.
+                            let cmd = output
+                                .payload
+                                .get("command")
+                                .and_then(Value::as_str)
+                                .unwrap_or("");
+                            if cmd == "set_model" || cmd == "set_thinking_level" {
+                                let success = output
+                                    .payload
+                                    .get("success")
+                                    .and_then(Value::as_bool)
+                                    .unwrap_or(false);
+                                let model_id = output
+                                    .payload
+                                    .pointer("/data/model/id")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("");
+                                log::info!(
+                                    "[pi-desktop] rpc response port={} cmd={} success={} model={}",
+                                    output.port,
+                                    cmd,
+                                    success,
+                                    model_id
+                                );
+                            }
+                            // Capture get_available_models responses to populate
+                            // the shared model cache. The cache lets Side Chat,
+                            // Quick Chat, and new sessions render dropdowns
+                            // instantly without each re-querying Pi.
+                            if let Some(models) = output.payload.get("data").and_then(|d| d.get("models")) {
+                                if output
+                                    .payload
+                                    .get("command")
+                                    .and_then(Value::as_str)
+                                    == Some("get_available_models")
+                                {
+                                    manager_for_rpc_output.store_cached_models(
+                                        output.port,
+                                        serde_json::json!({ "models": models.clone() }),
+                                    );
+                                }
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    }
+                }
+            });
+
+            let mut exit_rx = manager.subscribe_exits();
+            let manager_for_exit = manager.clone();
+            let broker_for_exit = broker.clone();
+            let ephemeral_for_exit = ephemeral_registry.clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    match exit_rx.recv().await {
+                        Ok(exit) => {
+                            if let Some(lease) = ephemeral_for_exit
+                                .process_exit_cleanup(exit.port, exit.pid, exit.identity)
+                            {
+                                cleanup_ephemeral_lease(
+                                    &manager_for_exit,
+                                    &broker_for_exit,
+                                    &ephemeral_for_exit,
+                                    lease,
+                                );
+                            } else if !manager_for_exit.cleanup_exited_standby(exit) {
+                                broker_for_exit.unregister_port(exit.port);
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    }
+                }
+            });
 
             let home_cwd = dirs::home_dir()
                 .unwrap_or_default()
@@ -1155,21 +2458,30 @@ fn main() {
 
             app.manage(manager.clone());
             app.manage(broker.clone());
+            app.manage(owner_registry.clone());
+            app.manage(ephemeral_registry.clone());
 
             if startup_ok {
-                broker.register_session(initial_port, session_path.as_deref().unwrap_or(""));
                 let app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     if let Err(e) = wait_for_pi_health(initial_port, 30).await {
                         log::error!("Pi failed to start: {}", e);
-                        // Tear down the upstream reconnect loop started by
-                        // register_session so it doesn't spin forever against a
-                        // dead port every 750ms.
-                        if let Some(broker) = app_handle.try_state::<BrokerWsState>() {
-                            broker.unregister_port(initial_port);
-                        }
                     } else if let Some(broker) = app_handle.try_state::<BrokerWsState>() {
-                        if let Err(e) = open_workspace_window(&app_handle, initial_port, &broker.url()) {
+                        // Register only after the embedded server owns the port;
+                        // otherwise BrokerWs logs expected connection-refused
+                        // retries during every normal startup.
+                        broker.register_session(
+                            initial_port,
+                            session_path.as_deref().unwrap_or(""),
+                        );
+                        if let Some(manager) = app_handle.try_state::<PiManagerState>() {
+                            warm_model_cache(&manager, initial_port);
+                            warm_quick_chat_standby(manager.inner().clone());
+                            warm_side_chat_standby(manager.inner().clone(), PathBuf::from(&cwd));
+                        }
+                        if let Err(e) =
+                            open_workspace_window(&app_handle, initial_port, &cwd, &broker.url())
+                        {
                             log::error!("Failed to open window: {}", e);
                         }
                     } else {
@@ -1180,27 +2492,14 @@ fn main() {
 
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                let label = window.label();
-                if let Some(workspace_id) = label.strip_prefix("native-workspace-") {
-                    if let Some(manager) = window.try_state::<NativePiManagerState>() {
-                        manager.stop_workspace(workspace_id);
-                    }
-                    return;
-                }
-                if let Some(port_str) = label.strip_prefix("workspace-") {
-                    if let Ok(port) = port_str.parse::<u16>() {
-                        if let Some(manager) = window.try_state::<PiManagerState>() {
-                            manager.kill_workspace_dedicated(port);
-                            manager.kill(port);
-                        }
-                        if let Some(broker) = window.try_state::<BrokerWsState>() {
-                            broker.unregister_port(port);
-                        }
-                    }
-                }
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                handle_close_requested(window, api);
             }
+            tauri::WindowEvent::Destroyed => {
+                handle_window_destroyed(window);
+            }
+            _ => {}
         })
         // The main UI talks to the host exclusively over the broker WebSocket
         // (`broker_control`); the only remaining Tauri IPC command is
@@ -1215,6 +2514,7 @@ fn main() {
                     manager.stop_all();
                 }
                 if let Some(manager) = app_handle.try_state::<PiManagerState>() {
+                    manager.kill_all_standby();
                     manager.kill_all();
                 }
             }

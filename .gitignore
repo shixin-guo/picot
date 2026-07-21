@@ -1,6 +1,8 @@
 node_modules/
 .npm-cache/
 .worktrees/
+# npm lock file (this project uses bun exclusively; see AGENTS.md)
+package-lock.json
 .DS_Store
 
 # Tauri build artifacts
@@ -16,3 +18,13 @@ src-tauri/resources/pi/
 
 # Pi session exports
 pi-session-*.html
+# Local build artifacts (produced by scripts/build.sh)
+*.dmg
+*.zip
+# husky internal scripts (managed by `bun run prepare`)
+.husky/_/
+
+# Superpowers plans
+docs/superpowers/plans
+# Frontend vendor bundles (produced by scripts/build-frontend.js)
+public/vendor/

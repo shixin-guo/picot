@@ -1,6 +1,6 @@
 [package]
 name = "picot"
-version = "0.3.0"
+version = "0.3.5"
 description = "Pi Agent Desktop - session manager for pi coding agent"
 authors = ["Pi Desktop"]
 edition = "2021"
@@ -35,6 +35,10 @@ sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["fs"] }
+base64 = "0.22"
+rand = "0.8"
+subtle = "2"
+tempfile = "3"
 
 [profile.dev]
 incremental = true

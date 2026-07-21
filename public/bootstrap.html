@@ -60,12 +60,80 @@
       color: #8f98a8;
     }
   </style>
+  <script>
+    // Inline i18n for bootstrap error page — no external dependencies.
+    // The main app's i18n.js can't be loaded here because pi isn't running.
+    (() => {
+      function readLanguagePreference() {
+        try {
+          const cookies = document.cookie ? document.cookie.split("; ") : [];
+          for (const entry of cookies) {
+            const eq = entry.indexOf("=");
+            if (eq === -1) continue;
+            if (entry.slice(0, eq) !== "picot-language") continue;
+              const raw = entry.slice(eq + 1);
+              try {
+                return decodeURIComponent(raw);
+              } catch {
+                return raw;
+              }
+          }
+        } catch {}
+        return null;
+      }
+
+      function resolveBootstrapLocale(preference) {
+        if (preference === "en") return "en";
+        if (preference === "zh") return "zh";
+        // system or anything else: resolve from navigator
+        return navigator.language?.toLowerCase().startsWith("zh") ? "zh" : "en";
+      }
+
+      const enMessages = {
+        title: "Picot could not start",
+        descriptionPre: "The embedded",
+        descriptionPost: "runtime that ships with Picot failed to launch.",
+        help: "This usually means the installation is incomplete or corrupted. Reinstalling Picot normally fixes it. Click Retry startup after reinstalling or rebooting.",
+        retry: "Retry startup",
+        tauriUnavailable: "Tauri runtime is unavailable in this window.",
+        starting: "Starting Pi runtime...",
+        startupFailed: "Startup failed"
+      };
+
+      const zhMessages = {
+        title: "Picot 无法启动",
+        descriptionPre: "Picot 内置的",
+        descriptionPost: "运行时启动失败。",
+        help: "这通常意味着安装不完整或已损坏。重新安装 Picot 通常可以解决。重新安装或重启后点击「重试启动」。",
+        retry: "重试启动",
+        tauriUnavailable: "此窗口中 Tauri 运行时不可用。",
+        starting: "正在启动 Pi 运行时...",
+        startupFailed: "启动失败"
+      };
+
+      const pref = readLanguagePreference();
+      const locale = resolveBootstrapLocale(pref);
+      const messages = locale === "zh" ? zhMessages : enMessages;
+
+      document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
+
+      document.addEventListener("DOMContentLoaded", () => {
+        document.getElementById("bootstrap-title").textContent = messages.title;
+        document.getElementById("bootstrap-desc-pre").textContent = messages.descriptionPre;
+        document.getElementById("bootstrap-desc-post").textContent = messages.descriptionPost;
+        document.getElementById("bootstrap-help").textContent = messages.help;
+        document.getElementById("retry-btn").textContent = messages.retry;
+      });
+
+      window.__bootstrapMessages = messages;
+    })();
+  </script>
 </head>
 <body>
   <main class="card">
-    <h1>Picot could not start</h1>
-    <p>The embedded <code>pi</code> runtime that ships with Picot failed to launch.</p>
-    <p>This usually means the installation is incomplete or corrupted. Reinstalling Picot normally fixes it. Click <b>Retry startup</b> after reinstalling or rebooting.</p>
+    <h1 id="bootstrap-title">Picot could not start</h1>
+    <p><span id="bootstrap-desc-pre">The embedded</span> <code>pi</code> <span id="bootstrap-desc-post">runtime that ships with Picot failed to launch.</span></p>
+    <p id="bootstrap-help">This usually means the installation is incomplete or corrupted. Reinstalling Picot normally fixes it. Click Retry startup after reinstalling or rebooting.</p>
     <div id="startup-error" class="error"></div>
     <div class="actions">
       <button id="retry-btn" type="button">Retry startup</button>
@@ -76,6 +144,7 @@
     const retryBtn = document.getElementById('retry-btn');
     const hint = document.getElementById('hint');
     const errorBox = document.getElementById('startup-error');
+    const messages = window.__bootstrapMessages;
     const rawError = new URLSearchParams(window.location.search).get('startupError');
     if (rawError) {
       errorBox.style.display = 'block';
@@ -85,16 +154,16 @@
     retryBtn.addEventListener('click', async () => {
       const invoke = window.__TAURI__?.core?.invoke;
       if (typeof invoke !== 'function') {
-        hint.textContent = 'Tauri runtime is unavailable in this window.';
+        hint.textContent = messages.tauriUnavailable;
         return;
       }
       retryBtn.disabled = true;
-      hint.textContent = 'Starting Pi runtime...';
+      hint.textContent = messages.starting;
       try {
         const port = await invoke('cmd_retry_startup');
         window.location.href = `http://localhost:${port}`;
       } catch (error) {
-        hint.textContent = String(error?.message || error || 'Startup failed');
+        hint.textContent = String(error?.message || error || messages.startupFailed);
         retryBtn.disabled = false;
       }
     });

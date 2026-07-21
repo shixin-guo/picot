@@ -126,34 +126,40 @@ The frontend (`public/`) is vanilla JS with **no framework**. Keep it modular:
 - **No shared-state side-effects at import time.** Modules should export functions/classes; side-effects that mutate global state should be triggered explicitly by the caller, not at module load.
 - **Naming.** Use kebab-case filenames that match the single responsibility (`session-sidebar.js`, `file-browser.js`, `workspace-actions.js`).
 
-## Architecture
+## Architecture authority
 
-Picot is a Tauri v2 app. The three main layers:
+[`ARCHITECTURE.md`](ARCHITECTURE.md) is the authoritative source for product
+architecture, feature invariants, lifecycle rules, security boundaries, and
+feature-specific validation. Before changing any UI behavior, persistence,
+workspace I/O, or cross-process communication, read the applicable architecture
+section and the design documents it links. Do not duplicate those detailed
+contracts in this guide.
 
-**1. Rust / Tauri (`src-tauri/`)** — process lifecycle and window management.
-- `src-tauri/src/pi_manager.rs` — `PiManager` spawns one `pi --mode rpc` subprocess per workspace, each on its own port. Manages port allocation, process lifecycle, and RPC message forwarding.
-- `src-tauri/src/main.rs` — Tauri commands wired to `PiManager`: `cmd_open_workspace`, `cmd_new_session`, `cmd_switch_session`, `cmd_stop_instance`, `cmd_pick_folder`.
+## Architecture map
 
-**2. Frontend (`public/`)** — vanilla JS, no framework.
-- `app.js` — main entry: workspace launcher, window setup, session nav, settings
-- `websocket-client.js` — WebSocket client for streaming chat with pi
-- `state.js` — shared app state
-- `tauri-bridge.js` — wraps Tauri IPC (`window.tauriNative.*`)
-- `message-renderer.js`, `tool-card.js`, `markdown.js` — chat message rendering
-- `session-sidebar.js` — session history list
-- `file-browser.js` — lazy-loaded file tree sidebar
-- `dialogs.js`, `workspace-actions.js` — modal dialogs and workspace actions
-- `themes.js` — theme switching (6 built-in themes)
+[`ARCHITECTURE.md`](ARCHITECTURE.md) is the canonical map of the Rust host,
+embedded server, vanilla-JS frontend, transport paths, startup sequence,
+persistence model, and feature ownership. Read it before selecting a module or
+adding a new communication path.
 
-**3. Embedded server (`extensions/`)** — TypeScript compiled to `dist/embedded-server.mjs`.
-- Runs **inside** the `pi --mode rpc` process as a pi extension
-- Owns the HTTP + WebSocket surface the Tauri WebView talks to: static asset serving, `/api/sessions`, `/api/cost-dashboard`, RPC bridge for prompts
+This guide intentionally keeps only repository-wide operating rules. Put
+feature-specific invariants, module indexes, and design links in
+`ARCHITECTURE.md`, then update that document whenever the implementation
+materially changes.
 
-## Key data flows
+For Quick Chat or Side Chat changes, read the corresponding
+[`docs/superpowers/specs/2026-07-15-quick-and-side-chat-design.md`](docs/superpowers/specs/2026-07-15-quick-and-side-chat-design.md)
+and the temporary-chat section of `ARCHITECTURE.md` before choosing an entry
+point, transport path, or lifecycle behavior.
 
-- User action → `window.tauriNative.*` (tauri-bridge.js) → Tauri IPC → PiManager (Rust) → `pi --mode rpc` subprocess
-- Chat messages → WebSocket (websocket-client.js) → embedded-server.mjs (inside pi) → pi RPC
-- Multi-session: "+ New Session" spawns a **headless** pi process (no new OS window) and navigates the current WebView to it. The old pi process keeps running.
+## Cross-boundary and prototype verification
+
+Before changing a browser/server adapter, a popup/overlay, or shared-state
+rerender behavior, read and apply
+[`docs/engineering-lessons.md`](docs/engineering-lessons.md). Its applicable
+rules are mandatory release criteria; do not treat a visual prototype as
+non-binding inspiration or assume a Node HTTP object when the production path
+uses Bun's Fetch adapter.
 
 ## Bumping the embedded pi version
 

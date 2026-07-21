@@ -2,11 +2,11 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Picot",
   "identifier": "works.earendil.picot",
-  "version": "0.3.0",
+  "version": "0.3.5",
   "build": {
     "frontendDist": "../public",
-    "beforeDevCommand": "bun run fetch:pi",
-    "beforeBuildCommand": "bun run fetch:pi && bun run build:extensions"
+    "beforeDevCommand": "bun run fetch:pi && bun run build:frontend",
+    "beforeBuildCommand": "bun run fetch:pi && bun run build:extensions && bun run build:frontend"
   },
   "app": {
     "withGlobalTauri": true,

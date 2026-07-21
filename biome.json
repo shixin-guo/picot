@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.2/schema.json",
   "files": {
     "includes": [
       "**",
@@ -25,33 +25,33 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "a11y": {
-        "recommended": true,
+        "preset": "recommended",
         "noSvgWithoutTitle": "off",
         "useButtonType": "off"
       },
       "complexity": {
-        "recommended": true,
+        "preset": "recommended",
         "noImportantStyles": "off"
       },
       "correctness": {
-        "recommended": true
+        "preset": "recommended"
       },
       "nursery": {
-        "recommended": true
+        "preset": "recommended"
       },
       "performance": {
-        "recommended": true
+        "preset": "recommended"
       },
       "security": {
-        "recommended": true
+        "preset": "recommended"
       },
       "style": {
-        "recommended": true
+        "preset": "recommended"
       },
       "suspicious": {
-        "recommended": true
+        "preset": "recommended"
       }
     }
   },
@@ -66,5 +66,18 @@
     "formatter": {
       "enabled": true
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["**/*.test.js"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noDocumentCookie": "off",
+            "noAssignInExpressions": "off"
+          }
+        }
+      }
+    }
+  ]
 }

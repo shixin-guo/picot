@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { initI18n } from "../i18n.js";
 import {
   buildWorkspaceUrl,
   isDeadPortError,
@@ -6,6 +9,33 @@ import {
   startNewProjectChat,
   withBrokerWs,
 } from "./actions.js";
+
+beforeEach(async () => {
+  global.fetch = vi.fn(async (url) => {
+    const u = String(url);
+    if (u.includes("/locales/en.json")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          errors: {
+            newSessionFailed: "Failed to start new session",
+            newSessionOnlyNative: "New session is only supported with a native host.",
+            newChatFailed: "Failed to start new chat",
+            openProjectFailed: "Failed to open project",
+            openFolderFailed: "Failed to open folder",
+            attachWorkspaceFailed: "Failed to attach to workspace",
+          },
+          sidebar: {
+            startingSession: "Starting session…",
+          },
+        }),
+      };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  });
+  await initI18n();
+});
 
 function makeTransport(newPort = 47826, brokerWsUrl) {
   return {
@@ -40,6 +70,39 @@ describe("startInWindowNewSession parallel-spawn", () => {
     );
     expect(onParallelSessionCreated).toHaveBeenCalledWith(47826, "/work");
     expect(dismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels a cross-workspace transition when ephemeral settlement is rejected", async () => {
+    const transport = makeTransport();
+    transport.prepareWorkspaceTarget = vi.fn().mockResolvedValue({
+      classification: "cross",
+      transitionGeneration: 7,
+      targetOrigin: "http://127.0.0.1:47826/",
+    });
+    transport.commitWorkspaceTransition = vi.fn();
+    transport.cancelWorkspaceTransition = vi.fn().mockResolvedValue(undefined);
+    const beforeWorkspaceTransition = vi.fn().mockResolvedValue(false);
+    const onWorkspaceTransitionCancelled = vi.fn();
+    const navigate = vi.fn();
+
+    const ok = await startInWindowNewSession({
+      transport,
+      getCurrentCwd: () => "/other",
+      getCurrentPort: () => 47820,
+      navigate,
+      onBeforeSwap: vi.fn(),
+      shouldSpawnParallel: () => true,
+      beforeWorkspaceTransition,
+      onWorkspaceTransitionCancelled,
+      renderError: vi.fn(),
+    });
+
+    expect(ok).toBe(false);
+    expect(beforeWorkspaceTransition).toHaveBeenCalled();
+    expect(onWorkspaceTransitionCancelled).toHaveBeenCalledTimes(1);
+    expect(transport.cancelWorkspaceTransition).toHaveBeenCalledWith(7);
+    expect(transport.commitWorkspaceTransition).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it("dismisses the overlay and surfaces an error if activation throws", async () => {
@@ -288,5 +351,38 @@ describe("startNewProjectChat parallel-spawn", () => {
       expect.objectContaining({ waitForHealth: true }),
     );
     expect(dismiss).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("renderError i18n safety", () => {
+  const sourcePath = join(process.cwd(), "public/workspace-actions.js");
+
+  it("has no renderError template literals with raw English text", () => {
+    const src = readFileSync(sourcePath, "utf8");
+    const lines = src.split("\n");
+    const renderErrorLines = lines.filter((l) => l.includes("renderError("));
+    expect(renderErrorLines.length).toBeGreaterThan(0);
+    // A template literal starting with English text (not ${t(…) or ${variable})
+    // is a raw English literal that bypasses i18n.
+    const rawEnglishLines = renderErrorLines.filter((line) => /renderError\(`[A-Za-z]/.test(line));
+    expect(rawEnglishLines).toEqual([]);
+  });
+
+  it('wraps all renderError calls with t("errors.*", …)', () => {
+    const src = readFileSync(sourcePath, "utf8");
+    const lines = src.split("\n");
+    const renderErrorLines = lines.filter((l) => l.includes("renderError("));
+    expect(renderErrorLines.length).toBeGreaterThan(0);
+    // Every renderError call must use t("errors.…") directly or via the
+    // errorLabel variable (which is always assigned from t("errors.…")).
+    const unwrapped = renderErrorLines.filter(
+      (line) => !line.includes('t("errors.') && !line.includes("errorLabel"),
+    );
+    expect(unwrapped).toEqual([]);
+    // Every errorLabel assignment must derive from t("errors.…").
+    const errorLabelLines = lines.filter((l) => /errorLabel\s*[:=]/.test(l));
+    expect(errorLabelLines.length).toBeGreaterThan(0);
+    const badErrorLabels = errorLabelLines.filter((line) => !line.includes('t("errors.'));
+    expect(badErrorLabels).toEqual([]);
   });
 });
