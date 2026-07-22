@@ -40,6 +40,11 @@ to the actual prerelease release. Any tag containing a hyphen, such as
 `v0.4.0-beta.1`, is treated as a prerelease by the release workflow and updates
 the beta channel manifest after all platform builds finish.
 
+Because Windows MSI only accepts numeric prerelease identifiers, the release
+script encodes `beta.N` as `-10000+N`, `rc.N` as `-20000+N`, and `alpha.N` as
+`-30000+N` in the bundled app version. The Git tag and GitHub release name
+remain human-readable.
+
 Keep stable tags free of a hyphen, for example `v0.4.0`, so they remain
 available through the stable endpoint and are never selected by beta-only
 publishing.

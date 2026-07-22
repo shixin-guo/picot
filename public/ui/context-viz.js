@@ -28,8 +28,8 @@ export function setupContextViz({
     const free = Math.max(0, total - totalUsed);
 
     const segments = [
-      { key: "cache", label: "Cached", tokens: cacheRead, color: "cache" },
-      { key: "messages", label: "Input", tokens: input, color: "messages" },
+      { key: "cache", label: "Cached (reused)", tokens: cacheRead, color: "cache" },
+      { key: "input", label: "New (this turn)", tokens: input, color: "input" },
       { key: "free", label: "Available", tokens: free, color: "free" },
     ];
 

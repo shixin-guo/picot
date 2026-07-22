@@ -24,6 +24,27 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
   exit 1
 fi
 
+# Windows MSI only accepts numeric prerelease identifiers up to 65535. Keep
+# the human-readable prerelease in the Git tag, but encode the app version so
+# the same release can be bundled for every target.
+APP_VERSION="$VERSION"
+if [[ "$VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-(alpha|beta|rc)\.([0-9]+)$ ]]; then
+  BASE_VERSION="${BASH_REMATCH[1]}"
+  PRE_RELEASE="${BASH_REMATCH[2]}"
+  PRE_NUMBER="${BASH_REMATCH[3]}"
+  case "$PRE_RELEASE" in
+    alpha) PRE_OFFSET=30000 ;;
+    beta) PRE_OFFSET=10000 ;;
+    rc) PRE_OFFSET=20000 ;;
+  esac
+  ENCODED_PRE_NUMBER=$((PRE_OFFSET + 10#$PRE_NUMBER))
+  if (( ENCODED_PRE_NUMBER > 65535 )); then
+    echo "Prerelease number is too large for Windows MSI: $VERSION"
+    exit 1
+  fi
+  APP_VERSION="$BASE_VERSION-$ENCODED_PRE_NUMBER"
+fi
+
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Not inside a git repository."
   exit 1
@@ -50,8 +71,8 @@ if [[ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]]; then
   exit 1
 fi
 
-echo "Updating versions to $VERSION..."
-PI_RELEASE_VERSION="$VERSION" bun run - <<'EOF'
+echo "Updating app versions to $APP_VERSION (release tag: $TAG)..."
+PI_RELEASE_VERSION="$APP_VERSION" bun run - <<'EOF'
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 

@@ -1311,7 +1311,7 @@ body {
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
-.context-bar-segment.messages {
+.context-bar-segment.input {
   background: var(--accent);
 }
 .context-bar-segment.cache {
@@ -1349,7 +1349,7 @@ body {
   flex-shrink: 0;
 }
 
-.context-legend-dot.messages {
+.context-legend-dot.input {
   background: var(--accent);
 }
 .context-legend-dot.cache {
@@ -2791,9 +2791,7 @@ body {
   position: relative;
   display: flex;
   height: 20px;
-  border-radius: var(--radius-sm);
   background: var(--bg-glass-strong);
-  border: 1px solid var(--border);
   overflow: hidden;
 }
 
