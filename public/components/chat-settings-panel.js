@@ -15,7 +15,10 @@ class ChatSettingsPanel extends HTMLElement {
     this.innerHTML = `
       <div class="settings-body">
         <div class="settings-section">
-          <div class="settings-section-title">Agent Inbox</div>
+          <div class="settings-section-title chat-settings-title-row">
+            Agent Inbox
+            <span class="ui-badge chat-settings-beta-badge">Beta</span>
+          </div>
           <div class="settings-row" id="setting-super-agent">
             <span class="settings-label settings-label-stack">
               <span class="settings-label-main">Start automatically</span>

@@ -1719,22 +1719,6 @@ body {
   color: var(--accent-text);
 }
 
-.settings-nav-item-beta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.settings-nav-beta-badge {
-  margin-left: auto;
-  border-color: var(--accent);
-  color: var(--accent-text);
-  background: var(--accent-subtle);
-  font-size: var(--font-size-sm);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
 .settings-nav-back {
   margin-top: auto;
   display: flex;
@@ -1953,6 +1937,22 @@ body {
   letter-spacing: 0.06em;
   margin-bottom: 8px;
   font-weight: bold;
+}
+
+.chat-settings-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chat-settings-beta-badge {
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-subtle);
+  font-size: var(--font-size-sm);
+  font-weight: normal;
+  letter-spacing: normal;
+  text-transform: uppercase;
 }
 
 .settings-row {
