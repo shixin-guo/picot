@@ -1,3 +1,5 @@
+// Render logic for the Settings → Usage tab cost dashboard.
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -22,15 +24,8 @@ function formatCompact(value) {
   }).format(Number(value || 0));
 }
 
-function formatHourLabel(hour) {
-  if (!Number.isFinite(hour)) return "N/A";
-  const suffix = hour >= 12 ? "PM" : "AM";
-  const hour12 = hour % 12 || 12;
-  return `${hour12} ${suffix}`;
-}
-
 function renderEmpty(target, message = "No data in selected range.") {
-  target.innerHTML = `<div class="empty">${escapeHtml(message)}</div>`;
+  target.innerHTML = `<div class="cost-dash-empty-state">${escapeHtml(message)}</div>`;
 }
 
 const STAT_ICONS = {
@@ -52,14 +47,14 @@ const STAT_ICONS = {
 function buildStatCard(title, value, tone, extraClass = "") {
   const icon = STAT_ICONS[title] || "";
   return `
-    <article class="infobar-stat-card infobar-card-tone-${tone} ${extraClass}">
-      <div class="infobar-stat-title">${icon ? `<span class="infobar-stat-icon">${icon}</span>` : ""}${escapeHtml(title)}</div>
-      <div class="infobar-stat-value">${escapeHtml(value)}</div>
+    <article class="cost-dash-stat-card cost-dash-card-tone-${tone} ${extraClass}">
+      <div class="cost-dash-stat-title">${icon ? `<span class="cost-dash-stat-icon">${icon}</span>` : ""}${escapeHtml(title)}</div>
+      <div class="cost-dash-stat-value">${escapeHtml(value)}</div>
     </article>
   `;
 }
 
-export function renderInfobarOverview(target, overview = {}, usage = {}) {
+function renderOverview(target, overview = {}, usage = {}) {
   const stats = [
     ["Total cost", formatUsd(overview.totalCost), "green", ""],
     ["Sessions", formatInt(overview.sessions), "blue", ""],
@@ -79,28 +74,28 @@ export function renderInfobarOverview(target, overview = {}, usage = {}) {
     .join("");
 }
 
-export function renderInfobarModels(target, rows = [], payload = {}) {
+function renderModels(target, rows = [], payload = {}) {
   if (!Array.isArray(rows) || rows.length === 0) {
     renderEmpty(target);
     return;
   }
   const modelSummary = buildModelSummary(rows, payload);
   target.innerHTML = `
-    <div class="infobar-models-card">
-      <div class="infobar-models-chart-wrap">
-        <canvas class="infobar-models-chart" width="960" height="320"></canvas>
+    <div class="cost-dash-models-card">
+      <div class="cost-dash-models-chart-wrap">
+        <canvas class="cost-dash-models-chart" width="960" height="320"></canvas>
       </div>
-      <div class="infobar-models-legend">
+      <div class="cost-dash-models-legend">
         ${modelSummary.models
           .map((model, index) => {
             const percent = Math.round((model.fraction || 0) * 1000) / 10;
             return `
-              <div class="infobar-model-legend-row">
-                <div class="infobar-model-legend-main">
-                  <span class="infobar-tool-legend-dot infobar-model-color-${index + 1}"></span>
-                  <span class="infobar-model-legend-name">${escapeHtml(model.name)}</span>
+              <div class="cost-dash-model-legend-row">
+                <div class="cost-dash-model-legend-main">
+                  <span class="cost-dash-tool-legend-dot cost-dash-model-color-${index + 1}"></span>
+                  <span class="cost-dash-model-legend-name">${escapeHtml(model.name)}</span>
                 </div>
-                <div class="infobar-model-legend-meta">
+                <div class="cost-dash-model-legend-meta">
                   <span>${formatCompact(model.inputTokens)} in · ${formatCompact(model.outputTokens)} out</span>
                   <span>${percent}%</span>
                 </div>
@@ -111,10 +106,10 @@ export function renderInfobarModels(target, rows = [], payload = {}) {
       </div>
     </div>
   `;
-  renderModelsChart(target.querySelector(".infobar-models-chart"), modelSummary);
+  renderModelsChart(target.querySelector(".cost-dash-models-chart"), modelSummary);
 }
 
-export function renderInfobarProjects(target, rows = []) {
+function renderProjects(target, rows = []) {
   if (!Array.isArray(rows) || rows.length === 0) {
     renderEmpty(target);
     return;
@@ -122,26 +117,26 @@ export function renderInfobarProjects(target, rows = []) {
   const top = rows.slice(0, 6);
   const totalCost = top.reduce((sum, r) => sum + Number(r.cost || 0), 0);
   target.innerHTML = `
-    <div class="infobar-projects-card">
-      <div class="infobar-tool-chart-layout">
-        <div class="infobar-tool-chart-wrap">
-          <canvas class="infobar-projects-chart" width="240" height="240"></canvas>
+    <div class="cost-dash-projects-card">
+      <div class="cost-dash-tool-chart-layout">
+        <div class="cost-dash-tool-chart-wrap">
+          <canvas class="cost-dash-projects-chart" width="240" height="240"></canvas>
         </div>
-        <div class="infobar-tool-legend">
+        <div class="cost-dash-tool-legend">
           ${top
             .map((row, index) => {
               const percent =
                 totalCost > 0 ? Math.round((Number(row.cost || 0) / totalCost) * 100) : 0;
               return `
-                <div class="infobar-tool-legend-row">
-                  <div class="infobar-tool-legend-main">
-                    <span class="infobar-tool-legend-dot" data-tool-color="${index}"></span>
+                <div class="cost-dash-tool-legend-row">
+                  <div class="cost-dash-tool-legend-main">
+                    <span class="cost-dash-tool-legend-dot" data-tool-color="${index}"></span>
                     <div>
-                      <div class="infobar-tool-legend-title">${escapeHtml(row.name || "unknown")}</div>
-                      <div class="infobar-tool-legend-subtitle">${formatInt(row.sessions || 0)} sessions</div>
+                      <div class="cost-dash-tool-legend-title">${escapeHtml(row.name || "unknown")}</div>
+                      <div class="cost-dash-tool-legend-subtitle">${formatInt(row.sessions || 0)} sessions</div>
                     </div>
                   </div>
-                  <div class="infobar-tool-legend-values">
+                  <div class="cost-dash-tool-legend-values">
                     <span>${formatUsd(row.cost)}</span>
                     <span>${percent}%</span>
                   </div>
@@ -153,55 +148,38 @@ export function renderInfobarProjects(target, rows = []) {
       </div>
     </div>
   `;
-  renderProjectsChart(target.querySelector(".infobar-projects-chart"), top);
+  renderProjectsChart(target.querySelector(".cost-dash-projects-chart"), top);
 }
 
-export function renderInfobarUsage(target, usage = {}) {
-  const summaryCards = [
-    ["Total Tokens", formatCompact(usage.totalTokens), "blue"],
-    ["Input", formatCompact(usage.inputTokens), "teal"],
-    ["Output", formatCompact(usage.outputTokens), "green"],
-    ["Cache Read", formatCompact(usage.cacheRead), "amber"],
-    ["Cache Write", formatCompact(usage.cacheWrite), "violet"],
-    ["Tool Calls", formatInt(usage.toolCalls), "rose"],
-  ];
-
-  target.innerHTML = `
-    <div class="infobar-usage-grid">
-      ${summaryCards.map(([title, value, tone]) => buildStatCard(title, value, tone)).join("")}
-    </div>
-  `;
-}
-
-export function renderInfobarToolCost(target, usage = {}, metaTarget = null) {
+function renderToolCost(target, usage = {}, metaTarget = null) {
   const tools = Array.isArray(usage.tools) ? usage.tools : [];
   if (metaTarget) {
     metaTarget.textContent = `${formatInt(tools.length)} tracked`;
   }
   target.innerHTML = `
-    <div class="infobar-tool-cost-card">
+    <div class="cost-dash-tool-cost-card">
       ${
         tools.length > 0
           ? `
-        <div class="infobar-tool-chart-layout">
-          <div class="infobar-tool-chart-wrap">
-            <canvas class="infobar-tool-chart" width="240" height="240"></canvas>
+        <div class="cost-dash-tool-chart-layout">
+          <div class="cost-dash-tool-chart-wrap">
+            <canvas class="cost-dash-tool-chart" width="240" height="240"></canvas>
           </div>
-          <div class="infobar-tool-legend">
+          <div class="cost-dash-tool-legend">
             ${tools
               .slice(0, 6)
               .map((row, index) => {
                 const percent = Math.round((row.fraction || 0) * 100);
                 return `
-                  <div class="infobar-tool-legend-row">
-                    <div class="infobar-tool-legend-main">
-                      <span class="infobar-tool-legend-dot" data-tool-color="${index}"></span>
+                  <div class="cost-dash-tool-legend-row">
+                    <div class="cost-dash-tool-legend-main">
+                      <span class="cost-dash-tool-legend-dot" data-tool-color="${index}"></span>
                       <div>
-                        <div class="infobar-tool-legend-title">${escapeHtml(row.name || "unknown")}</div>
-                        <div class="infobar-tool-legend-subtitle">${formatInt(row.count)} sessions</div>
+                        <div class="cost-dash-tool-legend-title">${escapeHtml(row.name || "unknown")}</div>
+                        <div class="cost-dash-tool-legend-subtitle">${formatInt(row.count)} sessions</div>
                       </div>
                     </div>
-                    <div class="infobar-tool-legend-values">
+                    <div class="cost-dash-tool-legend-values">
                       <span>${formatUsd(row.cost)}</span>
                       <span>${percent}%</span>
                     </div>
@@ -212,13 +190,13 @@ export function renderInfobarToolCost(target, usage = {}, metaTarget = null) {
           </div>
         </div>
       `
-          : '<div class="empty">No tool usage in selected range.</div>'
+          : '<div class="cost-dash-empty-state">No tool usage in selected range.</div>'
       }
     </div>
   `;
 
   if (tools.length > 0) {
-    renderToolCostChart(target.querySelector(".infobar-tool-chart"), tools.slice(0, 6));
+    renderToolCostChart(target.querySelector(".cost-dash-tool-chart"), tools.slice(0, 6));
   }
 }
 
@@ -235,15 +213,15 @@ function renderSessionsPanel(target, sessions = []) {
     return;
   }
   target.innerHTML = `
-    <div class="infobar-sessions-table-wrap">
-      <table class="infobar-sessions-table">
+    <div class="cost-dash-sessions-table-wrap">
+      <table class="cost-dash-sessions-table">
         <thead>
           <tr>
             <th>Session</th>
             <th>Model</th>
-            <th class="num">Tokens</th>
-            <th class="num">Tools</th>
-            <th class="num">Cost</th>
+            <th class="cost-dash-num">Tokens</th>
+            <th class="cost-dash-num">Tools</th>
+            <th class="cost-dash-num">Cost</th>
             <th>Date</th>
           </tr>
         </thead>
@@ -252,15 +230,15 @@ function renderSessionsPanel(target, sessions = []) {
             .map(
               (session) => `
             <tr>
-              <td class="infobar-sessions-td-title">
-                <div class="infobar-sessions-title">${escapeHtml(session.title || "Untitled")}</div>
-                ${session.workspace ? `<div class="infobar-sessions-workspace">${escapeHtml(session.workspace)}</div>` : ""}
+              <td class="cost-dash-sessions-td-title">
+                <div class="cost-dash-sessions-title">${escapeHtml(session.title || "Untitled")}</div>
+                ${session.workspace ? `<div class="cost-dash-sessions-workspace">${escapeHtml(session.workspace)}</div>` : ""}
               </td>
-              <td class="infobar-sessions-td-model">${escapeHtml(session.model || "—")}</td>
-              <td class="num">${formatCompact(session.totalTokens)}</td>
-              <td class="num">${formatInt(session.toolCalls)}</td>
-              <td class="num infobar-sessions-cost">${formatUsd(session.totalCost)}</td>
-              <td class="infobar-sessions-td-date">${formatSessionDate(session.time)}</td>
+              <td class="cost-dash-sessions-td-model">${escapeHtml(session.model || "—")}</td>
+              <td class="cost-dash-num">${formatCompact(session.totalTokens)}</td>
+              <td class="cost-dash-num">${formatInt(session.toolCalls)}</td>
+              <td class="cost-dash-num cost-dash-sessions-cost">${formatUsd(session.totalCost)}</td>
+              <td class="cost-dash-sessions-td-date">${formatSessionDate(session.time)}</td>
             </tr>
           `,
             )
@@ -315,12 +293,6 @@ function deriveOverviewMetrics(payload, overview) {
     }
   }
 
-  const peakHourEntry =
-    Array.from(hourCounts.entries()).sort((a, b) => b[1] - a[1] || a[0] - b[0])[0] || null;
-  const favoriteModelEntry =
-    Array.from(modelCounts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0] ||
-    null;
-
   return {
     totalCost: overview.totalCost || payload.summary?.totalCost || 0,
     sessions: overview.sessionCount || sessions.length,
@@ -329,39 +301,7 @@ function deriveOverviewMetrics(payload, overview) {
     activeDays: overview.daysActive || sortedDays.length,
     currentStreak,
     longestStreak,
-    peakHour: peakHourEntry ? formatHourLabel(peakHourEntry[0]) : "N/A",
-    favoriteModel: favoriteModelEntry?.[0] || "N/A",
   };
-}
-
-function _buildActivityDays(payload) {
-  const from = payload.range?.from ? new Date(payload.range.from) : null;
-  const to = payload.range?.to ? new Date(payload.range.to) : null;
-  const sessions = Array.isArray(payload.sessions) ? payload.sessions : [];
-  const intensityByDay = new Map();
-
-  for (const session of sessions) {
-    const time = new Date(session.time);
-    if (!Number.isFinite(time.getTime())) continue;
-    const key = time.toISOString().slice(0, 10);
-    intensityByDay.set(key, (intensityByDay.get(key) || 0) + Number(session.totalTokens || 0));
-  }
-
-  if (!from || !to || !Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime())) {
-    return [];
-  }
-
-  const days = [];
-  const cursor = new Date(from);
-  cursor.setHours(0, 0, 0, 0);
-  const end = new Date(to);
-  end.setHours(0, 0, 0, 0);
-  while (cursor <= end) {
-    const key = cursor.toISOString().slice(0, 10);
-    days.push({ key, value: intensityByDay.get(key) || 0 });
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return days;
 }
 
 function renderActivityPanel(target, payload) {
@@ -392,21 +332,21 @@ function renderActivityPanel(target, payload) {
   const monthLabels = buildActivityMonthLabels(days, leadingEmptyDays);
   const emptyCells = Array.from(
     { length: leadingEmptyDays },
-    () => '<div class="infobar-activity-cell is-empty" aria-hidden="true"></div>',
+    () => '<div class="cost-dash-activity-cell is-empty" aria-hidden="true"></div>',
   ).join("");
 
   target.innerHTML = `
-    <div class="infobar-activity-calendar" style="--activity-columns:${weekColumns}">
-      <div class="infobar-activity-months" aria-hidden="true">
+    <div class="cost-dash-activity-calendar" style="--activity-columns:${weekColumns}">
+      <div class="cost-dash-activity-months" aria-hidden="true">
         ${monthLabels
           .map(
             (label) =>
-              `<span class="infobar-activity-month" style="grid-column:${label.column}">${escapeHtml(label.name)}</span>`,
+              `<span class="cost-dash-activity-month" style="grid-column:${label.column}">${escapeHtml(label.name)}</span>`,
           )
           .join("")}
       </div>
-      <div class="infobar-activity-body">
-        <div class="infobar-activity-weekdays" aria-hidden="true">
+      <div class="cost-dash-activity-body">
+        <div class="cost-dash-activity-weekdays" aria-hidden="true">
           <span></span>
           <span>Mon</span>
           <span></span>
@@ -415,7 +355,7 @@ function renderActivityPanel(target, payload) {
           <span>Fri</span>
           <span></span>
         </div>
-        <div class="infobar-activity-grid">
+        <div class="cost-dash-activity-grid">
           ${emptyCells}${days
             .map((day) => {
               let level = 0;
@@ -426,18 +366,18 @@ function renderActivityPanel(target, payload) {
                 else if (ratio >= 0.25) level = 2;
                 else if (ratio > 0) level = 1;
               }
-              return `<div class="infobar-activity-cell level-${level}" title="${day.key} · ${formatCompact(day.value)} tokens"></div>`;
+              return `<div class="cost-dash-activity-cell level-${level}" title="${day.key} · ${formatCompact(day.value)} tokens"></div>`;
             })
             .join("")}
         </div>
       </div>
-      <div class="infobar-activity-footer">
+      <div class="cost-dash-activity-footer">
         <span>Less</span>
-        <span class="infobar-activity-cell level-0" aria-hidden="true"></span>
-        <span class="infobar-activity-cell level-1" aria-hidden="true"></span>
-        <span class="infobar-activity-cell level-2" aria-hidden="true"></span>
-        <span class="infobar-activity-cell level-3" aria-hidden="true"></span>
-        <span class="infobar-activity-cell level-4" aria-hidden="true"></span>
+        <span class="cost-dash-activity-cell level-0" aria-hidden="true"></span>
+        <span class="cost-dash-activity-cell level-1" aria-hidden="true"></span>
+        <span class="cost-dash-activity-cell level-2" aria-hidden="true"></span>
+        <span class="cost-dash-activity-cell level-3" aria-hidden="true"></span>
+        <span class="cost-dash-activity-cell level-4" aria-hidden="true"></span>
         <span>More</span>
       </div>
     </div>
@@ -506,21 +446,6 @@ function buildModelSummary(rows, payload) {
       data: labels.map((label) => Number(byDay.get(label)?.[model.name] || 0)),
     })),
   };
-}
-
-function hexToRgba(hex, alpha) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function _makeBarGradient(ctx, chartArea, color) {
-  if (!chartArea) return color;
-  const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-  gradient.addColorStop(0, color);
-  gradient.addColorStop(1, hexToRgba(color, 0.5));
-  return gradient;
 }
 
 function getModelChartPalette() {
@@ -632,7 +557,7 @@ function renderModelsChart(canvas, modelSummary) {
 
   canvas.replaceWith(
     Object.assign(document.createElement("div"), {
-      className: "empty",
+      className: "cost-dash-empty-state",
       textContent: "Chart unavailable in this environment.",
     }),
   );
@@ -689,7 +614,7 @@ function renderProjectsChart(canvas, rows) {
 
   canvas.replaceWith(
     Object.assign(document.createElement("div"), {
-      className: "empty",
+      className: "cost-dash-empty-state",
       textContent: "Chart unavailable in this environment.",
     }),
   );
@@ -754,22 +679,24 @@ function renderToolCostChart(canvas, tools) {
 
   canvas.replaceWith(
     Object.assign(document.createElement("div"), {
-      className: "infobar-tool-chart-fallback",
+      className: "cost-dash-tool-chart-fallback",
       style: `background: conic-gradient(${conicStops.values.join(", ")});`,
     }),
   );
 }
 
-export function renderCostInfobar(section, payload = {}) {
+// Renders the full Usage dashboard into `section`, given the same
+// `{ infobar, sessions, summary, range }` payload shape used by
+// `adaptDashboardToInfobarPayload` in `cost-dashboard.js`.
+export function renderCostDashboard(section, payload = {}) {
   if (!section) return;
-  const overviewEl = section.querySelector("#infobar-overview-grid");
-  const activityEl = section.querySelector("#infobar-activity-panel");
-  const overviewNoteEl = section.querySelector("#infobar-overview-note");
-  const modelsEl = section.querySelector("#infobar-models-list");
-  const toolCostEl = section.querySelector("#infobar-tool-cost-panel");
-  const projectsEl = section.querySelector("#infobar-projects-list");
-  const sessionsEl = section.querySelector("#infobar-sessions-panel");
-  const titleEl = section.querySelector("#infobar-page-title");
+  const overviewEl = section.querySelector("#cost-dash-overview-grid");
+  const activityEl = section.querySelector("#cost-dash-activity-panel");
+  const overviewNoteEl = section.querySelector("#cost-dash-overview-note");
+  const modelsEl = section.querySelector("#cost-dash-models-list");
+  const toolCostEl = section.querySelector("#cost-dash-tool-cost-panel");
+  const projectsEl = section.querySelector("#cost-dash-projects-list");
+  const sessionsEl = section.querySelector("#cost-dash-sessions-panel");
 
   if (
     !overviewEl ||
@@ -786,9 +713,6 @@ export function renderCostInfobar(section, payload = {}) {
   const infobar = payload.infobar || payload || {};
   const overview = infobar.overview || {};
   const hasData = Number(overview.sessionCount || 0) > 0;
-  if (titleEl) {
-    titleEl.textContent = "Pi Stats";
-  }
   if (!hasData) {
     renderEmpty(overviewEl);
     renderEmpty(activityEl);
@@ -801,11 +725,11 @@ export function renderCostInfobar(section, payload = {}) {
   }
 
   const overviewMetrics = deriveOverviewMetrics(payload, overview);
-  renderInfobarOverview(overviewEl, overviewMetrics, infobar.usage || {});
+  renderOverview(overviewEl, overviewMetrics, infobar.usage || {});
   renderActivityPanel(activityEl, payload);
   renderOverviewNote(overviewNoteEl, overviewMetrics.totalTokens);
-  renderInfobarModels(modelsEl, infobar.models || [], payload);
-  renderInfobarToolCost(toolCostEl, infobar.usage || {});
-  renderInfobarProjects(projectsEl, infobar.projects || []);
+  renderModels(modelsEl, infobar.models || [], payload);
+  renderToolCost(toolCostEl, infobar.usage || {});
+  renderProjects(projectsEl, infobar.projects || []);
   renderSessionsPanel(sessionsEl, payload.sessions || payload.topSessions || []);
 }

@@ -2,6 +2,8 @@
    Picot — Dark Glassmorphism
    ═══════════════════════════════════════════════════════ */
 
+@import url("native/cost-dashboard.css");
+
 * {
   margin: 0;
   padding: 0;
@@ -1764,147 +1766,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-}
-
-.cost-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: var(--space-3);
-}
-
-.cost-summary-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
-  background: var(--bg-glass);
-  border: 1px solid var(--border);
-}
-
-.cost-summary-value {
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.cost-summary-label {
-  font-size: var(--font-size-sm);
-  color: var(--text-dim);
-}
-
-.cost-breakdown-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--space-4);
-}
-
-.cost-block {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.cost-block-title {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.cost-rank-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.cost-rank-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 80px auto;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-}
-
-.cost-rank-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text);
-}
-
-.cost-rank-bar {
-  display: block;
-  height: 6px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-glass);
-  overflow: hidden;
-}
-
-.cost-rank-fill {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-}
-
-.cost-rank-value {
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-
-.cost-session-table {
-  display: flex;
-  flex-direction: column;
-}
-
-.cost-session-row {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) 70px 70px;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--border);
-  font-size: var(--font-size-sm);
-}
-
-.cost-session-head {
-  color: var(--text-dim);
-  font-size: var(--font-size-sm);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.cost-session-title {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.cost-session-title,
-.cost-session-model {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cost-session-title em {
-  font-style: normal;
-  font-size: var(--font-size-sm);
-  color: var(--text-dim);
-}
-
-.cost-session-model {
-  color: var(--text-dim);
-}
-
-.cost-empty {
-  color: var(--text-dim);
-  font-size: var(--font-size-sm);
-  padding: var(--space-2) 0;
-}
-
-.cost-error {
-  color: var(--error);
 }
 
 .settings-close {

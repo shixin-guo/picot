@@ -1,4 +1,4 @@
-import { renderCostInfobar } from "../cost-infobar.js";
+import { renderCostDashboard } from "./cost-dashboard-render.js";
 
 const FILTER_STORAGE_KEY = "pi-studio-cost-filters";
 const DEFAULT_RANGE = "30d";
@@ -19,70 +19,70 @@ function escapeHtml(value) {
 
 function renderShell(container) {
   container.innerHTML = `
-    <div class="cost-page cost-page-infobar">
-      <section id="infobar-cost-section">
-        <div class="infobar-topbar">
-          <div class="infobar-topbar-actions">
-            <div class="infobar-quick-range" role="group" aria-label="Quick range">
-              <button type="button" class="infobar-range-chip" data-range-chip="7d">7d</button>
-              <button type="button" class="infobar-range-chip" data-range-chip="30d">30d</button>
-              <button type="button" class="infobar-range-chip" data-range-chip="90d">90d</button>
+    <div class="cost-dash-page">
+      <section id="cost-dash-section">
+        <div class="cost-dash-topbar">
+          <div class="cost-dash-topbar-actions">
+            <div class="cost-dash-quick-range" role="group" aria-label="Quick range">
+              <button type="button" class="cost-dash-range-chip" data-range-chip="7d">7d</button>
+              <button type="button" class="cost-dash-range-chip" data-range-chip="30d">30d</button>
+              <button type="button" class="cost-dash-range-chip" data-range-chip="90d">90d</button>
             </div>
           </div>
         </div>
 
-        <div class="infobar-panels">
-          <div class="infobar-panel is-active" id="usage-overview">
-            <div class="infobar-cost-block">
-              <div class="infobar-subsection-head">
+        <div class="cost-dash-panels">
+          <div class="cost-dash-panel is-active" id="usage-overview">
+            <div class="cost-dash-cost-block">
+              <div class="cost-dash-subsection-head">
                 <h3>Overview</h3>
               </div>
-              <div class="infobar-overview-grid" id="infobar-overview-grid"></div>
-              <div class="infobar-activity-wrap">
-                <div id="infobar-activity-panel"></div>
+              <div class="cost-dash-overview-grid" id="cost-dash-overview-grid"></div>
+              <div class="cost-dash-activity-wrap">
+                <div id="cost-dash-activity-panel"></div>
               </div>
-              <p class="infobar-overview-note" id="infobar-overview-note"></p>
+              <p class="cost-dash-overview-note" id="cost-dash-overview-note"></p>
             </div>
           </div>
 
-          <div class="infobar-section-row">
-            <div class="infobar-panel is-active" id="usage-models">
-              <div class="infobar-cost-block">
-                <div class="infobar-subsection-head">
+          <div class="cost-dash-section-row">
+            <div class="cost-dash-panel is-active" id="usage-models">
+              <div class="cost-dash-cost-block">
+                <div class="cost-dash-subsection-head">
                   <h3>Models</h3>
                 </div>
-                <div class="infobar-rank-list" id="infobar-models-list"></div>
+                <div class="cost-dash-rank-list" id="cost-dash-models-list"></div>
               </div>
             </div>
 
-            <div class="infobar-right-col">
-              <div class="infobar-panel is-active" id="usage-tool-cost">
-                <div class="infobar-cost-block">
-                  <div class="infobar-subsection-head">
+            <div class="cost-dash-right-col">
+              <div class="cost-dash-panel is-active" id="usage-tool-cost">
+                <div class="cost-dash-cost-block">
+                  <div class="cost-dash-subsection-head">
                     <h3>Tool Cost</h3>
                   </div>
-                  <div id="infobar-tool-cost-panel"></div>
+                  <div id="cost-dash-tool-cost-panel"></div>
                 </div>
               </div>
 
-              <div class="infobar-panel is-active" id="usage-projects">
-                <div class="infobar-cost-block">
-                  <div class="infobar-subsection-head">
+              <div class="cost-dash-panel is-active" id="usage-projects">
+                <div class="cost-dash-cost-block">
+                  <div class="cost-dash-subsection-head">
                     <h3>Projects</h3>
                   </div>
-                  <div class="infobar-rank-list" id="infobar-projects-list"></div>
+                  <div class="cost-dash-rank-list" id="cost-dash-projects-list"></div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="infobar-panel is-active" id="usage-sessions">
-            <div class="infobar-cost-block">
-              <div class="infobar-subsection-head">
+          <div class="cost-dash-panel is-active" id="usage-sessions">
+            <div class="cost-dash-cost-block">
+              <div class="cost-dash-subsection-head">
                 <h3>Sessions</h3>
                 <span>Recent sessions in range</span>
               </div>
-              <div id="infobar-sessions-panel"></div>
+              <div id="cost-dash-sessions-panel"></div>
             </div>
           </div>
         </div>
@@ -117,7 +117,7 @@ function syncRangeChips(container, range) {
 }
 
 function renderLoadError(container, error) {
-  container.innerHTML = `<p class="cost-empty cost-error">${escapeHtml(
+  container.innerHTML = `<p class="cost-dash-empty-state cost-dash-error">${escapeHtml(
     error?.message || String(error) || "Failed to load usage data",
   )}</p>`;
 }
@@ -270,7 +270,7 @@ export async function loadCostDashboard(container, { data, getWorkspaceId }) {
   let currentRange = loadSavedRange();
 
   // Show a plain loading state first — don't render section titles until data arrives.
-  container.innerHTML = `<div class="cost-page cost-page-infobar"><p class="cost-empty">Loading usage…</p></div>`;
+  container.innerHTML = `<div class="cost-dash-page"><p class="cost-dash-empty-state">Loading usage…</p></div>`;
 
   try {
     const workspaceId = getWorkspaceId();
@@ -281,12 +281,12 @@ export async function loadCostDashboard(container, { data, getWorkspaceId }) {
     // Data is ready — now render the full shell with all section headings.
     renderShell(container);
     syncRangeChips(container, currentRange);
-    const section = container.querySelector("#infobar-cost-section");
+    const section = container.querySelector("#cost-dash-section");
 
     const renderRange = () => {
       saveRange(currentRange);
       syncRangeChips(container, currentRange);
-      renderCostInfobar(section, adaptDashboardToInfobarPayload(dashboard, currentRange));
+      renderCostDashboard(section, adaptDashboardToInfobarPayload(dashboard, currentRange));
     };
 
     for (const chip of container.querySelectorAll("[data-range-chip]")) {

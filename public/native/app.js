@@ -66,6 +66,7 @@ const toolRenderer = new ToolCardRenderer(messagesElement);
 const input = document.getElementById("message-input");
 const form = document.getElementById("chat-form");
 const abortButton = document.getElementById("abort-btn");
+const sendButton = document.getElementById("send-btn");
 const statusText = document.getElementById("status-text");
 const statusIndicator = document.getElementById("status-indicator");
 const composerCard = document.getElementById("composer-card");
@@ -821,6 +822,7 @@ function setStatus(text) {
   statusIndicator?.classList.toggle("streaming", isWorking);
   composerCard?.classList.toggle("streaming", isWorking);
   abortButton?.classList.toggle("hidden", !isWorking);
+  sendButton?.classList.toggle("hidden", isWorking);
   statusIndicator?.classList.toggle("disconnected", text === "Disconnected");
   statusIndicator?.classList.toggle("connected", !isWorking && text !== "Disconnected");
 }
