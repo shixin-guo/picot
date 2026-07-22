@@ -141,19 +141,6 @@
       "cancel": "取消"
     }
   },
-  "folderPicker": {
-    "title": "打开文件夹",
-    "close": "关闭",
-    "parentDirectory": "上级目录",
-    "goUp": "上一级",
-    "goToPath": "跳转到路径",
-    "pathPlaceholder": "/路径/到/文件夹",
-    "cancel": "取消",
-    "open": "打开",
-    "loading": "加载中…",
-    "noSubdirectories": "没有子目录",
-    "failedLoad": "加载目录失败"
-  },
   "dialogs": {
     "selectOption": "选择一个选项",
     "confirm": "确认",
@@ -525,12 +512,6 @@
     "notAvailable": "无",
     "untitled": "未命名",
     "daysShort": "{count} 天"
-  },
-  "chatNavigation": {
-    "imageMessage": "[图片]",
-    "waiting": "等待回复…",
-    "generating": "正在生成回复…",
-    "noVisibleResponse": "无可见回复"
   },
   "misc": {
     "new": "新",

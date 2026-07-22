@@ -4,6 +4,8 @@
  * data request scoped to the current workspace root; there is no absolute
  * filesystem path to escape to.
  */
+import { parentLocalPath } from "../workspace/path-utils.js";
+
 export class NativeFileBrowser {
   #container;
   #pathEl;
@@ -43,9 +45,7 @@ export class NativeFileBrowser {
 
   getParentPath() {
     if (this.currentPath === null || this.currentPath === "") return null;
-    const parts = this.currentPath.split("/").filter(Boolean);
-    parts.pop();
-    return parts.join("/");
+    return parentLocalPath(this.currentPath);
   }
 
   #render(entries) {

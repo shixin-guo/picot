@@ -1,15 +1,21 @@
 // ABOUTME: Builds stable workspace identities and merges Pi history with live instances.
 // ABOUTME: Resolves ordered workspace groups for workspace and session Pins.
 
+import { basenameLocalPath, normalizeLocalPath } from "./workspace/path-utils.js";
+
 export function normalizeWorkspacePath(value) {
-  if (typeof value !== "string" || !value.startsWith("/")) return "";
-  const parts = [];
-  for (const part of value.split("/")) {
-    if (!part || part === ".") continue;
-    if (part === "..") parts.pop();
-    else parts.push(part);
-  }
-  return `/${parts.join("/")}`;
+  const normalized = normalizeLocalPath(value);
+  const isAbsolute =
+    normalized.startsWith("/") || normalized.startsWith("//") || /^[A-Za-z]:\//.test(normalized);
+  return isAbsolute ? normalized : "";
+}
+
+export function workspacePathKey(value) {
+  const normalized = normalizeWorkspacePath(value);
+  if (!normalized) return "";
+  return normalized.startsWith("//") || /^[A-Za-z]:\//.test(normalized)
+    ? normalized.toLowerCase()
+    : normalized;
 }
 export function historyWorkspaceId(project) {
   return typeof project?.dirName === "string" && project.dirName
@@ -17,7 +23,7 @@ export function historyWorkspaceId(project) {
     : "";
 }
 export function provisionalWorkspaceId(path) {
-  const normalized = normalizeWorkspacePath(path);
+  const normalized = workspacePathKey(path);
   return normalized ? `path:${normalized}` : "";
 }
 const time = (value) => {
@@ -32,10 +38,7 @@ function latestActivity(sessions, instances) {
   return latest;
 }
 function folderName(path) {
-  const parts = String(path || "")
-    .split("/")
-    .filter(Boolean);
-  return parts.at(-1) || String(path || "");
+  return basenameLocalPath(path) || String(path || "");
 }
 
 export function mergeWorkspaceProjects(
@@ -47,19 +50,21 @@ export function mergeWorkspaceProjects(
   const liveByPath = new Map();
   for (const instance of Array.isArray(runningInstances) ? runningInstances : []) {
     const path = normalizeWorkspacePath(instance?.cwd);
-    if (!path) continue;
-    const list = liveByPath.get(path) || [];
-    list.push(instance);
-    liveByPath.set(path, list);
+    const key = workspacePathKey(path);
+    if (!key) continue;
+    const list = liveByPath.get(key) || [];
+    list.push({ ...instance, cwd: path });
+    liveByPath.set(key, list);
   }
   for (const project of Array.isArray(historyProjects) ? historyProjects : []) {
     const path = normalizeWorkspacePath(project?.path);
+    const key = workspacePathKey(path);
     const workspaceId = historyWorkspaceId(project);
-    if (!path || !workspaceId) continue;
+    if (!key || !workspaceId) continue;
     const sessions = Array.isArray(project.sessions) ? project.sessions : [];
-    const instances = liveByPath.get(path) || [];
+    const instances = liveByPath.get(key) || [];
     const activityAt = latestActivity(sessions, instances);
-    byPath.set(path, {
+    byPath.set(key, {
       workspaceId,
       path: project.path,
       folderName: folderName(project.path),
@@ -75,10 +80,11 @@ export function mergeWorkspaceProjects(
   for (const [path, instances] of liveByPath) {
     if (byPath.has(path)) continue;
     const activityAt = latestActivity([], instances);
+    const displayPath = instances[0]?.cwd || path;
     byPath.set(path, {
-      workspaceId: provisionalWorkspaceId(path),
-      path,
-      folderName: folderName(path),
+      workspaceId: provisionalWorkspaceId(displayPath),
+      path: displayPath,
+      folderName: folderName(displayPath),
       dirName: "",
       sessions: [],
       runningInstances: instances,
@@ -93,13 +99,13 @@ export function mergeWorkspaceProjects(
   );
   const previous = new Map(
     (Array.isArray(previousProjects) ? previousProjects : []).map((project) => [
-      normalizeWorkspacePath(project.path),
+      workspacePathKey(project.path),
       project,
     ]),
   );
   const reconciliations = [];
   for (const project of projects) {
-    const old = previous.get(normalizeWorkspacePath(project.path));
+    const old = previous.get(workspacePathKey(project.path));
     if (old?.isProvisional && !project.isProvisional && old.workspaceId !== project.workspaceId)
       reconciliations.push({
         fromId: old.workspaceId,
@@ -110,7 +116,7 @@ export function mergeWorkspaceProjects(
   if (reconciliations.length) {
     const indexes = new Map(projects.map((p, i) => [p.workspaceId, i]));
     for (const reconciliation of reconciliations) {
-      const old = previous.get(normalizeWorkspacePath(reconciliation.path));
+      const old = previous.get(workspacePathKey(reconciliation.path));
       const targetIndex = indexes.get(reconciliation.toId);
       const priorIndex = [...(previousProjects || [])].findIndex(
         (p) => p.workspaceId === old.workspaceId,
@@ -144,7 +150,7 @@ export function resolvePinnedWorkspaceGroups({
   archivedPaths = [],
 } = {}) {
   const byId = new Map(projects.map((p) => [p.workspaceId, p]));
-  const byPath = new Map(projects.map((p) => [normalizeWorkspacePath(p.path), p]));
+  const byPath = new Map(projects.map((p) => [workspacePathKey(p.path), p]));
   const bySession = new Map();
   for (const project of projects)
     for (const session of project.sessions || [])
@@ -153,7 +159,7 @@ export function resolvePinnedWorkspaceGroups({
   const groups = [];
   const owned = new Set();
   for (const pin of Array.isArray(pinState.workspaces) ? pinState.workspaces : []) {
-    const project = byId.get(pin.id) || byPath.get(normalizeWorkspacePath(pin.path));
+    const project = byId.get(pin.id) || byPath.get(workspacePathKey(pin.path));
     if (!project) {
       groups.push({
         workspace: { workspaceId: pin.id, path: pin.path, sessions: [], unavailable: true },

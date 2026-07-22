@@ -335,6 +335,12 @@ describe("FileBrowser.toMentionPath", () => {
     expect(browser.toMentionPath("C:\\proj\\src\\a.ts")).toBe("@src/a.ts");
   });
 
+  test("Windows drive comparisons are case-insensitive", () => {
+    const browser = new FileBrowser(makeContainer(), makePathEl(), makeMessageInput());
+    browser.workspaceRoot = "C:\\Proj";
+    expect(browser.toMentionPath("c:\\proj\\src\\a.ts")).toBe("@src/a.ts");
+  });
+
   test("different Windows drive is null", () => {
     const browser = new FileBrowser(makeContainer(), makePathEl(), makeMessageInput());
     browser.workspaceRoot = "C:\\proj";

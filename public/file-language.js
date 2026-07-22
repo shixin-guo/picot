@@ -17,6 +17,7 @@ import { yaml } from "@codemirror/lang-yaml";
 import { StreamLanguage } from "@codemirror/language";
 import { r } from "@codemirror/legacy-modes/mode/r";
 import { shell } from "@codemirror/legacy-modes/mode/shell";
+import { basenameLocalPath } from "./workspace/path-utils.js";
 
 const shellLanguage = StreamLanguage.define(shell);
 const rLanguage = StreamLanguage.define(r);
@@ -152,7 +153,7 @@ export function languageExtensionForPath(filePath) {
 
 function getExtension(filePath) {
   if (typeof filePath !== "string") return "";
-  const basename = filePath.split("/").pop() || filePath;
+  const basename = basenameLocalPath(filePath) || filePath;
   const idx = basename.lastIndexOf(".");
   if (idx <= 0) return ""; // dotfiles or no extension
   return basename.slice(idx + 1).toLowerCase();

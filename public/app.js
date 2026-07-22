@@ -58,6 +58,7 @@ import { setupSidebarSearchControl } from "./sidebar/search-control.js";
 import { createSidebarResizer } from "./sidebar-resizer.js";
 import { ensureSuperAgentSession } from "./super-agent/bootstrap.js";
 import { dispatchSuperAgentTask as dispatchSuperAgentTaskCore } from "./super-agent/dispatch.js";
+import { installSuperAgentSessionNavigationReset } from "./super-agent/navigation.js";
 import { getRunningSuperAgentPorts, isSuperAgentSession } from "./super-agent/session.js";
 import { isSuperAgentEnabled } from "./super-agent/settings.js";
 import { planSuperAgentShutdown } from "./super-agent/stop-plan.js";
@@ -278,6 +279,7 @@ document.addEventListener("sa-dispatch", (e) => dispatchSuperAgentTask(e.detail)
 document.addEventListener("sa-ask", (e) => notifySuperAgentClarification(e.detail));
 document.addEventListener("sa-prompt-task", (e) => insertTaskPrompt(e.detail));
 document.addEventListener("sa-view-session", (e) => viewSuperAgentChildSession(e.detail));
+installSuperAgentSessionNavigationReset(document);
 
 // <sa-chat-header> service buttons open Settings > Chat tab
 window.__saOpenSettings = () => {

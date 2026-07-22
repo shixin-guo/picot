@@ -15,6 +15,7 @@ import {
 import { buildSidebarSection, buildSidebarWorkspaceGroup } from "../sidebar-workspace-group.js";
 import { getSuperAgentProject, isSuperAgentProjectPath } from "../super-agent/session.js";
 import { isSuperAgentEnabled } from "../super-agent/settings.js";
+import { basenameLocalPath } from "../workspace/path-utils.js";
 import { mergeWorkspaceProjects, resolvePinnedWorkspaceGroups } from "../workspace-projects.js";
 import { WorkspaceQuickInfo } from "../workspace-quick-info.js";
 
@@ -937,7 +938,7 @@ export class SessionSidebar {
           const workspacePath = workspace?.path || "";
           const folderName =
             workspace?.folderName ||
-            workspacePath.split("/").filter(Boolean).at(-1) ||
+            basenameLocalPath(workspacePath) ||
             unavailableFilePath ||
             t("sidebar.unavailable");
           const workspaceId = workspace?.workspaceId || `pinned-session:${unavailableFilePath}`;
@@ -1082,7 +1083,7 @@ export class SessionSidebar {
         workspaceId: project.workspaceId,
         folderName:
           project.folderName ||
-          project.path?.split("/").filter(Boolean).at(-1) ||
+          basenameLocalPath(project.path) ||
           project.path ||
           t("sidebar.unavailable"),
         workspacePath: project.path,
@@ -1208,8 +1209,7 @@ export class SessionSidebar {
   getProjectSearchText(project) {
     const path = typeof project?.path === "string" ? project.path : "";
     const dirName = typeof project?.dirName === "string" ? project.dirName : "";
-    const pathParts = path.split("/").filter(Boolean);
-    const shortPath = pathParts.length > 0 ? pathParts[pathParts.length - 1] : path;
+    const shortPath = basenameLocalPath(path) || path;
     return [shortPath, dirName, path].join(" ").toLowerCase();
   }
 

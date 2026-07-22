@@ -141,19 +141,6 @@
       "cancel": "Cancel"
     }
   },
-  "folderPicker": {
-    "title": "Open Folder",
-    "close": "Close",
-    "parentDirectory": "Parent directory",
-    "goUp": "Go up",
-    "goToPath": "Go to path",
-    "pathPlaceholder": "/path/to/folder",
-    "cancel": "Cancel",
-    "open": "Open",
-    "loading": "Loading…",
-    "noSubdirectories": "No subdirectories",
-    "failedLoad": "Failed to load directory"
-  },
   "dialogs": {
     "selectOption": "Select an option",
     "confirm": "Confirm",
@@ -525,12 +512,6 @@
     "notAvailable": "N/A",
     "untitled": "Untitled",
     "daysShort": "{count}d"
-  },
-  "chatNavigation": {
-    "imageMessage": "[image]",
-    "waiting": "Waiting for response…",
-    "generating": "Generating response…",
-    "noVisibleResponse": "No visible response"
   },
   "misc": {
     "new": "New",

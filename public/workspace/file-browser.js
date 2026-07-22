@@ -2,6 +2,7 @@
  * File Browser — right sidebar file tree with drag-and-drop
  */
 import { onLocaleChange, t } from "../i18n.js";
+import { normalizeLocalPath, parentLocalPath } from "./path-utils.js";
 
 const FILE_ICONS = {
   // Folders
@@ -83,7 +84,7 @@ export class FileBrowser {
   }
 
   setWorkspaceRoot(path = "") {
-    const normalized = typeof path === "string" ? path.trim() : "";
+    const normalized = normalizeLocalPath(path);
     this.workspaceRoot = normalized;
     // Invalidate any in-flight load so a stale /api/files response can't
     // overwrite the workspace reset.
@@ -113,8 +114,8 @@ export class FileBrowser {
         return;
       }
 
-      const normalizedRoot = this.workspaceRoot.replace(/\/+$/, "");
-      const normalizedRequest = typeof dirPath === "string" ? dirPath.replace(/\/+$/, "") : "";
+      const normalizedRoot = normalizeLocalPath(this.workspaceRoot);
+      const normalizedRequest = typeof dirPath === "string" ? normalizeLocalPath(dirPath) : "";
       if (!dirPath || (normalizedRoot && normalizedRequest === normalizedRoot)) {
         this.workspaceRoot = data.path;
       }
@@ -129,21 +130,17 @@ export class FileBrowser {
   }
   getParentPath() {
     if (!this.currentPath) return null;
-    const parts = this.currentPath.split("/").filter(Boolean);
-    parts.pop();
-    const parent = parts.join("/") || "/";
+    const parent = parentLocalPath(this.currentPath);
+    const normalizedRoot = normalizeLocalPath(this.workspaceRoot);
+    if (!parent || !normalizedRoot || normalizeLocalPath(this.currentPath) === normalizedRoot)
+      return null;
 
-    // Clamp to workspace root: do not navigate above it.
-    if (this.workspaceRoot && parent !== this.workspaceRoot) {
-      // Normalize both paths for comparison.
-      const normalizedParent = parent.replace(/\/+$/, "");
-      const normalizedRoot = this.workspaceRoot.replace(/\/+$/, "");
-      // If parent is shorter than root, we're above workspace.
-      if (normalizedParent.length < normalizedRoot.length) {
-        return null;
-      }
-    }
-    return parent;
+    // Clamp to workspace root using path segments, so sibling prefixes such as
+    // /work/app and /work/application cannot bypass the workspace boundary.
+    const parentSegments = parent.split("/").filter(Boolean);
+    const rootSegments = normalizedRoot.split("/").filter(Boolean);
+    const isInsideRoot = rootSegments.every((segment, index) => parentSegments[index] === segment);
+    return isInsideRoot ? parent : null;
   }
 
   render(items) {
@@ -364,12 +361,22 @@ export class FileBrowser {
 
     // Reject cross-drive Windows paths (e.g. root C: vs file D:)
     const isDriveSeg = (s) => /^[A-Za-z]:$/.test(s);
-    if (rootSegs[0] !== fileSegs[0] && (isDriveSeg(rootSegs[0]) || isDriveSeg(fileSegs[0])))
+    const isWindowsPath =
+      isDriveSeg(rootSegs[0]) ||
+      isDriveSeg(fileSegs[0]) ||
+      this.workspaceRoot.replace(/\\/g, "/").startsWith("//") ||
+      filePath.replace(/\\/g, "/").startsWith("//");
+    const sameSegment = (left, right) =>
+      isWindowsPath ? left.toLowerCase() === right.toLowerCase() : left === right;
+    if (
+      !sameSegment(rootSegs[0], fileSegs[0]) &&
+      (isDriveSeg(rootSegs[0]) || isDriveSeg(fileSegs[0]))
+    )
       return null;
 
     // Find common prefix length
     let i = 0;
-    while (i < rootSegs.length && i < fileSegs.length && rootSegs[i] === fileSegs[i]) {
+    while (i < rootSegs.length && i < fileSegs.length && sameSegment(rootSegs[i], fileSegs[i])) {
       i++;
     }
 

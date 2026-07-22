@@ -1,7 +1,7 @@
 /**
  * <super-agent-runtime> Web Component
  *
- * Replaces the SuperAgentRuntime class + initRuntimeCollapse in super-agent/panel.js.
+ * Owns the runtime behavior previously kept in the legacy Super Agent panel.
  * Renders its own HTML, polls /api/super-agent/tasks every 3s.
  *
  * Usage:

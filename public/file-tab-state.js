@@ -1,3 +1,5 @@
+import { basenameLocalPath, normalizeLocalPath } from "./workspace/path-utils.js";
+
 export class FileTabState {
   /**
    * @param opts.storage — injectable storage (defaults to localStorage)
@@ -42,7 +44,7 @@ export class FileTabState {
         id: tab.id,
         kind: tab.kind || "file",
         filePath: tab.filePath,
-        fileName: tab.fileName || tab.filePath.split("/").pop() || tab.filePath,
+        fileName: tab.fileName || basenameLocalPath(tab.filePath) || tab.filePath,
         mode: tab.mode || "preview",
         content: null,
         originalContent: null,
@@ -85,7 +87,7 @@ export class FileTabState {
       id: tabId,
       kind: "file",
       filePath: normalizedPath,
-      fileName: metadata.fileName || normalizedPath.split("/").pop() || normalizedPath,
+      fileName: metadata.fileName || basenameLocalPath(normalizedPath) || normalizedPath,
       mode: metadata.mode || "preview",
       content: null,
       originalContent: null,
@@ -221,12 +223,11 @@ export class FileTabState {
 
   _normalizeRoot(root) {
     if (typeof root !== "string") return "";
-    return root.replace(/\/+$/, "").trim() || "/";
+    return normalizeLocalPath(root) || "/";
   }
 
   _normalizePath(filePath) {
-    if (typeof filePath !== "string") return "";
-    return filePath.replace(/\/+$/, "");
+    return normalizeLocalPath(filePath);
   }
 
   _readSnapshot() {

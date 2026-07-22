@@ -10,11 +10,18 @@ import {
 
 test("normalizes conservative absolute paths", () => {
   expect(normalizeWorkspacePath("/Users//lin/Work/../Work/picot/")).toBe("/Users/lin/Work/picot");
+  expect(normalizeWorkspacePath("C:\\Users\\Lin\\Work\\..\\Picot\\")).toBe("C:/Users/Lin/Picot");
+  expect(normalizeWorkspacePath("\\\\server\\share\\repo\\src\\..\\")).toBe("//server/share/repo");
   expect(normalizeWorkspacePath("relative/path")).toBe("");
   expect(normalizeWorkspacePath("/Users/lin/Picot")).not.toBe(
     normalizeWorkspacePath("/Users/lin/picot"),
   );
 });
+test("extracts Windows workspace folder names", () => {
+  const result = mergeWorkspaceProjects([], [{ cwd: "C:\\Users\\Lin\\Picot", startedAt: "" }], []);
+  expect(result.projects[0].folderName).toBe("Picot");
+});
+
 test("merges live zero-session workspaces and orders by activity", () => {
   const result = mergeWorkspaceProjects(
     [

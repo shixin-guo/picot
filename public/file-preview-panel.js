@@ -14,6 +14,7 @@ import { classifyFilePath } from "./file-language.js";
 import { createFileRenderer } from "./file-preview-renderers.js";
 import { FileTabState } from "./file-tab-state.js";
 import { onLocaleChange, t } from "./i18n.js";
+import { normalizeLocalPath } from "./workspace/path-utils.js";
 
 const AUTO_SAVE_DELAY = 1500;
 const DEFAULT_PANEL_RATIO = 0.42;
@@ -148,7 +149,7 @@ export class FilePreviewPanel {
   }
 
   async setWorkspaceRoot(root) {
-    const normalized = typeof root === "string" ? root.replace(/\/+$/, "").trim() || "/" : "";
+    const normalized = normalizeLocalPath(root) || "/";
     if (normalized === this.workspaceRoot) return true;
 
     this._captureActiveRenderer();
@@ -178,7 +179,7 @@ export class FilePreviewPanel {
   }
 
   async openFile(filePath, metadata = {}) {
-    const normalizedPath = typeof filePath === "string" ? filePath.replace(/\/+$/, "") : "";
+    const normalizedPath = normalizeLocalPath(filePath);
     const existing = this.state.getTabs().find((tab) => tab.filePath === normalizedPath);
     const currentTab = this.state.getActiveTab();
     if (this.activeContent?.kind === "transient") this._deactivateCurrent();

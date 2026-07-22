@@ -142,33 +142,30 @@ describe("JS t() literal key references", () => {
   // Phase 1 JS files that should use t()
   const jsFiles = [
     "app.js",
-    "app-context-viz.js",
-    "message-renderer.js",
-    "markdown.js",
-    "tool-card.js",
-    "file-browser.js",
-    "folder-picker.js",
-    "dialogs.js",
-    "app-updater.js",
-    "app-voice-input.js",
-    "session-sidebar.js",
-    "app-settings-editors.js",
-    "app-settings-toggles.js",
-    "settings-save-status.js",
-    "package-install-status.js",
-    "workspace-actions.js",
-    "onboarding-state.js",
+    "ui/context-viz.js",
+    "ui/message-renderer.js",
+    "ui/markdown.js",
+    "ui/tool-card.js",
+    "workspace/file-browser.js",
+    "ui/dialogs.js",
+    "app/updater.js",
+    "app/voice-input.js",
+    "sidebar/index.js",
+    "settings/editors.js",
+    "settings/toggles.js",
+    "settings/save-status.js",
+    "packages/install-status.js",
+    "workspace/actions.js",
+    "session/onboarding.js",
     "cost.js",
-    "cost-infobar.js",
+    "cost/infobar.js",
     "pinned-items.js",
     "sidebar-workspace-group.js",
     "workspace-projects.js",
     "workspace-quick-info.js",
-    "ephemeral-chat-runtime.js",
     "ephemeral-chat-view.js",
     "side-chat-manager.js",
     "quick-chat-dialog.js",
-    "window-close-coordinator.js",
     "file-preview-panel.js",
   ];
 
@@ -179,8 +176,8 @@ describe("JS t() literal key references", () => {
       let content;
       try {
         content = readFileSync(resolve(publicDir, file), "utf-8");
-      } catch {
-        continue; // file may not exist yet
+      } catch (error) {
+        throw new Error(`Missing i18n audit file ${file}: ${error.message}`);
       }
       // Match t("key.path") and t('key.path')
       const regex = /\bt\(\s*["']([^"']+)["']/g;
@@ -204,8 +201,8 @@ describe("JS t() literal key references", () => {
       let content;
       try {
         content = readFileSync(resolve(publicDir, file), "utf-8");
-      } catch {
-        continue;
+      } catch (error) {
+        throw new Error(`Missing i18n audit file ${file}: ${error.message}`);
       }
 
       // Check for `${t(` in template literals assigned to innerHTML or insertAdjacentHTML
