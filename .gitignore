@@ -4,6 +4,7 @@ node_modules/
 .DS_Store
 
 # Tauri build artifacts
+target/
 src-tauri/target/
 src-tauri/gen/
 
