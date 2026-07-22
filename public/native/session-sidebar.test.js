@@ -203,6 +203,31 @@ describe("SessionSidebar.render", () => {
     expect(render).toHaveBeenCalledTimes(1);
   });
 
+  it("upserts a newly bound session so it appears before the host list refresh catches up", async () => {
+    const { sidebar, container } = makeSidebar([]);
+
+    sidebar.upsertSession({
+      id: "s-new",
+      firstMessage: "Start with this request",
+      timestamp: "2026-07-22T00:00:00.000Z",
+      modifiedAtMs: 1,
+      isCurrentWorkspace: true,
+    });
+
+    expect(container.querySelectorAll(".session-item")).toHaveLength(1);
+    expect(container.querySelector(".session-title").textContent).toBe("Start with this request");
+    expect(container.querySelector(".session-item").dataset.sessionId).toBe("s-new");
+
+    sidebar.upsertSession({
+      id: "s-new",
+      firstMessage: "Follow-up should not replace the first title",
+      modifiedAtMs: 2,
+    });
+
+    expect(container.querySelectorAll(".session-item")).toHaveLength(1);
+    expect(container.querySelector(".session-title").textContent).toBe("Start with this request");
+  });
+
   it("marks the active session", async () => {
     const { sidebar, container } = makeSidebar([
       { id: "s-active", timestamp: new Date().toISOString(), name: "Current" },

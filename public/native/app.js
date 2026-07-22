@@ -104,6 +104,7 @@ let streamingElement = null;
 let sidebar = null;
 let activeSearchQuery = "";
 let _superAgentLaunched = false;
+let pendingBoundSessionFirstMessage = null;
 const remoteAuth = await resolveRemoteAuth();
 
 const adapter = new HostRuntimeAdapter({
@@ -646,8 +647,10 @@ async function handleRuntimeEvent(event) {
       sidebar?.setStreaming(target.sessionId, false);
       break;
     case "message_start":
-      if (event.message?.role === "user") messageRenderer.renderUserMessage(event.message);
-      else if (event.message?.role === "assistant") {
+      if (event.message?.role === "user") {
+        messageRenderer.renderUserMessage(event.message);
+        upsertActiveSessionFromUserMessage(event.message);
+      } else if (event.message?.role === "assistant") {
         streamingElement = messageRenderer.renderAssistantMessage(event.message, true);
       }
       break;
@@ -688,10 +691,30 @@ async function handleRuntimeEvent(event) {
       break;
     case "session_bound":
       await adoptTarget({ ...target, sessionId: event.sessionId });
+      upsertActiveSessionFromUserMessage();
       await hydrateSnapshot();
-      sidebar?.load().catch(showError);
+      sidebar?.load({ quiet: true }).catch(showError);
       break;
   }
+}
+
+function upsertActiveSessionFromUserMessage(message = null) {
+  const firstMessage = message
+    ? textFromMessageContent(message.content)
+    : pendingBoundSessionFirstMessage;
+  if (target?.sessionId?.startsWith("temporary-")) {
+    pendingBoundSessionFirstMessage = firstMessage;
+    return;
+  }
+  if (!target?.sessionId) return;
+  sidebar?.upsertSession({
+    id: target.sessionId,
+    firstMessage,
+    timestamp: new Date().toISOString(),
+    modifiedAtMs: Date.now(),
+    isCurrentWorkspace: true,
+  });
+  pendingBoundSessionFirstMessage = null;
 }
 
 async function adoptTarget(nextTarget, { updateRoute = true } = {}) {
@@ -776,6 +799,20 @@ function textFromResult(result) {
     .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("\n");
+}
+
+function textFromMessageContent(content) {
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content
+            .filter((block) => block?.type === "text")
+            .map((block) => block.text ?? "")
+            .join("\n")
+        : "";
+  const trimmed = text.trim();
+  return trimmed ? trimmed.slice(0, 120) : null;
 }
 
 function setStatus(text) {

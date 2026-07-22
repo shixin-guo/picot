@@ -156,6 +156,17 @@ function latestSession(sessions) {
   return [...sessions].sort((left, right) => sessionTimeMs(right) - sessionTimeMs(left))[0] ?? null;
 }
 
+function mergeSessionSummary(existing, incoming) {
+  return {
+    ...(existing ?? {}),
+    ...(incoming ?? {}),
+    name: incoming?.name ?? existing?.name ?? null,
+    firstMessage: existing?.firstMessage ?? incoming?.firstMessage ?? null,
+    timestamp: incoming?.timestamp ?? existing?.timestamp ?? new Date().toISOString(),
+    modifiedAtMs: incoming?.modifiedAtMs ?? existing?.modifiedAtMs ?? Date.now(),
+  };
+}
+
 export function formatSessionTime(isoTimestamp) {
   if (!isoTimestamp) return "";
   try {
@@ -428,6 +439,32 @@ export class SessionSidebar {
         .querySelector("#retry-load-sessions")
         ?.addEventListener("click", () => this.load());
     }
+  }
+
+  upsertSession(session) {
+    if (!session?.id) return;
+    const index = this.sessions.findIndex((existing) => existing.id === session.id);
+    const existing = index >= 0 ? this.sessions[index] : null;
+    const projectFallback =
+      existing ??
+      this.sessions.find((candidate) => candidate.isCurrentWorkspace) ??
+      this.sessions[0] ??
+      {};
+    const next = mergeSessionSummary(existing, {
+      workspaceId: this.getTarget()?.workspaceId ?? projectFallback.workspaceId ?? "",
+      projectPath: projectFallback.projectPath ?? this.getTarget()?.workspaceId ?? "unknown",
+      projectName: projectFallback.projectName ?? projectFallback.projectPath ?? "Current project",
+      isCurrentWorkspace: true,
+      fileName: "",
+      ...session,
+    });
+
+    if (index >= 0) this.sessions.splice(index, 1);
+    this.sessions.unshift(next);
+    this.#hydrateStatuses(this.sessions);
+    writeSessionCache(this.getTarget()?.workspaceId, this.sessions);
+    this.onSessionsLoaded?.(this.sessions);
+    this.render();
   }
 
   // ── search ──────────────────────────────────────────────────────
