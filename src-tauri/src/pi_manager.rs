@@ -283,6 +283,53 @@ fn pi_extension_npm_bin_dir(home: &Path) -> PathBuf {
         .join(".bin")
 }
 
+fn super_agent_home_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    let mut add = |value: Option<String>| {
+        let Some(value) = value else { return };
+        let path = PathBuf::from(value);
+        if !path.as_os_str().is_empty() && !candidates.iter().any(|candidate| candidate == &path) {
+            candidates.push(path);
+        }
+    };
+
+    add(std::env::var("HOME").ok());
+    add(std::env::var("USERPROFILE").ok());
+    if let (Ok(drive), Ok(path)) = (std::env::var("HOMEDRIVE"), std::env::var("HOMEPATH")) {
+        add(Some(format!("{drive}{path}")));
+    }
+    candidates
+}
+
+fn paths_equal_for_workspace(left: &Path, right: &Path) -> bool {
+    // Prefer canonical paths so `..` and symlink aliases resolve to the same
+    // workspace. If either path is unavailable, retain lexical comparison as
+    // a best-effort fallback for startup and diagnostic callers.
+    let canonical = match (left.canonicalize(), right.canonicalize()) {
+        (Ok(left), Ok(right)) => (left, right),
+        _ => (left.to_path_buf(), right.to_path_buf()),
+    };
+    let rebuild = |path: &Path| path.components().collect::<PathBuf>();
+    let left = rebuild(&canonical.0);
+    let right = rebuild(&canonical.1);
+    #[cfg(target_os = "windows")]
+    {
+        left.to_string_lossy()
+            .eq_ignore_ascii_case(&right.to_string_lossy())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        left == right
+    }
+}
+
+fn is_super_agent_workspace_path(cwd: &Path, homes: &[PathBuf]) -> bool {
+    homes.iter().any(|home| {
+        let candidate = home.join(".pi").join("agent").join("super-agent");
+        paths_equal_for_workspace(cwd, &candidate)
+    })
+}
+
 fn log_child_path_diagnostics(context: &str, path: &str) {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
@@ -720,9 +767,8 @@ impl PiManager {
 
         // Load pi-chat extension only in the Super Agent workspace to avoid
         // multiple processes competing for the same Telegram updates.
-        let is_super_agent_workspace = std::env::var("HOME")
-            .map(|home| cwd == format!("{}/.pi/agent/super-agent", home))
-            .unwrap_or(false);
+        let is_super_agent_workspace =
+            is_super_agent_workspace_path(Path::new(&cwd), &super_agent_home_candidates());
         if is_super_agent_workspace {
             if let Some(pi_chat_path) = self.resolve_pi_chat_extension_path() {
                 log::info!(
@@ -1628,6 +1674,64 @@ pub async fn wait_for_endpoint(port: u16, path: &str, timeout_secs: u64) -> Resu
 mod tests {
     use super::*;
     use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
+
+    #[test]
+    fn super_agent_workspace_detection_uses_canonical_paths() {
+        let root = std::env::temp_dir().join(format!(
+            "picot-pi-manager-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock must be after epoch")
+                .as_nanos()
+        ));
+        let home = root.join("home");
+        let workspace = home.join(".pi").join("agent").join("super-agent");
+        std::fs::create_dir_all(&workspace).expect("create test super-agent workspace");
+
+        // This path exists but has a different lexical representation. A
+        // component-only comparison does not resolve the parent component.
+        let lexical_alias = workspace.join("..").join("super-agent");
+        assert!(is_super_agent_workspace_path(
+            &lexical_alias,
+            std::slice::from_ref(&home),
+        ));
+        assert!(!is_super_agent_workspace_path(
+            &home.join(".pi").join("agent"),
+            std::slice::from_ref(&home),
+        ));
+
+        #[cfg(unix)]
+        {
+            let symlink = root.join("workspace-link");
+            std::os::unix::fs::symlink(&workspace, &symlink)
+                .expect("create test workspace symlink");
+            assert!(is_super_agent_workspace_path(
+                &symlink,
+                std::slice::from_ref(&home),
+            ));
+        }
+
+        std::fs::remove_dir_all(root).expect("remove test workspace");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn super_agent_workspace_matches_mixed_separators() {
+        let root = std::env::temp_dir().join(format!(
+            "picot-pi-manager-separator-test-{}",
+            std::process::id()
+        ));
+        let home = root.join("home");
+        let workspace = home.join(".pi").join("agent").join("super-agent");
+        std::fs::create_dir_all(&workspace).expect("create test super-agent workspace");
+        let mixed = workspace.to_string_lossy().replace('\\', "/");
+        assert!(is_super_agent_workspace_path(
+            Path::new(&mixed),
+            std::slice::from_ref(&home),
+        ));
+        std::fs::remove_dir_all(root).expect("remove test workspace");
+    }
 
     #[test]
     fn augmented_path_includes_pi_extension_npm_bin() {

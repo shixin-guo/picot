@@ -67,6 +67,8 @@ import {
   sendJsonOk,
   writeTextFileIfUnchanged,
 } from "./file-routes.ts";
+import { getOpenCommand, resolveHomePath } from "./open-path.ts";
+import { isPathWithinRoot } from "./path-safety.ts";
 import {
   buildTelegramDmConfig,
   buildTelegramDoctorReport,
@@ -75,6 +77,7 @@ import {
   observeTelegramPrivateDm,
   type TelegramBotIdentity,
 } from "./pi-chat-setup";
+import { isLoopbackAddress, isLoopbackOnlyApiRequest } from "./request-access.ts";
 import { buildProjectSearchMatch } from "./session-search";
 import {
   inspectWorkspaceGit,
@@ -2208,31 +2211,49 @@ export default function (pi: ExtensionAPI) {
     if (urlPath === "/") urlPath = "/index.html";
     if (urlPath === "/cost" || urlPath === "/cost/") urlPath = "/cost.html";
 
-    const filePath = path.join(STATIC_DIR, urlPath);
+    const filePath = path.resolve(STATIC_DIR, `.${urlPath}`);
 
-    // Security: prevent directory traversal
-    if (!filePath.startsWith(STATIC_DIR)) {
+    // Prevent traversal and symlink escapes from the static asset root.
+    if (!isPathWithinRoot(STATIC_DIR, filePath)) {
       res.writeHead(403);
       res.end("Forbidden");
       return;
     }
 
-    // Check file exists
-    fs.stat(filePath, (err, stats) => {
-      if (err || !stats.isFile()) {
+    fs.realpath(STATIC_DIR, (rootError, realRoot) => {
+      if (rootError) {
         res.writeHead(404);
         res.end("Not Found");
         return;
       }
+      fs.realpath(filePath, (fileError, realFilePath) => {
+        if (fileError) {
+          res.writeHead(404);
+          res.end("Not Found");
+          return;
+        }
+        if (!isPathWithinRoot(realRoot, realFilePath)) {
+          res.writeHead(403);
+          res.end("Forbidden");
+          return;
+        }
+        fs.stat(realFilePath, (err, stats) => {
+          if (err || !stats.isFile()) {
+            res.writeHead(404);
+            res.end("Not Found");
+            return;
+          }
 
-      const ext = path.extname(filePath).toLowerCase();
-      const contentType = MIME_TYPES[ext] || "application/octet-stream";
+          const ext = path.extname(realFilePath).toLowerCase();
+          const contentType = MIME_TYPES[ext] || "application/octet-stream";
 
-      res.writeHead(200, {
-        "Content-Type": contentType,
-        "Cache-Control": "no-store",
+          res.writeHead(200, {
+            "Content-Type": contentType,
+            "Cache-Control": "no-store",
+          });
+          fs.createReadStream(realFilePath).pipe(res);
+        });
       });
-      fs.createReadStream(filePath).pipe(res);
     });
   }
 
@@ -2244,6 +2265,20 @@ export default function (pi: ExtensionAPI) {
     res: http.ServerResponse,
     urlPath: string,
   ) {
+    const requestMethod = req.method || "GET";
+    if (
+      isLoopbackOnlyApiRequest(urlPath, requestMethod) &&
+      !isLoopbackAddress(req.socket?.remoteAddress)
+    ) {
+      sendJsonError(
+        res,
+        403,
+        "This endpoint is available only from the local machine",
+        "loopbackRequired",
+      );
+      return;
+    }
+
     urlPath = normalizeApiRoutePath(urlPath);
 
     // CORS is limited to the server's own origin (plus loopback origins for
@@ -2780,7 +2815,8 @@ export default function (pi: ExtensionAPI) {
             res.end(JSON.stringify({ error: "filePath required" }));
             return;
           }
-          execFile("open", [fp], (err) => {
+          const openCommand = getOpenCommand(process.platform, fp);
+          execFile(openCommand.command, openCommand.args, (err) => {
             if (err) {
               res.writeHead(500, { "Content-Type": "application/json" });
               res.end(JSON.stringify({ error: errMessage(err) }));
@@ -2952,35 +2988,25 @@ export default function (pi: ExtensionAPI) {
             res.end(JSON.stringify({ error: "path required" }));
             return;
           }
-          const resolved = workspacePath.startsWith("~")
-            ? path.join(process.env.HOME || "", workspacePath.slice(1))
-            : workspacePath;
+          const resolved = resolveHomePath(workspacePath, os.homedir());
           if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
             res.writeHead(400, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: `Directory not found: ${resolved}` }));
             return;
           }
-          // Open a new terminal window running pi in the selected directory.
-          // Note: this still uses the user's PATH `pi`, not the embedded one,
-          // because Picot's own workspace flow lives in Tauri commands;
-          // this endpoint is the legacy "open in external terminal" affordance.
-          const { execSync } = require("node:child_process");
-          const escaped = resolved.replace(/'/g, "'\\''");
-          try {
-            execSync(
-              `osascript -e 'tell app "Terminal" to do script "cd '"'"'${escaped}'"'"' && pi"'`,
-            );
-          } catch {
-            try {
-              execSync(
-                `osascript -e 'tell app "iTerm2" to create window with default profile command "cd '"'"'${escaped}'"'"' && pi"'`,
-              );
-            } catch {
-              /* no terminal app available */
+          // Open the selected directory with the platform default file manager.
+          // The argument vector avoids shell quoting and works on macOS,
+          // Windows, and Linux without assuming a particular terminal app.
+          const openCommand = getOpenCommand(process.platform, resolved);
+          execFile(openCommand.command, openCommand.args, (err) => {
+            if (err) {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: errMessage(err) }));
+              return;
             }
-          }
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ ok: true, path: resolved }));
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: true, path: resolved }));
+          });
         } catch (e: unknown) {
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: errMessage(e) }));
@@ -4360,17 +4386,35 @@ export default function (pi: ExtensionAPI) {
       // `Bun.file(path)` already supports byte ranges, content-type
       // inference, and zero-copy streaming, and the adapter's buffered
       // body approach would defeat all of that for the 200+ KB JS bundle.
+      function bunRequestAddress(server: unknown, req: Request): string | undefined {
+        const requestIP = (
+          server as { requestIP?: (request: Request) => { address?: string } | null }
+        ).requestIP;
+        if (typeof requestIP !== "function") return undefined;
+        try {
+          return requestIP.call(server, req)?.address;
+        } catch {
+          return undefined;
+        }
+      }
+
       async function bunFetchHandler(req: Request, server: unknown): Promise<Response | undefined> {
         const url = tryParseUrl(req.url);
         if (!url) return new Response("Invalid request URL", { status: 400 });
+        const remoteAddress = bunRequestAddress(server, req);
         if (url.pathname === "/ws") {
+          if (!isLoopbackAddress(remoteAddress)) {
+            return new Response("This endpoint is available only from the local machine", {
+              status: 403,
+            });
+          }
           if ((server as { upgrade: (req: Request) => boolean }).upgrade(req)) return undefined;
           return new Response("WebSocket upgrade failed", { status: 400 });
         }
         if (!url.pathname.startsWith("/api/")) {
           return serveStaticAssetBun(url, req);
         }
-        return runNodeStyleHandler(req);
+        return runNodeStyleHandler(req, remoteAddress);
       }
 
       // Native Bun static serving — mirrors the routing in `serveStaticFile`
@@ -4404,20 +4448,22 @@ export default function (pi: ExtensionAPI) {
         if (urlPath === "/") urlPath = "/index.html";
         if (urlPath === "/cost" || urlPath === "/cost/") urlPath = "/cost.html";
 
-        const filePath = path.join(STATIC_DIR, urlPath);
-        // Guard against directory-traversal. We do this with the resolved
-        // filesystem path rather than the URL path so symlink shenanigans
-        // can't escape STATIC_DIR either.
-        if (!filePath.startsWith(STATIC_DIR)) {
+        const filePath = path.resolve(STATIC_DIR, `.${urlPath}`);
+        if (!isPathWithinRoot(STATIC_DIR, filePath)) {
           return new Response("Forbidden", { status: 403 });
         }
 
         try {
-          const file = Bun.file(filePath);
+          const realRoot = await fs.promises.realpath(STATIC_DIR);
+          const realFilePath = await fs.promises.realpath(filePath);
+          if (!isPathWithinRoot(realRoot, realFilePath)) {
+            return new Response("Forbidden", { status: 403 });
+          }
+          const file = Bun.file(realFilePath);
           if (!(await file.exists())) {
             return new Response("Not Found", { status: 404 });
           }
-          const ext = path.extname(filePath).toLowerCase();
+          const ext = path.extname(realFilePath).toLowerCase();
           const contentType = MIME_TYPES[ext] || file.type || "application/octet-stream";
           return new Response(file as unknown as BodyInit, {
             headers: {
@@ -4448,6 +4494,11 @@ export default function (pi: ExtensionAPI) {
 
     server.on("upgrade", (request, socket, head) => {
       if (request.url === "/ws") {
+        if (!isLoopbackAddress(request.socket.remoteAddress)) {
+          socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+          socket.destroy();
+          return;
+        }
         wss.handleUpgrade(request, socket, head, (ws) => {
           wss.emit("connection", ws, request);
         });
@@ -4547,7 +4598,7 @@ export default function (pi: ExtensionAPI) {
   //     endpoint needs true response streaming, it should branch on
   //     HAS_BUN_SERVE and return a Bun Response with a ReadableStream.
   // ═══════════════════════════════════════════════════════════════════════
-  async function runNodeStyleHandler(req: Request): Promise<Response> {
+  async function runNodeStyleHandler(req: Request, remoteAddress?: string): Promise<Response> {
     const url = tryParseUrl(req.url);
     if (!url) return new Response("Invalid request URL", { status: 400 });
     const bodyText = req.method !== "GET" && req.method !== "HEAD" ? await req.text() : "";
@@ -4569,6 +4620,7 @@ export default function (pi: ExtensionAPI) {
         method: req.method,
         headers,
         signal: req.signal,
+        socket: { remoteAddress },
         // Only `data`/`end` are consumed by our POST handlers — see
         // /api/rpc, /api/agent-config (PUT), etc.
         on(event: string, fn: (chunk?: unknown) => void) {

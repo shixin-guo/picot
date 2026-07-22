@@ -175,7 +175,8 @@ export function resolveScopedFilePath(
 // ─── File classification ────────────────────────────────────────────────
 
 function getExtension(filePath: string): string {
-  const basename = filePath.split("/").pop() || filePath;
+  const basename =
+    (filePath.includes("\\") ? path.win32.basename(filePath) : path.basename(filePath)) || filePath;
   const idx = basename.lastIndexOf(".");
   if (idx <= 0) return ""; // No extension or dotfile without extension
   return basename.slice(idx + 1);
