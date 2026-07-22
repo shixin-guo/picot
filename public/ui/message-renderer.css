@@ -1,0 +1,432 @@
+/* ═══════════════════════════════════════════════════════
+   Chat message rendering (public/ui/message-renderer.js)
+   Welcome screen, message bubbles, thinking blocks, streaming
+   cursor, message footer (copy/fork buttons), error/system
+   messages. Markdown-specific output styling (code blocks,
+   tables, task lists, inline images) lives in ./markdown.css.
+   ═══════════════════════════════════════════════════════ */
+
+/* Welcome logo icon (sidebar mode-toggle's .tau-icon lives in style.css) */
+.tau-icon-welcome {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius);
+}
+
+/* Welcome */
+.welcome {
+  text-align: center;
+  color: var(--text-dim);
+  margin-top: 120px;
+  animation: fadeIn 0.5s var(--ease);
+}
+
+.welcome-icon {
+  font-size: var(--font-size-2xl);
+  opacity: 0.25;
+  font-weight: 200;
+}
+
+.welcome p {
+  margin-bottom: 4px;
+  font-size: var(--font-size-lg);
+}
+
+.welcome .hint {
+  font-size: var(--font-size-md);
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.shortcuts-hint {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: center;
+  margin-top: var(--space-5);
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+}
+
+.shortcuts-hint span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+.shortcuts-hint kbd {
+  min-width: var(--control-height-xs);
+  padding: 0 var(--space-1-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  line-height: calc(var(--control-height-xs) - 2px);
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+  animation: msgIn 0.25s var(--ease);
+}
+
+.message.user {
+  align-items: flex-end;
+}
+
+.message .message-content {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.message.history {
+  animation: none;
+}
+
+@keyframes msgIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.message.user {
+  align-self: flex-end;
+}
+.message.assistant {
+  align-self: flex-start;
+}
+.message-usage {
+  display: inline-block;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  margin-top: 2px;
+  opacity: 0.5;
+}
+
+/* biome-ignore lint/style/noDescendingSpecificity: base styles defined after scoped overrides intentionally */
+.message-content {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-md);
+  line-height: 1.6;
+}
+
+/* User bubble */
+.message.user .message-content {
+  background: var(--user-bubble);
+  color: var(--user-bubble-text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  border-bottom-right-radius: 6px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
+  white-space: pre-wrap;
+}
+
+/* User bubble markdown */
+.message.user .message-content blockquote {
+  border-left: 2px solid currentColor;
+  padding-left: var(--space-2);
+  margin: 4px 0;
+  opacity: 0.75;
+  font-style: italic;
+}
+
+/* Assistant — clean, no container */
+.message.assistant .message-content {
+  background: none;
+  border: none;
+  padding: var(--space-1) 0;
+  color: var(--text-primary);
+  width: 100%;
+}
+
+/* Markdown */
+.message.assistant .message-content p {
+  margin-bottom: 8px;
+}
+.message.assistant .message-content p:last-child {
+  margin-bottom: 0;
+}
+.message.assistant .message-content em {
+  font-style: italic;
+}
+.message.assistant .message-content a {
+  color: var(--accent-text);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-subtle);
+}
+.message.assistant .message-content a:hover {
+  border-color: var(--accent-text);
+}
+.message.assistant .message-content ul,
+.message.assistant .message-content ol {
+  margin: 6px 0;
+  padding-left: var(--space-5);
+}
+.message.assistant .message-content li {
+  margin-bottom: 3px;
+}
+
+.message.assistant .message-content h1,
+.message.assistant .message-content h2,
+.message.assistant .message-content h3 {
+  margin: 14px 0 6px;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.message.assistant .message-content h1 {
+  font-size: var(--font-size-lg);
+}
+.message.assistant .message-content h2 {
+  font-size: var(--font-size-lg);
+}
+.message.assistant .message-content h3 {
+  font-size: var(--font-size-md);
+}
+
+.message.assistant .message-content hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 12px 0;
+}
+
+.message.assistant .message-content blockquote {
+  border-left: 2px solid var(--accent);
+  padding-left: var(--space-3);
+  margin: 8px 0;
+  font-style: italic;
+}
+
+/* Streaming cursor */
+.message-content.streaming::after {
+  content: "▋";
+  animation: blink 1s infinite;
+  margin-left: 1px;
+  color: var(--accent);
+}
+
+@keyframes blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Thinking Blocks — subtle glass accordion
+   ═══════════════════════════════════════════════════════ */
+
+.thinking-block {
+  background: var(--thinking-bg);
+  border: 1px solid var(--border);
+  padding: 0;
+  margin: 2px 0;
+  border-radius: var(--radius);
+  font-size: var(--font-size-md);
+  overflow: hidden;
+  align-self: flex-start;
+  width: 100%;
+  flex-shrink: 0;
+  backdrop-filter: blur(12px);
+  transition:
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease);
+}
+
+.thinking-block:hover {
+  border-color: var(--border-hover);
+}
+
+.thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  transition: background var(--duration) var(--ease);
+}
+
+.thinking-toggle:hover {
+  background: var(--bg-glass-hover);
+}
+
+.thinking-label {
+  font-size: var(--font-size-sm);
+}
+
+.thinking-toggle .chevron {
+  font-size: var(--font-size-sm);
+  transition: transform var(--duration) var(--ease);
+  opacity: 0.3;
+  flex-shrink: 0;
+}
+
+.thinking-toggle.expanded .chevron {
+  transform: rotate(90deg);
+}
+
+.thinking-content {
+  display: none;
+  padding: 0 var(--space-3) var(--space-3);
+  white-space: pre-wrap;
+  font-style: italic;
+  border-top: 1px solid var(--border);
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.thinking-content.expanded {
+  display: block;
+}
+
+/* Hide thinking blocks when toggled off */
+body.hide-thinking .thinking-block {
+  display: none !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+
+/* ═══════════════════════════════════════════════════════
+   Message footer: cost + copy button (inline row)
+   ═══════════════════════════════════════════════════════ */
+
+.message-footer {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Copy message button (below message) */
+
+.message-copy-btn {
+  opacity: 0.45;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: var(--space-0-5) var(--space-1);
+  font-size: var(--font-size-sm);
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease);
+  white-space: nowrap;
+}
+
+.message-copy-btn:hover {
+  opacity: 1;
+  color: var(--text-primary);
+}
+
+.message-copy-btn:active {
+  transform: scale(0.9);
+}
+
+.message-copy-btn.copied {
+  color: var(--success);
+}
+
+.message-copy-btn.copied svg {
+  display: none;
+}
+
+.message-copy-btn.copied::after {
+  content: "✓";
+  font-size: var(--font-size-sm);
+}
+
+/* Fork session button (beside copy button on user messages) */
+
+.message-fork-btn {
+  opacity: 0.45;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: var(--space-0-5) var(--space-1);
+  font-size: var(--font-size-sm);
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease);
+  white-space: nowrap;
+}
+
+.message-fork-btn:hover {
+  opacity: 1;
+  color: var(--text-primary);
+}
+
+.message-fork-btn:active {
+  transform: scale(0.9);
+}
+
+.message-fork-btn.forking {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.message-fork-btn:disabled {
+  cursor: wait;
+}
+
+/* Hide fork button in Agent Inbox (super-agent) sessions */
+.super-agent-active .message-fork-btn {
+  display: none;
+}
+
+/* Error / system messages */
+.error-message {
+  background: rgba(248, 113, 113, 0.06);
+  border: 1px solid rgba(248, 113, 113, 0.15);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-4);
+  margin: 6px 0;
+  color: var(--error);
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+  backdrop-filter: blur(8px);
+}
+
+.system-message {
+  text-align: center;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+/* Search-in-messages highlight (see highlightSearchQuery() in message-renderer.js) */
+mark[data-search-highlight="true"] {
+  border-radius: var(--radius-xs);
+  background: var(--warning);
+  color: var(--bg-solid);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--warning) 35%, transparent);
+}

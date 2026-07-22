@@ -40,6 +40,39 @@ describe("session search dialog", () => {
     delete globalThis.requestAnimationFrame;
   });
 
+  it("shows a Cmd/Ctrl+K hint in the sidebar search placeholder", () => {
+    setupSessionSearchDialog({
+      triggerInput,
+      triggerClear,
+      overlay,
+      dialog,
+      input,
+      list,
+      getSessions: () => [],
+    });
+
+    expect(triggerInput.placeholder).toMatch(/Ctrl\+K|⌘K/);
+  });
+
+  it("opens the dialog with the Cmd/Ctrl+K shortcut from anywhere", () => {
+    setupSessionSearchDialog({
+      triggerInput,
+      triggerClear,
+      overlay,
+      dialog,
+      input,
+      list,
+      getSessions: () => [{ id: "s1", name: "Fix pinyin submit" }],
+    });
+
+    document.dispatchEvent(
+      new dom.window.KeyboardEvent("keydown", { key: "k", metaKey: true, cancelable: true }),
+    );
+
+    expect(dialog.classList.contains("hidden")).toBe(false);
+    expect(overlay.classList.contains("hidden")).toBe(false);
+  });
+
   it("opens a centered dialog from the narrow sidebar search", () => {
     setupSessionSearchDialog({
       triggerInput,

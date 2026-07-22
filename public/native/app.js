@@ -294,7 +294,8 @@ try {
   // Two-phase load: render session history from disk immediately while Pi
   // warms up, then overlay the authoritative Pi snapshot when it arrives.
   // Skip the fast path for brand-new (temporary) sessions — they have no
-  // saved JSONL file yet and go straight to the Pi snapshot.
+  // saved JSONL file yet and go straight to the Pi snapshot. Focus the
+  // composer so the user can start typing right away.
   if (!target.sessionId.startsWith("temporary-")) {
     const diskResult = await data
       .readSessionMessages(target.workspaceId, target.sessionId)
@@ -305,6 +306,8 @@ try {
       convNav.rebuild();
       setStatus("Connected");
     }
+  } else {
+    input.focus();
   }
 
   await hydrateSnapshot();

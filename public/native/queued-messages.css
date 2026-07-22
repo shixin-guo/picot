@@ -1,0 +1,59 @@
+/* ═══════════════════════════════════════════════════════
+   Queued (steering/follow-up) messages strip (public/native/queued-messages.js)
+   ═══════════════════════════════════════════════════════ */
+
+.queued-messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  padding: 0 var(--space-1);
+}
+
+.queued-messages.hidden {
+  display: none;
+}
+
+.queued-msg {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-md);
+  animation: msgIn 0.2s var(--ease);
+}
+
+.queued-msg-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queued-msg-label {
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.queued-msg-cancel {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: var(--space-0-5) var(--space-1);
+  font-size: var(--font-size-md);
+  line-height: 1;
+  border-radius: var(--radius-xs);
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.queued-msg-cancel:hover {
+  color: var(--error, #f87171);
+}

@@ -1,0 +1,221 @@
+/* ═══════════════════════════════════════════════════════
+   Conversation navigator rail (Codex-style) — public/ui/conv-nav.js
+   ═══════════════════════════════════════════════════════ */
+
+/* Brief highlight flash on the message a jump lands on */
+.message-jump-highlight .message-content {
+  animation: messageJumpFlash 0.9s var(--ease);
+}
+
+@keyframes messageJumpFlash {
+  0% {
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* ── Rail — no background, just floating ticks on the right edge ── */
+.conv-nav {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end; /* ticks grow leftward */
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  /* No pill, no border, no backdrop — transparent rail */
+  max-height: min(
+    560px,
+    calc(100% - var(--messages-top-inset) - var(--messages-bottom-inset) - 24px)
+  );
+  overflow: visible;
+  animation: convNavIn 0.3s var(--spring);
+  transition:
+    opacity 0.2s var(--ease),
+    transform 0.2s var(--ease);
+}
+
+/* Hide conv-nav when window is too narrow — needs room to the right of messages */
+@media (max-width: 900px) {
+  .conv-nav {
+    display: none !important;
+  }
+}
+
+.conv-nav.hidden {
+  display: flex !important;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(8px);
+}
+
+@keyframes convNavIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+/* Arrow buttons — minimal, no background */
+/* Tick track */
+.conv-nav-track {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  overflow: visible;
+  margin-right: 2px;
+}
+
+/* Individual tick — button is the (large) hit target; ::after is the visual line */
+.conv-nav-dot {
+  width: 28px; /* wide hit target */
+  height: 2px; /* visual bar height; gap provides spacing */
+  padding: var(--space-0-5) 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end; /* bar hugs the right/rail edge */
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-sizing: content-box;
+}
+
+.conv-nav-dot::after {
+  content: "";
+  height: 2px;
+  width: var(--nav-w, 16px);
+  border-radius: var(--radius-pill);
+  background: var(--border-hover);
+  opacity: 0.6;
+  transform-origin: right center;
+  transition:
+    width 0.22s var(--ease),
+    background 0.2s var(--ease),
+    height 0.2s var(--ease),
+    opacity 0.2s var(--ease);
+}
+
+.conv-nav-dot:hover::after {
+  width: max(var(--nav-w, 13px), 18px);
+  opacity: 0.9;
+}
+
+.conv-nav-dot.active::after {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 28%, var(--border-hover)),
+    var(--accent)
+  );
+  opacity: 1;
+  box-shadow: 2px 0 6px var(--accent-glow);
+}
+
+/* Tooltip — floated to the left of the rail */
+.conv-nav-tooltip {
+  position: fixed;
+  right: 44px; /* close to the compact ticks */
+  width: 260px;
+  background: var(--bg-frosted);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
+  -webkit-backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
+  z-index: 200;
+  pointer-events: auto; /* allow hovering tooltip to keep it open */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  transform-origin: right center;
+  /* animated via JS class swap */
+}
+
+.conv-nav-tooltip.hidden {
+  display: none;
+}
+
+/* Class added by JS on each fresh show — removed immediately after so repeat hovers re-animate */
+.conv-nav-tooltip.animating {
+  animation: convTooltipIn 0.16s var(--ease) both;
+}
+
+@keyframes convTooltipIn {
+  from {
+    opacity: 0;
+    transform: translateX(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.conv-nav-tooltip-q {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+  line-height: 1.5;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.conv-nav-tooltip-sep {
+  height: 1px;
+  background: var(--border);
+}
+
+.conv-nav-tooltip-a {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  line-height: 1.5;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+/* New-message badge */
+.conv-nav-new-badge {
+  position: fixed;
+  bottom: calc(var(--messages-bottom-inset, 128px) + 12px);
+  right: 48px;
+  font-size: var(--font-size-sm);
+  color: white;
+  background: var(--accent);
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: badgePop 0.3s var(--spring);
+  box-shadow: 0 2px 8px var(--accent-glow);
+  z-index: 31;
+}
+
+.conv-nav-new-badge.hidden {
+  display: none;
+}
+
+@keyframes badgePop {
+  from {
+    opacity: 0;
+    transform: scale(0.6) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}

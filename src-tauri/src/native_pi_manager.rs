@@ -173,7 +173,10 @@ impl NativePiManager {
 
     fn start_event_pump(&self, target: RuntimeTarget, bridge: PiRpcBridge) {
         let inner = Arc::clone(&self.inner);
-        tokio::spawn(async move {
+        // Started from the synchronous startup path (Tauri `setup` hook), which
+        // has no entered Tokio runtime — use Tauri's global runtime handle so
+        // this works off the main thread instead of panicking on `tokio::spawn`.
+        tauri::async_runtime::spawn(async move {
             while let Some(frame) = bridge.next_frame().await {
                 let target = inner.runtimes.lock().ok().and_then(|runtimes| {
                     runtimes

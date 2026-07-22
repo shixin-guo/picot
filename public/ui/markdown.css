@@ -1,0 +1,187 @@
+/* ═══════════════════════════════════════════════════════
+   Markdown rendering output (public/ui/markdown.js)
+   Code blocks, inline code, tables, task lists, inline images —
+   all produced by renderMarkdown()/renderStreamingMarkdown() and
+   scoped under .message.assistant .message-content by the caller
+   (public/ui/message-renderer.js).
+   ═══════════════════════════════════════════════════════ */
+
+/* Tables */
+.message.assistant .message-content .table-wrapper {
+  overflow-x: auto;
+  margin: 8px 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.message.assistant .message-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-md);
+}
+
+.message.assistant .message-content th {
+  background: var(--bg-glass-strong);
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-hover);
+  white-space: nowrap;
+}
+
+.message.assistant .message-content td {
+  padding: var(--space-1-5) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+.message.assistant .message-content tr:last-child td {
+  border-bottom: none;
+}
+
+.message.assistant .message-content tr:hover td {
+  background: var(--bg-glass);
+}
+
+/* Task lists */
+.message.assistant .message-content .task-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.message.assistant .message-content .task-list-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1-5);
+}
+
+.message.assistant .message-content .task-list-item input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-xs);
+  background: var(--bg-glass);
+  flex-shrink: 0;
+  position: relative;
+  top: 2px;
+}
+
+.message.assistant .message-content .task-list-item input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.message.assistant .message-content .task-list-item input[type="checkbox"]:checked::after {
+  content: "✓";
+  color: white;
+  font-size: var(--font-size-sm);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Inline images */
+.message.assistant .message-content .inline-image {
+  max-width: 100%;
+  border-radius: var(--radius-md);
+  margin: 6px 0;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: opacity 0.15s var(--ease);
+}
+
+.message.assistant .message-content .inline-image:hover {
+  opacity: 0.85;
+}
+
+/* Code blocks */
+.code-block-wrapper {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 8px 0;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(12px);
+}
+
+:root[data-theme="clean"] .code-block-wrapper,
+:root[data-theme="terracotta"] .code-block-wrapper,
+:root[data-theme="sage"] .code-block-wrapper {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-1-5) var(--space-3);
+  background: var(--bg-glass);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+}
+
+.copy-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-sm);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.copy-btn:hover {
+  background: var(--bg-glass-hover);
+}
+.copy-btn.copied {
+  color: var(--success);
+}
+
+pre {
+  background: transparent;
+  padding: var(--space-3);
+  overflow-x: auto;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+}
+
+.code-block-wrapper pre {
+  max-width: 100%;
+  box-sizing: border-box;
+  border-radius: 0;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+  color: var(--text-primary);
+  border: none;
+}
+
+/* biome-ignore lint/style/noDescendingSpecificity: base code styles; scoped .settings-help code defined earlier intentionally */
+code {
+  background: var(--bg-glass-strong);
+  border: 1px solid var(--border);
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.88em;
+  color: var(--accent-text);
+}

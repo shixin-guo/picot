@@ -1,0 +1,117 @@
+/* ═══════════════════════════════════════════════════════
+   Command palette (public/native/command-palette.js)
+   ═══════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════
+   Command Palette
+   ═══════════════════════════════════════════════════════ */
+
+.command-palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 1000;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.command-palette-overlay.hidden {
+  display: none;
+}
+
+.command-palette {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--bg-frosted);
+  backdrop-filter: blur(var(--blur-heavy)) saturate(1.6);
+  -webkit-backdrop-filter: blur(var(--blur-heavy)) saturate(1.6);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  width: 340px;
+  max-width: 90vw;
+  max-height: 400px;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg), var(--shadow-inset);
+  animation: sheetIn 0.2s var(--ease);
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+}
+
+.command-palette.hidden {
+  display: none;
+}
+
+.command-palette-header {
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--border);
+}
+
+.command-list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-1-5);
+}
+
+.command-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--duration) var(--ease);
+}
+
+.command-item:hover,
+.command-item:focus-visible {
+  background: var(--bg-glass-hover);
+  outline: none;
+}
+
+.command-item:active {
+  background: var(--bg-glass-active);
+  transform: scale(0.98);
+}
+
+.command-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.command-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-md);
+  flex-shrink: 0;
+}
+
+.command-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.command-desc {
+  margin-top: 1px;
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+}

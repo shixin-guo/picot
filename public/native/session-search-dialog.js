@@ -2,6 +2,22 @@ const SEARCH_DEBOUNCE_MS = 300;
 const MAX_TITLE_RESULTS = 12;
 const MAX_RECENT_RESULTS = 12;
 
+function isAppleOs() {
+  const platform = globalThis.navigator?.platform ?? "";
+  const userAgent = globalThis.navigator?.userAgent ?? "";
+  return platform.startsWith("Mac") || /Mac OS|iPhone|iPad/.test(userAgent);
+}
+
+export function shortcutHintLabel() {
+  return isAppleOs() ? "⌘K" : "Ctrl+K";
+}
+
+function isSearchShortcut(event) {
+  if (event.defaultPrevented || event.isComposing) return false;
+  if (event.altKey || event.shiftKey || event.key.toLowerCase() !== "k") return false;
+  return event.metaKey || event.ctrlKey;
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -56,6 +72,8 @@ export function setupSessionSearchDialog({
   if (!triggerInput || !overlay || !dialog || !input || !list) {
     return { open() {}, close() {} };
   }
+
+  triggerInput.placeholder = `Search... (${shortcutHintLabel()})`;
 
   let query = "";
   let messageMatches = [];
@@ -254,6 +272,16 @@ export function setupSessionSearchDialog({
   overlay.addEventListener("click", () => close());
   input.addEventListener("input", () => setQuery(input.value));
   document.addEventListener("keydown", (event) => {
+    if (isSearchShortcut(event)) {
+      event.preventDefault();
+      if (!dialog.classList.contains("hidden")) {
+        input.focus();
+        input.select();
+      } else {
+        open();
+      }
+      return;
+    }
     if (dialog.classList.contains("hidden") || event.key !== "Escape") return;
     event.preventDefault();
     close();

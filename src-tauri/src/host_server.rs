@@ -572,6 +572,57 @@ fn annotate_live_sessions(sessions: &mut Value, statuses: Vec<RuntimeStatus>) {
     }
 }
 
+fn messages_from_entries_response(response: &Value) -> Value {
+    let Some(entries) = response.pointer("/data/entries").and_then(Value::as_array) else {
+        return json!([]);
+    };
+    let leaf_id = response.pointer("/data/leafId").and_then(Value::as_str);
+    let mut id_to_index = HashMap::new();
+    for (index, entry) in entries.iter().enumerate() {
+        if let Some(id) = entry.get("id").and_then(Value::as_str) {
+            id_to_index.insert(id, index);
+        }
+    }
+
+    let mut branch = Vec::new();
+    let mut current = leaf_id.and_then(|id| id_to_index.get(id).copied());
+    let mut visited = HashSet::new();
+    while let Some(index) = current {
+        if !visited.insert(index) {
+            break;
+        }
+        let entry = &entries[index];
+        if entry.get("type").and_then(Value::as_str) == Some("message") {
+            if let Some(message) = entry.get("message") {
+                branch.push(message_with_entry_id(
+                    message.clone(),
+                    entry.get("id").and_then(Value::as_str),
+                ));
+            }
+        }
+        current = entry
+            .get("parentId")
+            .and_then(Value::as_str)
+            .and_then(|parent_id| id_to_index.get(parent_id).copied());
+    }
+
+    branch.reverse();
+    Value::Array(branch)
+}
+
+fn message_with_entry_id(mut message: Value, entry_id: Option<&str>) -> Value {
+    if message.get("role").and_then(Value::as_str) != Some("user") {
+        return message;
+    }
+    let Some(entry_id) = entry_id else {
+        return message;
+    };
+    if let Some(object) = message.as_object_mut() {
+        object.insert("entryId".to_owned(), Value::String(entry_id.to_owned()));
+    }
+    message
+}
+
 async fn dispatch(
     action: RoutedAction,
     state: &HostState,
@@ -613,16 +664,17 @@ async fn dispatch(
                             .map_err(|message| ("session_binding_failed", message))?;
                     }
                 }
-                let messages_response = state
+                let entries_response = state
                     .runtimes
                     .request(
                         &target,
-                        json!({ "type": "get_messages" }),
+                        json!({ "type": "get_entries" }),
                         None,
                         Duration::from_secs(10),
                     )
                     .await
                     .map_err(|message| ("snapshot_failed", message))?;
+                let messages = messages_from_entries_response(&entries_response);
                 let host_snapshot = state
                     .runtimes
                     .snapshot(&target)
@@ -635,7 +687,7 @@ async fn dispatch(
                     "state": {
                         "lifecycle": host_snapshot.state,
                         "pi": state_response.get("data").cloned().unwrap_or(Value::Null),
-                        "messages": messages_response.pointer("/data/messages").cloned().unwrap_or_else(|| json!([])),
+                        "messages": messages,
                     }
                 }));
             }
@@ -1111,7 +1163,7 @@ fn now_seconds() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{append_pairing_token, HostServer};
+    use super::{append_pairing_token, messages_from_entries_response, HostServer};
     use crate::metadata_store::MetadataStore;
     use crate::native_pi_manager::NativePiManager;
     use crate::remote_auth::RemoteAuth;
@@ -1137,6 +1189,62 @@ mod tests {
         assert_eq!(
             with_query,
             "http://192.168.1.10:9000/app/workspaces/a/sessions/b?tab=settings&pairingToken=token"
+        );
+    }
+
+    #[test]
+    fn derives_active_branch_messages_with_user_entry_ids_from_entries() {
+        let response = json!({
+            "type": "response",
+            "command": "get_entries",
+            "success": true,
+            "data": {
+                "leafId": "assistant-2",
+                "entries": [
+                    {
+                        "type": "message",
+                        "id": "user-1",
+                        "parentId": null,
+                        "message": { "role": "user", "content": "first" }
+                    },
+                    {
+                        "type": "message",
+                        "id": "assistant-1",
+                        "parentId": "user-1",
+                        "message": { "role": "assistant", "content": [{ "type": "text", "text": "old" }] }
+                    },
+                    {
+                        "type": "message",
+                        "id": "user-abandoned",
+                        "parentId": "assistant-1",
+                        "message": { "role": "user", "content": "abandoned" }
+                    },
+                    {
+                        "type": "message",
+                        "id": "user-2",
+                        "parentId": "assistant-1",
+                        "message": { "role": "user", "content": "current" }
+                    },
+                    {
+                        "type": "message",
+                        "id": "assistant-2",
+                        "parentId": "user-2",
+                        "message": { "role": "assistant", "content": [{ "type": "text", "text": "new" }] }
+                    }
+                ]
+            }
+        });
+
+        let messages = messages_from_entries_response(&response);
+
+        assert_eq!(
+            messages,
+            json!([
+                { "role": "user", "content": "first", "entryId": "user-1" },
+                { "role": "assistant", "content": [{ "type": "text", "text": "old" }] },
+                { "role": "user", "content": "current", "entryId": "user-2" },
+                { "role": "assistant", "content": [{ "type": "text", "text": "new" }] }
+            ])
         );
     }
 

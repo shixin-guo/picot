@@ -1,0 +1,61 @@
+/* ═══════════════════════════════════════════════════════
+   File tree items (public/native/file-browser.js)
+   Right-sidebar file browser rows. The panel shell
+   (.file-sidebar, .file-list, .app-side-panel*) belongs to
+   native/app.js and stays in style.css.
+   ═══════════════════════════════════════════════════════ */
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--duration) var(--ease);
+  user-select: none;
+  -webkit-user-drag: element;
+}
+
+.file-item:hover {
+  background: var(--bg-glass-hover);
+}
+
+.file-item:active {
+  transform: scale(0.99);
+}
+
+.file-item.dragging {
+  opacity: 0.5;
+}
+
+.file-icon {
+  font-size: var(--font-size-md);
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.file-name {
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-size {
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.file-loading {
+  padding: var(--space-6) var(--space-3);
+  text-align: center;
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+}

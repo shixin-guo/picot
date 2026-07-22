@@ -163,6 +163,19 @@ pub struct HostDataPlane {
     session_summary_cache: Arc<RwLock<HashMap<PathBuf, CachedSessionSummary>>>,
 }
 
+fn message_with_entry_id(mut message: serde_json::Value, entry_id: &str) -> serde_json::Value {
+    if message.get("role").and_then(serde_json::Value::as_str) != Some("user") {
+        return message;
+    }
+    if let Some(object) = message.as_object_mut() {
+        object.insert(
+            "entryId".to_owned(),
+            serde_json::Value::String(entry_id.to_owned()),
+        );
+    }
+    message
+}
+
 impl HostDataPlane {
     pub fn new(workspace_roots: HashMap<String, PathBuf>) -> Result<Self, HostDataError> {
         let mut canonical = HashMap::new();
@@ -367,7 +380,10 @@ impl HostDataPlane {
                 .map(str::to_owned);
             let message_value =
                 if entry.get("type").and_then(serde_json::Value::as_str) == Some("message") {
-                    entry.get("message").cloned()
+                    entry
+                        .get("message")
+                        .cloned()
+                        .map(|message| message_with_entry_id(message, &id))
                 } else {
                     None
                 };
@@ -1169,6 +1185,7 @@ fn safe_join(root: &Path, relative_path: &str) -> Result<PathBuf, HostDataError>
 #[cfg(test)]
 mod tests {
     use super::{FileKind, HostDataError, HostDataPlane};
+    use serde_json::json;
     use std::collections::HashMap;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1198,6 +1215,45 @@ mod tests {
         assert_eq!(
             data.list_files("missing", ""),
             Err(HostDataError::UnknownWorkspace)
+        );
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn read_session_messages_preserves_user_entry_ids() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp = std::env::temp_dir().join(format!("picot-host-messages-{nonce}"));
+        let workspace = temp.join("workspace");
+        let sessions = temp.join("sessions/project");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&sessions).unwrap();
+        fs::write(
+            sessions.join("session-a.jsonl"),
+            format!(
+                "{{\"type\":\"session\",\"id\":\"session-a\",\"timestamp\":\"2026-01-01\",\"cwd\":{}}}\n\
+                 {{\"type\":\"message\",\"id\":\"user-1\",\"parentId\":null,\"message\":{{\"role\":\"user\",\"content\":\"hello\"}}}}\n\
+                 {{\"type\":\"message\",\"id\":\"assistant-1\",\"parentId\":\"user-1\",\"message\":{{\"role\":\"assistant\",\"content\":[{{\"type\":\"text\",\"text\":\"hi\"}}]}}}}\n",
+                serde_json::to_string(&workspace.to_string_lossy()).unwrap()
+            ),
+        )
+        .unwrap();
+        let data = HostDataPlane::new(HashMap::from([("workspace-a".into(), workspace)]))
+            .unwrap()
+            .with_session_root(temp.join("sessions"));
+
+        let messages = data
+            .read_session_messages("workspace-a", "session-a")
+            .unwrap();
+
+        assert_eq!(
+            messages,
+            vec![
+                json!({ "role": "user", "content": "hello", "entryId": "user-1" }),
+                json!({ "role": "assistant", "content": [{ "type": "text", "text": "hi" }] }),
+            ]
         );
         fs::remove_dir_all(temp).unwrap();
     }

@@ -1,0 +1,66 @@
+/* ═══════════════════════════════════════════════════════
+   Image Lightbox (public/ui/image-lightbox.js)
+   Fullscreen overlay for .message-image / .inline-image clicks.
+   ═══════════════════════════════════════════════════════ */
+
+.image-lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s var(--ease);
+}
+
+.image-lightbox-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.image-lightbox-img {
+  max-width: min(90vw, 1200px);
+  max-height: 88vh;
+  object-fit: contain;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  transform: scale(0.94);
+  transition: transform 0.22s var(--ease);
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.image-lightbox-overlay.open .image-lightbox-img {
+  transform: scale(1);
+}
+
+.image-lightbox-close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg-glass-strong);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background 0.15s var(--ease),
+    transform 0.15s var(--ease);
+}
+
+.image-lightbox-close:hover {
+  background: var(--bg-glass-active);
+  transform: scale(1.1);
+}

@@ -1,0 +1,126 @@
+/* ═══════════════════════════════════════════════════════
+   LAN QR code modal (public/native/lan-qr.js)
+   ═══════════════════════════════════════════════════════ */
+
+/* ── LAN QR Code Modal ──────────────────────────────────────────────────── */
+.lan-qr-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.lan-qr-modal.hidden {
+  display: none;
+}
+
+.lan-qr-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.lan-qr-modal-content {
+  position: relative;
+  background: var(--bg-frosted);
+  backdrop-filter: blur(40px) saturate(1.5);
+  -webkit-backdrop-filter: blur(40px) saturate(1.5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  width: 300px;
+  max-width: 100%;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.lan-qr-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lan-qr-modal-title {
+  font-weight: 600;
+  font-size: var(--font-size-md);
+  color: var(--text);
+}
+
+.lan-qr-modal-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.lan-qr-loading {
+  font-size: var(--font-size-md);
+  color: var(--text-dim);
+  padding: var(--space-8) 0;
+}
+
+.lan-qr-image {
+  width: 220px;
+  height: 220px;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  padding: var(--space-1-5);
+  display: block;
+}
+
+.lan-qr-image.hidden {
+  display: none;
+}
+
+.lan-qr-hint {
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.lan-qr-open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: 2px;
+  padding: var(--space-0-5) var(--space-1);
+  font-size: var(--font-size-md);
+  color: var(--accent-text);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.lan-qr-open-link:hover {
+  opacity: 0.8;
+}
+
+.lan-qr-open-link.hidden {
+  display: none;
+}
+
+.lan-qr-btn {
+  color: var(--accent-text);
+}
+
+/* ══════════════════════════════════════════════════════
+   Super Agent — sidebar entry
+   ══════════════════════════════════════════════════════ */
+
+.super-agent-sidebar-entry {
+  margin: 4px 8px 2px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, #a855f7 12%, transparent);
+  border: 1px solid color-mix(in srgb, #a855f7 30%, transparent);
+  cursor: pointer;
+  transition: background 0.15s;
+  user-select: none;
+}

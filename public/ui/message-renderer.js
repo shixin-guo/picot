@@ -201,8 +201,9 @@ export class MessageRenderer {
           .join("\n")
       : message.content;
     const displayContent = cleanChatTranscript(rawContent) ?? rawContent;
-    if (entryId) div.dataset.entryId = entryId;
-    const forkBtnHtml = entryId
+    const forkEntryId = entryId ?? message.entryId ?? message.entry_id ?? null;
+    if (forkEntryId) div.dataset.entryId = forkEntryId;
+    const forkBtnHtml = forkEntryId
       ? `<button class="message-fork-btn" aria-label="Fork session from here" title="Fork session from here"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></button>`
       : "";
     div.innerHTML = `
@@ -210,7 +211,7 @@ export class MessageRenderer {
       <div class="message-footer"><button class="message-copy-btn" aria-label="Copy message"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>${forkBtnHtml}</div>
     `;
     this._setupCopyBtn(div);
-    if (entryId) this._setupForkBtn(div);
+    if (forkEntryId) this._setupForkBtn(div);
     this.container.appendChild(div);
     if (!isHistory) this.scrollToBottom();
   }
