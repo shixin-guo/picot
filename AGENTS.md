@@ -110,6 +110,7 @@ The frontend (`public/`) is vanilla JS with **no framework**. Keep it modular:
 - **Avoid growing `app.js`.** `app.js` is the entry point / orchestrator. New feature logic belongs in a dedicated module that `app.js` imports, not inline in `app.js` itself.
 - **New file threshold.** If a feature adds more than ~50 lines of logic, extract it into its own module (e.g. `public/my-feature.js`) and import it from the appropriate entry point.
 - **No shared-state side-effects at import time.** Modules should export functions/classes; side-effects that mutate global state should be triggered explicitly by the caller, not at module load.
+- **Security/path/i18n changes require the full test suite.** Run `bun run test` before declaring work complete when touching loopback access, filesystem paths, static assets, or locale coverage; the focused regression tests are listed under `## Tests`.
 - **Naming.** Use kebab-case filenames that match the single responsibility (`session-sidebar.js`, `file-browser.js`, `workspace-actions.js`).
 
 ## Architecture authority
@@ -120,6 +121,10 @@ feature-specific validation. Before changing any UI behavior, persistence,
 workspace I/O, or cross-process communication, read the applicable architecture
 section and the design documents it links. Do not duplicate those detailed
 contracts in this guide.
+
+When changing the LAN boundary, cross-platform path handling, or static-asset
+serving shape, also update the `## 边界与不变量` and file-browsing security
+sections in `ARCHITECTURE.md`.
 
 ## Architecture map
 
@@ -193,4 +198,50 @@ Picot uses the Tauri v2 updater plugin to fetch new releases from GitHub. The ru
 
 ## Tests
 
-Vitest tests live in `public/` as `*.test.js` files (jsdom environment). The full `bun run test` also runs `scripts/check-tauri-permissions.js` to validate Tauri capability permissions.
+Vitest tests live beside their modules in `public/` (`*.test.js`) and
+`extensions/` (`*.test.ts`) under the jsdom/Vitest environment. The full
+`bun run test` also runs `scripts/check-tauri-permissions.js` to validate Tauri
+capability permissions.
+
+Security and cross-platform regression coverage includes:
+
+- `extensions/request-access.test.ts` — loopback-only HTTP/WS policy.
+- `extensions/path-safety.test.ts` — filesystem containment and sibling-prefix escapes.
+- `extensions/open-path.test.ts` — platform-specific system opener selection.
+- `public/workspace/path-utils.test.js` — POSIX, Windows drive, and UNC paths.
+- `public/super-agent/navigation.test.js` — Super Agent navigation successor.
+- `public/i18n-keys-completeness.test.js` — locale parity and missing-file failures;
+  it must not silently skip when a locale file is absent.
+
+After changing Rust, run `bun run check:rust`. After changing frontend or
+extension code, run `bun run check`; after changes to the embedded server, also
+run `bun run build:extensions`.
+
+## Security boundaries
+
+The embedded server keeps LAN access intentionally read-only. Static assets and
+approved read-only REST endpoints may be available to LAN/mobile clients, but
+`/ws`, `/api/rpc`, file writes, system/workspace/session controls, configuration,
+Telegram, Super Agent controls, and picker-scope directory enumeration are
+loopback-only. CORS is not authentication. The single source of truth is
+`extensions/request-access.ts`, which checks the socket peer address and fails
+closed when a controlled request has no peer address. Both Node and Bun adapter
+paths must use the same policy. Mobile control flows through the authenticated
+broker rather than bypassing this boundary.
+
+Filesystem containment belongs to `extensions/path-safety.ts`; static serving
+must validate both the resolved candidate and its `realpath` so traversal,
+sibling-prefix, and symlink escapes are rejected. The design contract is
+[`docs/superpowers/specs/2026-07-21-complete-merge-fixes-design.md`](docs/superpowers/specs/2026-07-21-complete-merge-fixes-design.md).
+
+## Cross-platform paths
+
+Frontend path handling is platform-neutral and must use
+`public/workspace/path-utils.js` for POSIX, Windows drive, and UNC strings;
+do not use browser-host OS APIs or hard-code `/` splitting in feature modules.
+System opening is centralized in `extensions/open-path.ts` and selects
+`open`, `explorer.exe`, or `xdg-open` without shell concatenation. Static assets
+are served by `extensions/embedded-server.ts` with the realpath containment
+checks from `extensions/path-safety.ts`. The Rust super-agent workspace lookup
+uses `PathBuf::join` and HOME/USERPROFILE/HOMEDRIVE+HOMEPATH fallbacks. See the
+same complete-merge-fixes design spec before changing these boundaries.
