@@ -23,6 +23,7 @@ import { setupHeaderOpenApp } from "./header-open-app.js";
 import { setupAppKeyboardShortcuts } from "./keyboard-shortcuts.js";
 import { refreshLanQrButton, setupLanQr } from "./lan-qr.js";
 import { setupProjectHeader } from "./project-header.js";
+import { renderQueuedMessages } from "./queued-messages.js";
 import { randomId } from "./random-id.js";
 import { resolveRemoteAuth } from "./remote-auth.js";
 import { appRoutePath, parseAppRoute, replaceTemporarySessionRoute } from "./router.js";
@@ -76,6 +77,7 @@ const attachButton = document.getElementById("attach-btn");
 const imageInput = document.getElementById("image-input");
 const imagePreviews = document.getElementById("image-previews");
 const skillSlashMenu = document.getElementById("skill-slash-menu");
+const queuedMessages = document.getElementById("queued-messages");
 
 // ── Composer model dropdown & thinking button ─────────────────────────────────
 const modelDropdown = document.getElementById("model-dropdown");
@@ -141,6 +143,7 @@ const hydrateFromSnapshot = async (snapshot) => {
   await adoptTarget(reconcileSnapshotTarget(target, snapshot.target));
   store = reduceSessionState(store, snapshot);
   renderHistory(snapshot.state.messages ?? []);
+  renderQueuedMessages(queuedMessages, store.queue);
   convNav.rebuild();
   const pi = snapshot.state.pi ?? {};
   setStatus(pi.isStreaming ? "Working…" : "Connected");
@@ -164,6 +167,7 @@ runtime.subscribe((frame) => {
     hydrateSnapshot().catch(showError);
     return;
   }
+  if (previous.queue !== store.queue) renderQueuedMessages(queuedMessages, store.queue);
   handleRuntimeEvent(frame.event).catch(showError);
 });
 adapter.setConnectionListener((connected) => {
@@ -685,6 +689,7 @@ async function handleRuntimeEvent(event) {
     case "session_bound":
       await adoptTarget({ ...target, sessionId: event.sessionId });
       await hydrateSnapshot();
+      sidebar?.load().catch(showError);
       break;
   }
 }
@@ -707,6 +712,7 @@ async function adoptTarget(nextTarget, { updateRoute = true } = {}) {
   }
   target = nextTarget;
   store = createSessionStore(target);
+  renderQueuedMessages(queuedMessages, store.queue);
   streamingElement = null;
   adapter.subscribeTarget(target);
   sidebar?.setActive(target.sessionId);

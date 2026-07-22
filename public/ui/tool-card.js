@@ -2,10 +2,16 @@
  * Tool Card - Renders and updates tool execution cards (collapsible)
  */
 
+// Minimum time a tool call must stay in-flight before its card auto-expands.
+// Tools that finish faster than this never visibly expand, avoiding an
+// expand-then-immediately-collapse flash on quick tool calls.
+const AUTO_EXPAND_DELAY_MS = 200;
+
 export class ToolCardRenderer {
   constructor(container) {
     this.container = container;
     this.toolCards = new Map(); // toolCallId -> element
+    this.expandTimers = new Map(); // toolCallId -> timeout id
 
     // Toggle header expand/collapse via event delegation
     this.container.addEventListener("click", (e) => {
@@ -42,7 +48,9 @@ export class ToolCardRenderer {
 
     const argsPreview = this.getArgsPreview(toolName, args);
     const argsJson = this.formatJson(args);
-    const isExpanded = status === "streaming" || status === "pending";
+    // Cards never start expanded — see scheduleAutoExpand() below. This avoids
+    // an expand-then-immediately-collapse flash for tool calls that resolve
+    // faster than AUTO_EXPAND_DELAY_MS.
 
     const isEdit =
       (toolName === "edit" || toolName === "Edit") &&
@@ -53,7 +61,7 @@ export class ToolCardRenderer {
     card.innerHTML = `
       <div class="tool-card-header">
         <div class="tool-header-left">
-          <span class="tool-card-chevron${isExpanded ? " expanded" : ""}"><svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M2 1l4 3-4 3z"/></svg></span>
+          <span class="tool-card-chevron"><svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M2 1l4 3-4 3z"/></svg></span>
           <span class="tool-name">${this.escapeHtml(toolName)}</span>
           ${argsPreview ? `<span class="tool-args-preview">${this.escapeHtml(argsPreview)}</span>` : ""}
         </div>
@@ -62,7 +70,7 @@ export class ToolCardRenderer {
           <div class="tool-status ${status}">${status}</div>
         </div>
       </div>
-      <div class="tool-card-body${isExpanded ? " expanded" : ""}">
+      <div class="tool-card-body">
         ${!isEdit && argsJson ? `<div class="tool-args">${this.escapeHtml(argsJson)}</div>` : ""}
         <div class="tool-output-wrapper">
           <div class="tool-output"></div>
@@ -81,7 +89,36 @@ export class ToolCardRenderer {
     this.toolCards.set(toolCallId, card);
     this.scrollToBottom();
 
+    if (status === "pending" || status === "streaming") {
+      this.scheduleAutoExpand(toolCallId, card);
+    }
+
     return card;
+  }
+
+  /**
+   * Auto-expand a card only after it has been in-flight for AUTO_EXPAND_DELAY_MS.
+   * Idempotent: a card that already has a pending timer (or is already
+   * expanded) is left alone, so the delay is always measured from the first
+   * pending/streaming event rather than restarted on every update.
+   */
+  scheduleAutoExpand(toolCallId, card) {
+    if (this.expandTimers.has(toolCallId)) return;
+    if (card.querySelector(".tool-card-body")?.classList.contains("expanded")) return;
+    const timer = setTimeout(() => {
+      this.expandTimers.delete(toolCallId);
+      card.querySelector(".tool-card-body")?.classList.add("expanded");
+      card.querySelector(".tool-card-chevron")?.classList.add("expanded");
+    }, AUTO_EXPAND_DELAY_MS);
+    this.expandTimers.set(toolCallId, timer);
+  }
+
+  /** Cancel a pending auto-expand timer, e.g. once the tool has finished. */
+  cancelAutoExpand(toolCallId) {
+    const timer = this.expandTimers.get(toolCallId);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.expandTimers.delete(toolCallId);
   }
 
   updateToolCard(toolExecution) {
@@ -98,12 +135,10 @@ export class ToolCardRenderer {
       statusElement.textContent = toolExecution.status;
     }
 
-    // Auto-expand when streaming
+    // Auto-expand when streaming, but only after the debounce delay (see
+    // scheduleAutoExpand) so brief tool calls never visibly flash open.
     if (toolExecution.status === "streaming") {
-      const body = card.querySelector(".tool-card-body");
-      const chevron = card.querySelector(".tool-card-chevron");
-      if (body) body.classList.add("expanded");
-      if (chevron) chevron.classList.add("expanded");
+      this.scheduleAutoExpand(toolExecution.toolCallId, card);
     }
 
     // Update output
@@ -117,6 +152,10 @@ export class ToolCardRenderer {
   finalizeToolCard(toolCallId, result, isError) {
     const card = this.toolCards.get(toolCallId);
     if (!card) return;
+
+    // Cancel any pending auto-expand — the tool is done, so there's no need
+    // to expand it just to immediately collapse it again below.
+    this.cancelAutoExpand(toolCallId);
 
     // Update status
     const statusElement = card.querySelector(".tool-status");
@@ -391,5 +430,9 @@ export class ToolCardRenderer {
       card.remove();
     });
     this.toolCards.clear();
+    this.expandTimers.forEach((timer) => {
+      clearTimeout(timer);
+    });
+    this.expandTimers.clear();
   }
 }

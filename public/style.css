@@ -1257,6 +1257,12 @@ body {
   animation: pulse 2s infinite;
 }
 
+/* Anchors the context-viz popover to the token-usage pill instead of the header */
+.context-usage-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
 /* Context window visualiser popover */
 .context-viz {
   position: absolute;
@@ -1711,6 +1717,22 @@ body {
   background: var(--accent-subtle);
   border-color: var(--border);
   color: var(--accent-text);
+}
+
+.settings-nav-item-beta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-nav-beta-badge {
+  margin-left: auto;
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-subtle);
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .settings-nav-back {
@@ -2862,6 +2884,18 @@ body {
   text-align: right;
   color: var(--text-dim);
   font-size: var(--font-size-sm);
+}
+
+.settings-update-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.settings-update-controls .settings-static-value {
+  max-width: none;
 }
 
 .settings-static-value[data-tone="ok"] {
@@ -4033,7 +4067,6 @@ body.hide-thinking .thinking-block {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 360px;
 }
 
 .tool-header-right {
@@ -5784,9 +5817,6 @@ body.is-resizing-side-panel {
   .tool-card,
   .thinking-block {
     width: 100%;
-  }
-  .tool-args-preview {
-    max-width: 140px;
   }
   .file-sidebar,
   #file-sidebar-toggle {

@@ -297,11 +297,27 @@
                             id="session-cost"
                             title="Session cost"
                         ></span>
-                        <span
-                            class="pill token-usage"
-                            id="token-usage"
-                            title="Context usage"
-                        ></span>
+                        <span class="context-usage-anchor">
+                            <span
+                                class="pill token-usage"
+                                id="token-usage"
+                                title="Context usage"
+                            ></span>
+                            <div class="context-viz hidden" id="context-viz">
+                                <div class="context-viz-title">
+                                    Context Window
+                                </div>
+                                <div class="context-bar" id="context-bar"></div>
+                                <div
+                                    class="context-legend"
+                                    id="context-legend"
+                                ></div>
+                                <div class="context-viz-footer">
+                                    <span id="context-viz-used"></span>
+                                    <span id="context-viz-total"></span>
+                                </div>
+                            </div>
+                        </span>
                         <span
                             class="pill workspace-indicator hidden"
                             id="workspace-indicator"
@@ -313,18 +329,6 @@
                             title="Git branch"
                         ></span>
 
-                        <div class="context-viz hidden" id="context-viz">
-                            <div class="context-viz-title">Context Window</div>
-                            <div class="context-bar" id="context-bar"></div>
-                            <div
-                                class="context-legend"
-                                id="context-legend"
-                            ></div>
-                            <div class="context-viz-footer">
-                                <span id="context-viz-used"></span>
-                                <span id="context-viz-total"></span>
-                            </div>
-                        </div>
                         <span
                             class="header-open-app hidden"
                             id="header-open-app"
@@ -805,8 +809,9 @@
                 >
                     Configuration
                 </button>
-                <button class="settings-nav-item" data-settings-tab="chat">
+                <button class="settings-nav-item settings-nav-item-beta" data-settings-tab="chat">
                     Agent Inbox
+                    <span class="ui-badge settings-nav-beta-badge">Beta</span>
                 </button>
                 <button class="settings-nav-back" id="settings-close">
                     <span class="settings-nav-back-icon">‹</span> Back to chat
@@ -948,20 +953,22 @@
                             </div>
                             <div class="settings-row settings-update-row">
                                 <span class="settings-label">Updates</span>
-                                <span
-                                    class="settings-static-value"
-                                    id="setting-update-status"
-                                    role="status"
-                                    aria-live="polite"
-                                    >Click to check</span
-                                >
-                                <button
-                                    type="button"
-                                    class="ui-button ui-button--secondary settings-value-btn"
-                                    id="btn-check-updates"
-                                >
-                                    Check now
-                                </button>
+                                <span class="settings-update-controls">
+                                    <span
+                                        class="settings-static-value"
+                                        id="setting-update-status"
+                                        role="status"
+                                        aria-live="polite"
+                                        >Click to check</span
+                                    >
+                                    <button
+                                        type="button"
+                                        class="ui-button ui-button--secondary settings-value-btn"
+                                        id="btn-check-updates"
+                                    >
+                                        Check now
+                                    </button>
+                                </span>
                             </div>
                             <div class="settings-row">
                                 <span class="settings-label settings-label-stack">

@@ -29,7 +29,7 @@ export function setupContextViz({
 
     const segments = [
       { key: "cache", label: "Cached (reused)", tokens: cacheRead, color: "cache" },
-      { key: "input", label: "New (this turn)", tokens: input, color: "input" },
+      { key: "input", label: "Uncached", tokens: input, color: "input" },
       { key: "free", label: "Available", tokens: free, color: "free" },
     ];
 

@@ -41,10 +41,12 @@ There are currently no custom Tauri IPC commands. Runtime, data, auth, and exten
 
 ### PI references
 
-- RPC protocol: `/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/docs/rpc.md`
-- SDK: `/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/docs/sdk.md`
-- Session format: `/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/docs/session.md`
-- JSON mode: `/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/docs/json.md`
+Docs ship inside the embedded pi runtime at `src-tauri/resources/pi/docs/` (populated by `bun run fetch:pi`; see "Bumping the embedded pi version" below). Prefer these repo-relative paths over any globally-installed `pi-coding-agent` — a global install may not exist on a given machine or may be a different version than the one pinned in `scripts/pi-version.json`.
+
+- RPC protocol: `src-tauri/resources/pi/docs/rpc.md`
+- SDK: `src-tauri/resources/pi/docs/sdk.md`
+- Session format: `src-tauri/resources/pi/docs/session-format.md`
+- JSON mode: `src-tauri/resources/pi/docs/json.md`
 
 ---
 
@@ -84,6 +86,12 @@ bun run build            # full release build (runs prebuild: fetch:pi + build:e
 ```
 
 Single test file: `bun run vitest run public/settings-save-status.test.js`
+
+## Searching the codebase
+
+`src-tauri/target/` is a gitignored Rust build-artifact directory (like `node_modules`/`dist`) containing thousands of `.rcgu.o`/`.rlib` object files. `grep -r`/`rg` do not respect `.gitignore` by default, so a broad recursive search rooted at `src-tauri/` (instead of `src-tauri/src/`) will scan those binaries too — grep's binary-file heuristics can match embedded strings from dependencies and flood the output with thousands of meaningless object-file paths, burying the real hits and making the command look hung.
+
+When grepping for source code, target the actual source directories directly — `public/`, `extensions/`, `src-tauri/src/` — never bare `src-tauri/`. Prefer `rg` (respects `.gitignore` by default) over `grep -r` when available.
 
 ## Linting & Formatting
 

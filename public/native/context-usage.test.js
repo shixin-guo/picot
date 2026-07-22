@@ -34,7 +34,7 @@ describe("context usage header", () => {
     expect(document.getElementById("context-viz").classList.contains("hidden")).toBe(false);
     expect(document.getElementById("context-legend").textContent).toContain("Cached");
     expect(document.getElementById("context-legend").textContent).toContain("9.3k");
-    expect(document.getElementById("context-legend").textContent).toContain("New (this turn)");
+    expect(document.getElementById("context-legend").textContent).toContain("Uncached");
     expect(document.getElementById("context-viz-used").textContent).toBe("7% used");
     expect(document.getElementById("context-viz-total").textContent).toBe("9.5k / 128.0k");
   });
