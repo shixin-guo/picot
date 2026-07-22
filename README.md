@@ -105,6 +105,9 @@ Picot gives you a full visual interface for Pi. Open any project folder, start c
 - Copy any message with one click
 - Scroll-to-bottom button with unread indicator
 - **Message queuing** — type while the agent is working; messages queue as pills and auto-send when ready
+- **Conversation turn navigator** — Codex-style dot rail beside the chat; hover a dot for a preview, click to jump to that turn
+- **Command palette** — quick access to Compact, Expand/Collapse All Tools, Settings, and Help
+- **Fork from any message** — branch a new session off any point in the conversation
 
 ### 🗂️ Multi-Session & Multi-Agent
 
@@ -113,6 +116,13 @@ Picot gives you a full visual interface for Pi. Open any project folder, start c
 - Full-text search across all session history with highlighted snippets
 - Sessions sorted by creation time; live session marked with a green dot
 - Inline session rename, favourites, tags, and filtering
+
+### 📥 Agent Inbox <sub>(Beta)</sub>
+
+- Connect a Telegram bot — incoming DMs land in a pinned **Agent Inbox** session, kept separate from your normal project chats
+- Dispatch tasks from the inbox to any open project's agent; track pending / running / done in a resizable task panel
+- Task lifecycle events (dispatched, needs input, done, failed) round-trip back to the inbox, including a reply to the original Telegram sender
+- Built-in Telegram Doctor check to diagnose bot/token/connectivity issues from Settings
 
 ### 🗃️ Projects & Workspace
 
