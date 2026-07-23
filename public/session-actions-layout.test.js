@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const styleCss = readFileSync(resolve("public/style.css"), "utf8");
+const styleCss = ["public/style.css", "public/native/session-sidebar.css"]
+  .map((path) => readFileSync(resolve(path), "utf8"))
+  .join("\n");
 
 function ruleFor(selector) {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

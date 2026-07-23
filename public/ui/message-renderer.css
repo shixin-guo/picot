@@ -430,3 +430,25 @@ mark[data-search-highlight="true"] {
   color: var(--bg-solid);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--warning) 35%, transparent);
 }
+
+/* Attached message images (batch1 gap-fix: found stray in style.css during batch4) */
+.message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+  margin-bottom: 6px;
+}
+
+.message-image {
+  max-width: 240px;
+  max-height: 200px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: transform 0.15s var(--ease);
+}
+
+.message-image:hover {
+  transform: scale(1.02);
+}

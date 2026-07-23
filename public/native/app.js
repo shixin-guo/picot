@@ -20,6 +20,7 @@ import { showNativeDialog } from "./dialog.js";
 import { ExtensionUiHost } from "./extension-ui-host.js";
 import { NativeFileBrowser } from "./file-browser.js";
 import { setupHeaderOpenApp } from "./header-open-app.js";
+import { showInlineExtensionPrompt } from "./inline-extension-prompt.js";
 import { setupAppKeyboardShortcuts } from "./keyboard-shortcuts.js";
 import { refreshLanQrButton, setupLanQr } from "./lan-qr.js";
 import { setupProjectHeader } from "./project-header.js";
@@ -122,6 +123,7 @@ const contextUsage = setupContextUsage();
 const extensionUi = new ExtensionUiHost({
   runtime,
   showDialog: showNativeDialog,
+  showInlinePrompt: (request) => showInlineExtensionPrompt(request, { container: messagesElement }),
   hooks: {
     notify: (request) => {
       // Configuration data-plane responses arrive as notify events; swallow

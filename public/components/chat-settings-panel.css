@@ -1,0 +1,154 @@
+/* ═══════════════════════════════════════════════════════
+   <chat-settings-panel> — Agent Inbox / Telegram setup (public/components/chat-settings-panel.js)
+   ═══════════════════════════════════════════════════════ */
+
+.chat-accounts-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: 12px;
+}
+
+.telegram-setup-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.telegram-safety-note {
+  border-left: 2px solid var(--accent);
+  padding-left: var(--space-2);
+}
+
+.telegram-token-label {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.telegram-token-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.telegram-token-input.ui-input {
+  width: min(360px, 100%);
+  flex: 1 1 240px;
+}
+
+.telegram-token-row .ui-button {
+  flex: none;
+}
+
+.telegram-bind-instructions {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.telegram-bind-steps {
+  margin: 6px 0 10px 18px;
+  padding: 0;
+}
+
+.telegram-bind-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.telegram-open-link {
+  display: inline-flex;
+  width: fit-content;
+}
+
+.telegram-doctor-card {
+  margin-top: 12px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.2));
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+}
+
+.telegram-doctor-checks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  margin-top: 8px;
+}
+
+.telegram-doctor-check {
+  display: grid;
+  grid-template-columns: minmax(72px, 96px) 1fr;
+  gap: var(--space-2);
+  align-items: start;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+}
+
+.telegram-doctor-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.telegram-doctor-check.ok .telegram-doctor-label {
+  color: var(--color-success, #4ade80);
+}
+
+.telegram-doctor-check.warning .telegram-doctor-label {
+  color: #fbbf24;
+}
+
+.telegram-doctor-check.error .telegram-doctor-label {
+  color: #f87171;
+}
+
+.chat-account-card {
+  background: var(--bg-glass);
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.2));
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+.chat-account-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.chat-account-name {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chat-account-detail {
+  margin-top: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+}
+
+.chat-account-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.chat-settings-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chat-settings-beta-badge {
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-subtle);
+  font-size: var(--font-size-sm);
+  font-weight: normal;
+  letter-spacing: normal;
+  text-transform: uppercase;
+}

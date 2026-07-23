@@ -369,7 +369,7 @@
   align-items: center;
   gap: var(--space-1-5);
   margin: 0 8px;
-  padding-right:  var(--space-4);
+  padding-right: var(--space-4);
   position: relative;
 }
 

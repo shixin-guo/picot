@@ -1,0 +1,94 @@
+/* ═══════════════════════════════════════════════════════
+   Thinking-effort segmented slider (public/native/thinking-effort-control.js)
+   ═══════════════════════════════════════════════════════ */
+
+/* Thinking effort: compact Faster↔Smarter segmented slider */
+.thinking-effort {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 190px;
+  flex-shrink: 0;
+}
+
+.thinking-effort-ends {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  padding: 0 var(--space-0-5);
+}
+
+.thinking-effort-name {
+  color: var(--accent-text, var(--accent));
+  font-weight: 600;
+  text-align: center;
+}
+
+.thinking-effort-track {
+  position: relative;
+  display: flex;
+  height: 20px;
+  background: var(--bg-glass-strong);
+  overflow: hidden;
+}
+
+.thinking-effort-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(100% / 5 - 6px);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text-primary) 24%, transparent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: left 0.22s var(--spring);
+  pointer-events: none;
+}
+
+.thinking-effort-dot {
+  position: relative;
+  flex: 1 1 0;
+  height: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.thinking-effort-dot::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: color-mix(in srgb, var(--text-primary) 32%, transparent);
+  transition:
+    background var(--duration) var(--ease),
+    transform var(--duration) var(--ease);
+}
+
+/* Rightmost dot hints the "Smarter" end in accent */
+.thinking-effort-dot:last-child::before {
+  background: var(--accent);
+}
+
+.thinking-effort-dot:hover::before {
+  transform: translate(-50%, -50%) scale(1.4);
+}
+
+.thinking-effort-dot.active::before {
+  background: var(--text-primary);
+}
+
+.thinking-effort-dot:focus-visible {
+  outline: none;
+}
+
+.thinking-effort-dot:focus-visible::before {
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}

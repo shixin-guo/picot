@@ -132,10 +132,12 @@ export class ConvNav {
     const turns = this.#getConversations();
     const hasConvs = turns.length > 1;
     this.#navEl.classList.toggle("hidden", !hasConvs);
-    if (!hasConvs) return;
+    if (!hasConvs) {
+      this.#trackEl.replaceChildren();
+      return;
+    }
 
     const activeIdx = this.#getActiveIndex(turns);
-    const prevCount = this.#trackEl.children.length;
 
     // Add missing dots
     while (this.#trackEl.children.length < turns.length) {
@@ -150,22 +152,16 @@ export class ConvNav {
       this.#trackEl.removeChild(this.#trackEl.lastChild);
     }
 
-    // Re-wire click/hover events only when count changed
-    if (prevCount !== turns.length) {
-      [...this.#trackEl.children].forEach((dot, i) => {
-        dot.onclick = () => this.#jumpTo(turns[i], i);
-        dot.onmouseenter = () => {
-          this.#applyWave(i);
-          this.#showTooltip(dot, turns[i]);
-        };
-        dot.onmouseleave = () => {
-          this.#clearWave();
-          this.#hideTooltip();
-        };
-      });
-    }
-
     [...this.#trackEl.children].forEach((dot, i) => {
+      dot.onclick = () => this.#jumpTo(turns[i], i);
+      dot.onmouseenter = () => {
+        this.#applyWave(i);
+        this.#showTooltip(dot, turns[i]);
+      };
+      dot.onmouseleave = () => {
+        this.#clearWave();
+        this.#hideTooltip();
+      };
       dot.classList.toggle("active", i === activeIdx);
       dot.setAttribute("aria-label", `Jump to conversation ${i + 1}`);
       // No wave when not hovering — keep all dots at their base CSS width
