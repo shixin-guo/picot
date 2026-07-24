@@ -10,11 +10,14 @@ const REMOTE_FORBIDDEN_HOST_OPERATIONS: &[&str] = &[
     "open_app",
     "install_package",
     "remove_package",
+    "install_pi_package",
+    "remove_pi_package",
     "update_package",
     "check_for_updates",
     "install_update",
     "delete_workspace",
     "open_workspace",
+    "delete_sessions",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -336,6 +339,8 @@ mod tests {
             "pick_folder",
             "open_app",
             "install_package",
+            "install_pi_package",
+            "remove_pi_package",
             "check_for_updates",
             "delete_workspace",
         ] {

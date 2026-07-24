@@ -1,10 +1,28 @@
-# Pi Studio Roadmap
+# Picot Roadmap
 
 Ideas and planned features. Nothing here is committed — just captured so it doesn't get lost.
 
 ---
 
 ## ✅ Done
+
+### Rebrand: Pi Studio → Picot
+Renamed from Tau → Pi Studio → Picot. Own icon, README, and install scripts (`scripts/install.sh` / `install.ps1`) with one-liner install from GitHub Releases. npm publishing plan was dropped in favour of the Releases + install-script flow.
+
+### Cost & Usage Dashboard
+Per-session token/cost tracking with live metrics. Full dashboard (`public/cost.js`, `cost-infobar.js`, `native/cost-dashboard.js`) with infobar stats, per-model breakdown chart, per-project breakdown, and trend view. Context window visualiser (below) is the companion per-turn view.
+
+### Quick Actions on Tool Results
+Copy-output button on every tool card. Expand All / Collapse All wired into the Command Palette (`⌘`-button → Expand All Tools / Collapse All Tools). Re-run command was dropped — not pursued.
+
+### Command Palette
+`⌘`-button opens a command palette (`native/command-palette.js`) with Compact, Expand/Collapse All Tools, Settings, and Help. Extensible via `commandCatalog`.
+
+### Conversation Turn Navigator
+Codex-style dot rail (`ui/conv-nav.js`) alongside the chat — one dot per turn, hover shows a preview, click jumps to that point in the conversation.
+
+### Agent Inbox (bundled multi-agent dispatch)
+Ships as part of Picot, not a separate extension. Telegram bot integration (`components/chat-settings-panel.js`) routes incoming messages into a pinned "Agent Inbox" session; tasks can be dispatched to any open project's agent (`super-agent/dispatch.js`, `super-agent/task-state.js`) with a resizable task panel (pending/running/done, `components/super-agent-runtime.js`). Currently in Beta — see settings tab badge.
 
 ### PWA / Install to Home Screen
 Service worker, manifest, custom icons. Installable on iOS/Android/macOS as a standalone app.
@@ -22,7 +40,7 @@ Right sidebar with lazy-loaded file tree. Navigate directories, double-click to 
 Styled dropdown with search/filter, keyboard support, frosted glass menu. Replaces native `<select>`.
 
 ### Compaction Support
-Manual compact command broadcasts start/end events to Pi Studio. Shows compaction status in the conversation.
+Manual compact command broadcasts start/end events to Picot. Shows compaction status in the conversation.
 
 ### Voice Input
 Mic button inside the input bubble. Uses Web Speech API (on-device dictation). Live transcription into the textarea. Pulses red while recording. Hidden if browser doesn't support it.
@@ -47,23 +65,16 @@ Theme picker, auto-compaction toggle, thinking level, show/hide thinking blocks,
 
 ---
 
-## 🚀 Ready to Ship
+## 🔨 In Progress
 
-### Logo & Branding
-- Fresh README with feature overview
-- Screenshots (Dusk, Clean, mobile, file browser, search)
-- Already have the Pi Studio icon in multiple sizes
-
-### npm Publishing
-- `pi install npm:pi-studio` for frictionless install
-- Needs npm account setup and packaging
+### Conversation Fork/Branch Visualisation
+Partially there: a per-message "fork" button already forks a new session from any point (`ui/message-renderer.js` → `messagefork` event → RPC `fork`), and `native/session-tree.js` has a working `get_tree` / `navigate` client against Pi's tree RPC. Still missing: an actual visual tree UI — the `tree` command-catalog builtin currently just dispatches a `picot:open-tree` event with no listener wired up yet.
 
 ---
 
 ## 🔜 Low-Hanging Fruit
 
-### Quick Actions on Tool Results
-Copy output button on tool cards. Expand/collapse all. Maybe re-run command. ~30 mins.
+_(nothing queued right now — see Bigger Ideas below)_
 
 ---
 
@@ -81,15 +92,6 @@ Desktop: button collapses sidebar and shrinks conversation to narrow feed, previ
 
 Builds on the file browser — could auto-show preview when a file gets edited.
 
-### Agent Teams (bundled)
-Ship a subagent/team extension as part of Pi Studio. Spawn agent teams from the web UI, visual grouping in sidebar, team status overview, live-switch between agents. Based on Pi's subagent pattern but tightly integrated.
-
-### Conversation Fork/Branch Visualisation
-Pi already has fork support in the RPC. Visualise the conversation as a tree — go back to any point and try a different approach. Like git for conversations.
-
-### Cost Dashboard
-Track spending over time, per model, per project. Charts and trends. Data already captured per message.
-
 ### Session Templates
 Start a new session pre-loaded with context for a specific project. Each with its own CLAUDE.md, working directory, and maybe a starter prompt.
 
@@ -100,4 +102,4 @@ Send the same prompt to two models side by side and compare responses. Split vie
 Embedded terminal panel (xterm.js) showing real-time bash output from Pi's tool executions. Would need pi-core to expose a PTY stream through the extension API — currently bash tool runs one-shot commands, not a persistent shell. Read-only output display is possible now but limited value over existing tool cards.
 
 ### memoryd Dashboard
-Standalone viewer for memoryd memory files. Was previously built into Pi Studio, stripped out to keep the core lean. The viewer code is saved at `~/Desktop/memoryd-viewer/`. Now being integrated into the native macOS memoryd menu bar app.
+Standalone viewer for memoryd memory files. Was previously built into Picot, stripped out to keep the core lean. The viewer code is saved at `~/Desktop/memoryd-viewer/`. Now being integrated into the native macOS memoryd menu bar app.

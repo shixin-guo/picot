@@ -1,0 +1,129 @@
+/* ═══════════════════════════════════════════════════════
+   Header "open in external app" split button (public/native/header-open-app.js)
+   ═══════════════════════════════════════════════════════ */
+
+.header-open-app {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-md);
+  -webkit-app-region: no-drag;
+}
+
+.header-open-app-btn {
+  border-top-left-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+}
+
+.header-open-app-toggle {
+  border-top-right-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+}
+
+.header-open-app.hidden {
+  display: none;
+}
+
+.header-open-app-btn,
+.header-open-app-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-1);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  line-height: 1;
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.header-open-app-toggle {
+  padding: var(--space-1) var(--space-1);
+  border-left: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+}
+
+.header-open-app-btn:hover,
+.header-open-app-toggle:hover {
+  background: var(--bg-glass-hover);
+}
+
+.header-open-app-btn:active,
+.header-open-app-toggle:active {
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.header-open-app-logo {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.header-open-app-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.header-open-app-logo-text {
+  line-height: 1;
+}
+
+.header-open-app-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 1000;
+  min-width: 120px;
+  padding: var(--space-1);
+  background: var(--bg-solid);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.header-open-app-menu.hidden {
+  display: none;
+}
+
+.header-open-app-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1-5) var(--space-2);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--font-size-md);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration) var(--ease);
+}
+
+.header-open-app-menu-item:hover {
+  background: var(--bg-glass-hover);
+}
+
+.header-open-app-menu-item.active {
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.header-open-app-menu-item.active:hover {
+  background: var(--accent-glow);
+}

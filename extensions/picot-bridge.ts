@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { handlePicotConfig } from "./picot-config";
 import projectTrust from "./project-trust";
 
 export const PICOT_BRIDGE_CAPABILITIES = Object.freeze({
@@ -7,8 +8,15 @@ export const PICOT_BRIDGE_CAPABILITIES = Object.freeze({
     "picot.navigateTree": "Pi ctx.navigateTree",
     "picot.reloadResources": "Pi ctx.reload",
     "picot.projectTrust": "Pi project_trust event",
+    "picot.config": "Configuration data plane (model catalog, API keys, config files)",
   }),
 });
+
+type ConfigRequest = {
+  id?: string;
+  op?: string;
+  params?: Record<string, unknown>;
+};
 
 type NavigateArguments = {
   targetId: string;
@@ -32,6 +40,36 @@ export default function picotBridge(pi: ExtensionAPI) {
     description: "Reload Pi extensions, skills, prompts, themes, and context",
     handler: async (_args, ctx) => {
       await ctx.reload();
+    },
+  });
+
+  // Configuration data plane. Invoked by the WebView via a native RPC prompt
+  // (`/picot-config <json>`); extension commands run immediately without
+  // hitting the LLM or session history. The result is streamed back through
+  // `ctx.ui.notify(JSON)` and correlated by request id on the frontend
+  // (see public/native/config-gateway.js).
+  pi.registerCommand("picot-config", {
+    description: "Picot Settings → Configuration data plane",
+    handler: async (rawArguments, ctx) => {
+      let request: ConfigRequest;
+      try {
+        request = JSON.parse(rawArguments) as ConfigRequest;
+      } catch {
+        return;
+      }
+      const id = typeof request.id === "string" ? request.id : "";
+      if (!id) return;
+      const respond = (payload: Record<string, unknown>) => {
+        ctx.ui.notify(JSON.stringify({ __picotConfig: id, ...payload }), "info");
+      };
+      const op = typeof request.op === "string" ? request.op : "";
+      const params = request.params && typeof request.params === "object" ? request.params : {};
+      try {
+        const result = await handlePicotConfig(op, params, ctx);
+        respond(result as unknown as Record<string, unknown>);
+      } catch (error) {
+        respond({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
     },
   });
 

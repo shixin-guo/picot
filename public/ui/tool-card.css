@@ -1,0 +1,255 @@
+/* ═══════════════════════════════════════════════════════
+   Tool Cards — glass with coloured left accent (public/ui/tool-card.js)
+   ═══════════════════════════════════════════════════════ */
+
+.tool-card {
+  background: var(--tool-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 2px 0;
+  font-size: var(--font-size-md);
+  overflow: hidden;
+  align-self: flex-start;
+  width: 100%;
+  flex-shrink: 0;
+  backdrop-filter: blur(12px);
+  transition: border-color var(--duration) var(--ease);
+}
+
+.tool-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--duration) var(--ease);
+}
+
+.tool-card-header:hover {
+  background: var(--bg-glass-hover);
+}
+
+.tool-card:hover {
+  border-color: var(--border-hover);
+}
+
+.tool-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.tool-card-chevron {
+  font-size: var(--font-size-sm);
+  transition: transform var(--duration) var(--ease);
+  opacity: 0.3;
+  flex-shrink: 0;
+}
+
+.tool-card-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.tool-name {
+  color: var(--tool-accent-text);
+  font-size: var(--font-size-sm);
+}
+
+.tool-args-preview {
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  flex-shrink: 0;
+}
+
+.tool-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s;
+  padding: 0;
+}
+
+.tool-card-header:hover .tool-action-btn {
+  opacity: 0.6;
+}
+
+.tool-action-btn:hover {
+  opacity: 1 !important;
+  background: var(--bg-glass-hover);
+}
+
+.tool-action-btn.copied {
+  opacity: 1 !important;
+  color: var(--success);
+}
+
+.tool-status {
+  font-size: var(--font-size-sm);
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-pill);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.tool-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.tool-status.pending {
+  background: var(--bg-glass-strong);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+.tool-status.pending::before {
+  content: "○";
+  font-size: var(--font-size-sm);
+}
+.tool-status.streaming {
+  background: var(--tool-accent);
+  color: white;
+  animation: pulse 1.5s infinite;
+}
+.tool-status.streaming::before {
+  content: "●";
+  font-size: var(--font-size-sm);
+  animation: pulse 1s infinite;
+}
+.tool-status.complete {
+  background: rgba(52, 211, 153, 0.1);
+  color: var(--success);
+  border: 1px solid rgba(52, 211, 153, 0.2);
+}
+.tool-status.complete::before {
+  content: "✓";
+  font-size: var(--font-size-sm);
+}
+.tool-status.error {
+  background: rgba(248, 113, 113, 0.1);
+  color: var(--error);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+}
+.tool-status.error::before {
+  content: "!";
+  font-size: var(--font-size-sm);
+}
+
+.tool-card-body {
+  display: none;
+  border-top: 1px solid var(--border);
+}
+.tool-card-body.expanded {
+  display: block;
+}
+
+.tool-args {
+  background: rgba(0, 0, 0, 0.15);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  border-bottom: 1px solid var(--border);
+}
+
+:root[data-theme="clean"] .tool-args,
+:root[data-theme="terracotta"] .tool-args,
+:root[data-theme="sage"] .tool-args {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.tool-output-wrapper {
+  position: relative;
+}
+
+.tool-output {
+  background: rgba(0, 0, 0, 0.1);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  white-space: pre-wrap;
+}
+
+:root[data-theme="clean"] .tool-output,
+:root[data-theme="terracotta"] .tool-output,
+:root[data-theme="sage"] .tool-output {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.tool-output::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.tool-output::-webkit-scrollbar-track {
+  background: transparent;
+}
+.tool-output::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--radius-xs);
+}
+
+/* Diff view for Edit tool */
+.tool-diff {
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-bottom: 1px solid var(--border);
+}
+
+.diff-line {
+  padding: var(--space-0-5) var(--space-3);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.diff-removed {
+  background: rgba(248, 113, 113, 0.08);
+  color: var(--error);
+}
+
+.diff-added {
+  background: rgba(52, 211, 153, 0.08);
+  color: var(--success);
+}
+
+:root[data-theme="clean"] .diff-removed,
+:root[data-theme="terracotta"] .diff-removed,
+:root[data-theme="sage"] .diff-removed {
+  background: rgba(220, 80, 80, 0.08);
+  color: #b84040;
+}
+
+:root[data-theme="clean"] .diff-added,
+:root[data-theme="terracotta"] .diff-added,
+:root[data-theme="sage"] .diff-added {
+  background: rgba(40, 160, 90, 0.08);
+  color: #1a8a5a;
+}

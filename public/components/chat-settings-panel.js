@@ -1,3 +1,5 @@
+import { isSuperAgentEnabled, setSuperAgentEnabled } from "../super-agent/settings.js";
+
 /**
  * <chat-settings-panel> Web Component
  *
@@ -13,7 +15,10 @@ class ChatSettingsPanel extends HTMLElement {
     this.innerHTML = `
       <div class="settings-body">
         <div class="settings-section">
-          <div class="settings-section-title">Agent Inbox</div>
+          <div class="settings-section-title chat-settings-title-row">
+            Agent Inbox
+            <span class="ui-badge chat-settings-beta-badge">Beta</span>
+          </div>
           <div class="settings-row" id="setting-super-agent">
             <span class="settings-label settings-label-stack">
               <span class="settings-label-main">Start automatically</span>
@@ -74,6 +79,8 @@ class ChatSettingsPanel extends HTMLElement {
       </div>
     `;
 
+    this._setupSuperAgentToggle();
+
     this._textarea = this.querySelector("[data-textarea]");
     this._statusEl = this.querySelector("[data-status]");
     this._accountsEl = this.querySelector("[data-accounts-list]");
@@ -106,16 +113,44 @@ class ChatSettingsPanel extends HTMLElement {
       }
     });
 
+    this._handleConfigGatewayReady = () => this._load();
+    window.addEventListener("picot-config-gateway-ready", this._handleConfigGatewayReady);
     this._load();
+  }
+
+  disconnectedCallback() {
+    if (this._handleConfigGatewayReady) {
+      window.removeEventListener("picot-config-gateway-ready", this._handleConfigGatewayReady);
+    }
+  }
+
+  // ── Super Agent toggle ──────────────────────────────────────────────────
+
+  _setupSuperAgentToggle() {
+    const button = this.querySelector("#toggle-super-agent");
+    if (!button) return;
+
+    const isEnabled = isSuperAgentEnabled();
+    button.classList.toggle("on", isEnabled);
+    button.setAttribute("aria-checked", String(isEnabled));
+    button.setAttribute("role", "switch");
+
+    button.addEventListener("click", () => {
+      const newState = !button.classList.contains("on");
+      button.classList.toggle("on", newState);
+      button.setAttribute("aria-checked", String(newState));
+      setSuperAgentEnabled(newState);
+      window.dispatchEvent(
+        new CustomEvent("picot-super-agent-autostart-changed", { detail: { enabled: newState } }),
+      );
+    });
   }
 
   // ── API ───────────────────────────────────────────────────────────────────
 
   async _load() {
     try {
-      const res = await fetch("/api/chat-config");
-      if (!res.ok) return;
-      const { content } = await res.json();
+      const { content } = await readChatConfig();
       this._setRawContent(content || "{}");
       this._renderAccounts(content);
       await this._loadTelegramDoctor();
@@ -134,13 +169,7 @@ class ChatSettingsPanel extends HTMLElement {
     const saveBtn = this.querySelector('[data-action="save"]');
     saveBtn.disabled = true;
     try {
-      const res = await fetch("/api/chat-config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Save failed");
+      await writeChatConfig(content);
       this._renderAccounts(content);
       this._showSuccess("Saved raw config.");
       await this._loadTelegramDoctor();
@@ -167,17 +196,12 @@ class ChatSettingsPanel extends HTMLElement {
 
     try {
       this._showInfo("Validating Telegram bot token…");
-      const validated = await postJson(
-        "/api/chat-telegram/validate",
-        { botToken },
-        { signal: controller.signal },
-      );
+      const validated = await telegramValidate({ botToken }, { signal: controller.signal });
       const bot = validated.bot || {};
       this._renderBindInstructions(bot);
       this._showInfo("Bot connected. Send /start to the bot in Telegram to finish setup.");
 
-      const bound = await postJson(
-        "/api/chat-telegram/bind",
+      const bound = await telegramBind(
         { botToken, afterUpdateId: validated.afterUpdateId },
         { signal: controller.signal },
       );
@@ -216,13 +240,7 @@ class ChatSettingsPanel extends HTMLElement {
       );
       config.accounts = Object.fromEntries(accounts);
       const content = `${JSON.stringify(config, null, "\t")}\n`;
-      const res = await fetch("/api/chat-config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Disconnect failed");
+      await writeChatConfig(content);
       this._setRawContent(content);
       this._renderAccounts(content);
       this._showSuccess("Telegram disconnected.");
@@ -239,11 +257,8 @@ class ChatSettingsPanel extends HTMLElement {
     this._doctorSummaryEl.textContent = "Checking Telegram…";
     this._doctorChecksEl.innerHTML = "";
     try {
-      const res = await fetch("/api/chat-telegram/doctor");
-      const data = await res.json();
-      if (!res.ok || data.success === false)
-        throw new Error(data.error || "Telegram doctor failed");
-      this._renderTelegramDoctor(data.report);
+      const { report } = await telegramDoctor();
+      this._renderTelegramDoctor(report);
     } catch (e) {
       this._doctorSummaryEl.textContent = messageFromError(e);
       this._doctorChecksEl.innerHTML = "";
@@ -374,6 +389,60 @@ async function postJson(url, payload, options = {}) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.success === false) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+async function callPicotConfig(op, params = {}, options = {}) {
+  if (typeof window.__picotConfigCall !== "function") return null;
+  const result = await window.__picotConfigCall(op, params, options);
+  if (!result?.ok) throw new Error(result?.error || `${op} failed`);
+  return result.data || {};
+}
+
+async function readChatConfig() {
+  if (typeof window.__picotConfigCall === "function") {
+    return callPicotConfig("read_chat_config");
+  }
+  const res = await fetch("/api/chat-config");
+  if (!res.ok) throw new Error("Failed to load chat config");
+  return res.json();
+}
+
+async function writeChatConfig(content) {
+  if (typeof window.__picotConfigCall === "function") {
+    return callPicotConfig("write_chat_config", { content });
+  }
+  const res = await fetch("/api/chat-config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error || "Save failed");
+  return data;
+}
+
+async function telegramValidate(payload, options) {
+  if (typeof window.__picotConfigCall === "function") {
+    return callPicotConfig("telegram_validate", payload, options);
+  }
+  return postJson("/api/chat-telegram/validate", payload, options);
+}
+
+async function telegramBind(payload, options) {
+  if (typeof window.__picotConfigCall === "function") {
+    return callPicotConfig("telegram_bind", payload, options);
+  }
+  return postJson("/api/chat-telegram/bind", payload, options);
+}
+
+async function telegramDoctor() {
+  if (typeof window.__picotConfigCall === "function") {
+    return callPicotConfig("telegram_doctor");
+  }
+  const res = await fetch("/api/chat-telegram/doctor");
+  const data = await res.json();
+  if (!res.ok || data.success === false) throw new Error(data.error || "Telegram doctor failed");
   return data;
 }
 

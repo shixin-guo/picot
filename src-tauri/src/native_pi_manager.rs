@@ -4,7 +4,8 @@
 use crate::pi_rpc_bridge::InMemoryPiProcess;
 use crate::pi_rpc_bridge::{BridgeFrame, PiRpcBridge, PiRpcProcess};
 use crate::runtime_coordinator::{
-    MutationAcceptance, RuntimeCoordinator, RuntimeSnapshot, RuntimeState, RuntimeTarget,
+    MutationAcceptance, RuntimeCoordinator, RuntimeSnapshot, RuntimeState, RuntimeStatus,
+    RuntimeTarget,
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
@@ -172,7 +173,10 @@ impl NativePiManager {
 
     fn start_event_pump(&self, target: RuntimeTarget, bridge: PiRpcBridge) {
         let inner = Arc::clone(&self.inner);
-        tokio::spawn(async move {
+        // Started from the synchronous startup path (Tauri `setup` hook), which
+        // has no entered Tokio runtime — use Tauri's global runtime handle so
+        // this works off the main thread instead of panicking on `tokio::spawn`.
+        tauri::async_runtime::spawn(async move {
             while let Some(frame) = bridge.next_frame().await {
                 let target = inner.runtimes.lock().ok().and_then(|runtimes| {
                     runtimes
@@ -465,6 +469,15 @@ impl NativePiManager {
             .map_err(|error| format!("Runtime snapshot rejected: {error:?}"))
     }
 
+    pub fn statuses(&self) -> Result<Vec<RuntimeStatus>, String> {
+        Ok(self
+            .inner
+            .coordinator
+            .lock()
+            .map_err(|_| "Runtime coordinator lock poisoned".to_string())?
+            .statuses())
+    }
+
     pub async fn respond_extension_ui(
         &self,
         target: &RuntimeTarget,
@@ -555,7 +568,7 @@ mod tests {
             cwd: PathBuf::from("/workspace"),
             session_path: Some(PathBuf::from("/sessions/a.jsonl")),
             extensions: vec![PathBuf::from("/extensions/picot-bridge.mjs")],
-            pi_version: "0.80.10".into(),
+            pi_version: env!("PI_STUDIO_PI_VERSION_BUNDLED").into(),
             path_env: "/usr/bin".into(),
         };
         let launch = spec.command_description();

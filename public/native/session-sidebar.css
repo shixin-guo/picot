@@ -1,0 +1,599 @@
+/* ═══════════════════════════════════════════════════════
+   Session sidebar list (public/native/session-sidebar.js)
+   Project groups, favourites/archived groups, session items,
+   loading/skeleton states, rename input, sidebar delete-confirm
+   dialog. The sidebar shell (search box, actions row, footer,
+   mode toggle, mobile overlay) belongs to native/app.js and
+   stays in style.css.
+   ═══════════════════════════════════════════════════════ */
+
+/* Session list */
+.session-list {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-1-5) var(--space-3);
+}
+.session-list::-webkit-scrollbar {
+  width: 0;
+}
+
+.session-loading {
+  padding: var(--space-8) var(--space-3);
+  text-align: center;
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+}
+
+.session-empty-state {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6) var(--space-3);
+}
+
+.session-empty-open-project {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: 96px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition:
+    color var(--duration) var(--ease),
+    transform var(--duration) var(--ease);
+}
+
+.session-empty-open-project:hover {
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.session-empty-open-project svg {
+  color: currentColor;
+}
+
+.session-empty-open-project span {
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+  line-height: 1.2;
+}
+
+/* Loading skeletons */
+.session-skeleton {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1-5) 0;
+}
+
+.session-skeleton-title {
+  height: 14px;
+  width: 75%;
+  margin: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--bg-glass) 25%,
+    var(--bg-glass-hover) 50%,
+    var(--bg-glass) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+/* Project groups */
+.project-group {
+  margin-bottom: 2px;
+}
+
+.project-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-1-5);
+  margin-top: 8px;
+  font-size: var(--font-size-md);
+  color: var(--accent-text);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease);
+  border-top: none;
+  border-radius: var(--radius-md);
+}
+
+.project-group:first-child .project-header {
+  margin-top: 0;
+}
+
+.project-header:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+.project-header .chevron {
+  font-size: var(--font-size-md);
+  opacity: 0.5;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.project-header .folder-icon .folder-closed-icon {
+  display: none;
+}
+
+.project-header .folder-icon .folder-open-icon {
+  display: block;
+}
+
+.project-header.collapsed .folder-icon .folder-closed-icon {
+  display: block;
+}
+
+.project-header.collapsed .folder-icon .folder-open-icon {
+  display: none;
+}
+
+.project-count {
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  line-height: 21px;
+}
+
+.project-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-md);
+}
+
+.project-new-chat-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 1;
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+  flex-shrink: 0;
+}
+
+.project-new-chat-btn:hover {
+  background: var(--accent);
+  color: var(--bg-solid);
+}
+
+/* Open project in external app (VS Code / Cursor / Terminal / …) */
+.archived-delete-all-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin-left: auto;
+  background: none;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-dim);
+  cursor: pointer;
+  line-height: 0;
+  flex-shrink: 0;
+  transition:
+    color var(--duration) var(--ease),
+    background var(--duration) var(--ease);
+}
+
+.archived-header:hover .archived-delete-all-btn {
+  display: flex;
+}
+
+.archived-delete-all-btn:hover {
+  color: #e53e3e;
+  background: rgba(229, 62, 62, 0.1);
+}
+.sidebar-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1102;
+  padding: var(--space-5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.sidebar-confirm-dialog {
+  width: min(420px, 100%);
+  background: var(--bg-frosted);
+  backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
+  -webkit-backdrop-filter: blur(var(--blur-heavy)) saturate(1.5);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg), var(--shadow-inset);
+  padding: var(--space-6);
+  animation: sidebarConfirmIn 0.18s var(--ease);
+}
+
+@keyframes sidebarConfirmIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.sidebar-confirm-message {
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.sidebar-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.sidebar-confirm-actions button {
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  font-size: var(--font-size-md);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.sidebar-confirm-actions button:hover {
+  filter: brightness(1.08);
+}
+
+.sidebar-confirm-actions .sidebar-confirm-no {
+  background: var(--bg-glass);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.sidebar-confirm-actions .sidebar-confirm-yes {
+  background: #ef4444;
+}
+.project-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  max-height: 2400px;
+  overflow: hidden;
+  opacity: 1;
+  transition:
+    max-height 0.2s var(--ease),
+    opacity 0.16s var(--ease);
+}
+
+.project-sessions-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-6) 0;
+}
+
+.project-sessions-toggle {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  padding: var(--space-0-5) 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  cursor: pointer;
+  transition: color var(--duration) var(--ease);
+}
+
+.project-sessions-toggle:hover {
+  color: var(--text-primary);
+}
+
+.project-sessions.collapsed {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Session items */
+.session-item {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1-5) 0;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.session-item:hover {
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+.session-item:active {
+  transform: scale(0.99);
+}
+
+.session-item.active {
+  background: color-mix(in srgb, var(--text-primary) 11%, transparent);
+}
+
+.session-item.hidden {
+  display: none;
+}
+
+.session-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin: 0 8px;
+  padding-right: var(--space-4);
+  position: relative;
+}
+
+.session-action-slot {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  height: var(--control-height-xs);
+  transform: translateY(-50%);
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  background: none;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--duration) var(--ease),
+    visibility var(--duration) var(--ease);
+}
+
+.session-archive-btn {
+  position: relative;
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition:
+    all var(--duration) var(--ease),
+    opacity var(--duration) var(--ease),
+    visibility var(--duration) var(--ease);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.session-archive-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.session-item:hover .session-action-slot {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.session-item:hover .session-archive-btn {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.session-archive-btn:hover {
+  background: var(--bg-glass-hover);
+}
+
+.session-tag {
+  font-size: var(--font-size-sm);
+  padding: var(--space-0-5) var(--space-1);
+  border-radius: var(--radius-pill);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+/* Context menu */
+.session-context-menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 160px;
+  padding: var(--space-1);
+  background: var(--bg-frosted);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  animation: fadeIn 0.15s var(--ease);
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--duration) var(--ease);
+}
+
+.context-menu-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.context-menu-icon {
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Favourite star in session items */
+.session-fav-icon {
+  color: var(--accent);
+  font-size: var(--font-size-sm);
+  flex-shrink: 0;
+}
+
+/* Favourites header */
+.favourites-header {
+  color: var(--accent);
+}
+
+.archived-header {
+  color: var(--text-dim);
+}
+
+.fav-star {
+  font-size: var(--font-size-sm);
+}
+
+.tmux-tag {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* Search results */
+.search-results-header {
+  color: var(--accent-text);
+}
+
+.search-snippet {
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  line-height: 1.4;
+  margin-top: 2px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.search-snippet mark {
+  background: var(--accent-glow);
+  color: var(--accent-text);
+  border-radius: var(--radius-xs);
+  padding: 0 var(--space-0-5);
+}
+
+.session-title {
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+  flex: 1;
+  min-width: 0;
+}
+
+.session-item.active .session-title {
+  color: var(--accent-text);
+}
+
+/* Status dot shared by mirror-live, unread and streaming indicators.
+   Unread overrides mirror-live's dot in the same slot; streaming overrides both. */
+.session-item .session-title::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 10px;
+  margin-left: 2px;
+  margin-top: -3px;
+  vertical-align: middle;
+  animation: pulse 2s infinite;
+}
+
+.session-item.mirror-live .session-title::before {
+  background: var(--success);
+}
+
+.session-item.unread .session-title::before {
+  background: #3b82f6;
+}
+
+.session-item.streaming .session-title::before {
+  background: var(--success, #34d399);
+}
+.session-rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-0-5) var(--space-1-5);
+  background: var(--bg-glass);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.session-meta {
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  margin-top: 3px;
+  line-height: 1.25;
+}

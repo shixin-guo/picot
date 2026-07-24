@@ -1,12 +1,40 @@
-[[permission]]
-identifier = "allow-cmd-retry-startup"
-description = "Allow retrying startup after a failed embedded pi launch (used by the bootstrap error window)"
-commands.allow = ["cmd_retry_startup"]
+"$schema" = "../gen/schemas/desktop-schema.json"
 
-# Permission set that bundles all custom command permissions.
-# Referenced from capabilities/default.json as "pi-desktop:default".
+# App-local Tauri command permissions. Every custom command registered in
+# `tauri::generate_handler!` (main.rs) must be declared here and included in
+# the [default] set, which the capability references.
+
+[[permission]]
+identifier = "allow-open-folder-as-workspace"
+description = "Allow opening the native folder picker to spawn a new workspace window."
+commands.allow = ["open_folder_as_workspace"]
+
+[[permission]]
+identifier = "allow-open-new-session-in-workspace"
+description = "Allow opening a fresh session in the current workspace window."
+commands.allow = ["open_new_session_in_workspace"]
+
+[[permission]]
+identifier = "allow-open-session-in-project"
+description = "Allow opening or focusing a project's workspace window at a saved session."
+commands.allow = ["open_session_in_project"]
+
+[[permission]]
+identifier = "allow-check-beta-update"
+description = "Allow checking the prerelease Picot updater channel."
+commands.allow = ["check_beta_update"]
+
+[[permission]]
+identifier = "allow-install-beta-update"
+description = "Allow installing an available prerelease Picot update."
+commands.allow = ["install_beta_update"]
+
 [default]
-description = "Default permissions bundle for Pi Desktop custom commands"
+description = "Default set of Picot app command permissions."
 permissions = [
-  "allow-cmd-retry-startup",
+  "allow-open-folder-as-workspace",
+  "allow-open-new-session-in-workspace",
+  "allow-open-session-in-project",
+  "allow-check-beta-update",
+  "allow-install-beta-update",
 ]

@@ -1,3 +1,5 @@
+import { randomId } from "./random-id.js";
+
 export class SessionTreeController {
   #lifecycle;
   #runtime;
@@ -49,5 +51,5 @@ export class SessionTreeController {
 }
 
 function intentId() {
-  return globalThis.crypto?.randomUUID?.() ?? `tree-${Date.now()}-${Math.random()}`;
+  return randomId();
 }

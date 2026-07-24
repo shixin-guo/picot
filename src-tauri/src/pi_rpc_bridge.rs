@@ -79,7 +79,12 @@ impl PiRpcBridge {
             frames: Mutex::new(frame_rx),
             pending: Mutex::new(HashMap::new()),
         });
-        tokio::spawn(read_frames(
+        // `attach` is called synchronously from the Tauri `setup` hook (main
+        // thread, no entered Tokio runtime), so a bare `tokio::spawn` here
+        // panics with "there is no reactor running". `tauri::async_runtime::spawn`
+        // holds Tauri's global runtime handle internally and works from any
+        // thread — same pattern as `broker_ws.rs`.
+        tauri::async_runtime::spawn(read_frames(
             incoming_rx,
             frame_tx,
             Arc::clone(&inner),

@@ -10,10 +10,17 @@ export class ExtensionUiHost {
   #queues = new Map();
   #runtime;
   #showDialog;
+  #showInlinePrompt;
 
-  constructor({ runtime, showDialog = async () => ({ cancelled: true }), hooks = {} }) {
+  constructor({
+    runtime,
+    showDialog = async () => ({ cancelled: true }),
+    showInlinePrompt = () => null,
+    hooks = {},
+  }) {
     this.#runtime = runtime;
     this.#showDialog = showDialog;
+    this.#showInlinePrompt = showInlinePrompt;
     this.#hooks = hooks;
   }
 
@@ -83,7 +90,8 @@ export class ExtensionUiHost {
   async #showAndRespond(target, request) {
     let result;
     try {
-      result = await this.#showDialog(structuredClone(request));
+      const inlineResult = this.#showInlinePrompt(structuredClone(request));
+      result = inlineResult ? await inlineResult : await this.#showDialog(structuredClone(request));
     } catch {
       result = { cancelled: true };
     }

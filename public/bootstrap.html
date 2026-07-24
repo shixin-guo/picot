@@ -83,20 +83,8 @@
     }
 
     retryBtn.addEventListener('click', async () => {
-      const invoke = window.__TAURI__?.core?.invoke;
-      if (typeof invoke !== 'function') {
-        hint.textContent = 'Tauri runtime is unavailable in this window.';
-        return;
-      }
       retryBtn.disabled = true;
-      hint.textContent = 'Starting Pi runtime...';
-      try {
-        const port = await invoke('cmd_retry_startup');
-        window.location.href = `http://localhost:${port}`;
-      } catch (error) {
-        hint.textContent = String(error?.message || error || 'Startup failed');
-        retryBtn.disabled = false;
-      }
+      hint.textContent = 'Restart Picot to retry startup.';
     });
   </script>
 </body>

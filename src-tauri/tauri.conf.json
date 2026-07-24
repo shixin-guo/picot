@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Picot",
   "identifier": "works.earendil.picot",
-  "version": "0.3.0",
+  "version": "0.3.1-10007",
   "build": {
     "frontendDist": "../public",
     "beforeDevCommand": "bun run fetch:pi",
@@ -13,8 +13,10 @@
     "macOSPrivateApi": true,
     "windows": [],
     "security": {
-      "csp": "default-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' mediastream:;",
-      "capabilities": ["default"]
+      "csp": "default-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' mediastream:; connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*;",
+      "capabilities": [
+        "default"
+      ]
     }
   },
   "bundle": {
@@ -42,7 +44,9 @@
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU5OUQ4Q0Y5MTA1MTFDRTEKUldUaEhGRVErWXlkNlNSa01lY0g5S1ltM3BjMHJhdUYxdXdsc25USndZdDBFeGZyeGpUa2JVZWEK",
-      "endpoints": ["https://github.com/shixin-guo/picot/releases/latest/download/latest.json"],
+      "endpoints": [
+        "https://github.com/shixin-guo/picot/releases/latest/download/latest.json"
+      ],
       "windows": {
         "installMode": "passive"
       }

@@ -1,0 +1,395 @@
+/* ═══════════════════════════════════════════════════════
+   Community package browser — Settings → Extensions (public/native/package-browse.js)
+   ═══════════════════════════════════════════════════════ */
+
+.settings-extension-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings-extension-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
+  background: var(--bg-glass-strong, var(--bg-glass));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition:
+    background var(--duration) var(--ease),
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease);
+}
+
+.settings-extension-row:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-glass-hover);
+}
+
+.settings-extension-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-extension-name {
+  font-size: var(--font-size-lg);
+  line-height: 24px;
+  font-weight: 400;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-extension-description {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.settings-extension-status {
+  margin-top: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-extension-status.is-error {
+  padding: var(--space-2) var(--space-2);
+  color: #991b1b;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: var(--radius-sm);
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.settings-extension-status-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.settings-extension-status-note,
+.settings-extension-status-detail {
+  margin-top: 3px;
+  line-height: 16px;
+}
+
+.settings-extension-status-detail {
+  overflow-wrap: anywhere;
+}
+
+.settings-extension-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* Browse community packages */
+.pkg-browse-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: 12px;
+}
+
+.pkg-browse-search {
+  flex: 1 1 200px;
+  min-width: 160px;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  outline: none;
+}
+
+.pkg-browse-search:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.pkg-browse-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+
+.pkg-browse-pill {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-sm);
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.pkg-browse-pill:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.pkg-browse-pill.active {
+  color: var(--accent-text);
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+}
+
+.pkg-browse-installed-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  user-select: none;
+}
+
+.pkg-browse-installed-toggle input {
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.pkg-browse-sort {
+  padding: var(--space-1-5) var(--space-2);
+  font-size: var(--font-size-sm);
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  outline: none;
+}
+
+.pkg-browse-sort:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.pkg-browse-sort:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.pkg-browse-count {
+  margin-left: auto;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+}
+
+.pkg-browse-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin-top: 5px;
+}
+
+.pkg-browse-badge {
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.04em;
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-pill);
+  color: var(--accent-text);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent);
+}
+
+.pkg-browse-meta {
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+}
+
+.pkg-browse-list.pkg-browse-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  align-items: stretch;
+}
+
+.pkg-browse-row {
+  align-items: flex-start;
+  height: 140px;
+  overflow: hidden;
+}
+
+.pkg-browse-row:has(.settings-extension-status:not([hidden])) {
+  height: auto;
+  min-height: 140px;
+  overflow: visible;
+}
+
+.pkg-browse-row .settings-extension-info {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+}
+
+.pkg-browse-row .settings-extension-description {
+  display: -webkit-box;
+  line-height: 16px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.pkg-browse-full-row {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 720px) {
+  .pkg-browse-list.pkg-browse-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.pkg-browse-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1-5);
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.pkg-browse-page-btn {
+  min-width: 30px;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated, transparent);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    color 0.15s;
+}
+
+.pkg-browse-page-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.pkg-browse-page-btn.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg, #fff);
+}
+
+.pkg-browse-page-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pkg-browse-page-ellipsis {
+  padding: 0 var(--space-1);
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+}
+
+.pkg-browse-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+  margin-top: 7px;
+}
+
+.pkg-browse-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-sm);
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.pkg-browse-link:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+  background: var(--bg-glass-hover);
+}
+
+.pkg-browse-link svg {
+  flex-shrink: 0;
+}
+
+.settings-value-btn.loading {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+.settings-btn-spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--text-primary) 20%, transparent);
+  border-top-color: var(--accent);
+  animation: settings-btn-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes settings-btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 920px) {
+  .settings-extension-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .settings-extension-actions {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .pkg-browse-filters {
+    gap: var(--space-2);
+  }
+
+  .pkg-browse-search {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .pkg-browse-sort {
+    width: auto;
+    max-width: min(240px, 100%);
+    flex: 0 0 auto;
+  }
+
+  .pkg-browse-count {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 620px) {
+  .pkg-browse-sort {
+    max-width: min(200px, 100%);
+  }
+}

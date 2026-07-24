@@ -1,0 +1,176 @@
+/* ═══════════════════════════════════════════════════════
+   Global Session Search dialog (public/native/session-search-dialog.js)
+   Note: this dialog uses its own `searchSheetIn` keyframe rather than
+   the shared `sheetIn` (defined in style.css). `sheetIn`'s end transform
+   is `translate(-50%, -50%)`, matching centered modals whose static
+   transform is the same value, so the animation hands off to the static
+   style with no visible change. This dialog is top-anchored
+   (`top: 12vh; transform: translateX(-50%)`) with no Y component in its
+   static transform, so reusing `sheetIn` caused a visible snap/jump the
+   instant the animation ended (Y jumped back from -50% to 0). Keep this
+   keyframe's end state equal to the static `transform` below.
+   ═══════════════════════════════════════════════════════ */
+
+@keyframes searchSheetIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+.session-search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.session-search-overlay.hidden {
+  display: none;
+}
+
+.session-search-dialog {
+  position: fixed;
+  top: 12vh;
+  left: 50%;
+  z-index: 1001;
+  display: flex;
+  width: min(860px, calc(100vw - var(--space-12)));
+  max-height: min(680px, 76vh);
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateX(-50%);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  background: var(--bg-frosted);
+  box-shadow: var(--shadow-lg), var(--shadow-inset);
+  backdrop-filter: blur(var(--blur-heavy)) saturate(1.6);
+  -webkit-backdrop-filter: blur(var(--blur-heavy)) saturate(1.6);
+  animation: searchSheetIn 0.2s var(--ease);
+}
+
+.session-search-dialog.hidden {
+  display: none;
+}
+
+.session-search-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.session-search-input-icon {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+}
+
+.session-search-dialog-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-xl);
+}
+
+.session-search-dialog-input::placeholder {
+  color: var(--text-dim);
+}
+
+.session-search-results {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-2);
+}
+
+.session-search-group + .session-search-group {
+  margin-top: var(--space-2);
+}
+
+.session-search-group-header {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.session-search-result {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.session-search-result:hover,
+.session-search-result.active,
+.session-search-result:focus-visible {
+  background: var(--bg-glass-hover);
+  outline: none;
+}
+
+.session-search-result-icon {
+  display: inline-flex;
+  width: var(--control-height-md);
+  height: var(--control-height-md);
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-text);
+  font-size: var(--font-size-sm);
+}
+
+.session-search-result-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.session-search-result-title {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-search-result-snippet,
+.session-search-result-meta {
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: var(--font-size-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-search-result mark {
+  border-radius: var(--radius-xs);
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.session-search-empty {
+  padding: var(--space-6) var(--space-3);
+  color: var(--text-dim);
+  font-size: var(--font-size-md);
+  text-align: center;
+}

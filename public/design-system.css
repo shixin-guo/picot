@@ -102,6 +102,14 @@
   background-color: var(--bg-glass-hover);
 }
 
+/* Primary variant keeps accent background on hover; use brightness to indicate interaction. */
+.ui-button--primary:hover:not(:disabled),
+.ui-icon-button--primary:hover:not(:disabled) {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  filter: brightness(1.15);
+}
+
 .ui-button:active:not(:disabled),
 .ui-icon-button:active:not(:disabled) {
   opacity: 0.72;

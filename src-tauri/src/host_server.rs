@@ -3,16 +3,19 @@
 use crate::host_data::{HostDataError, HostDataPlane};
 use crate::host_router::{HostRouter, RoutedAction, PROTOCOL_VERSION};
 use crate::native_pi_manager::NativePiManager;
+use crate::pi_launch::{list_installed_apps, open_external, open_in_app, PiLaunchResolver};
 use crate::remote_auth::RemoteAuth;
-use crate::runtime_coordinator::RuntimeTarget;
+use crate::runtime_coordinator::{RuntimeStatus, RuntimeTarget};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::Query;
 use axum::extract::{DefaultBodyLimit, Json, State};
-use axum::http::StatusCode;
+use axum::http::header::{CACHE_CONTROL, PRAGMA};
+use axum::http::{HeaderValue, StatusCode};
 use axum::response::Response;
 use axum::routing::{get, post};
 use axum::Router;
 use futures_util::StreamExt;
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -21,7 +24,10 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
+use tower::ServiceBuilder;
 use tower_http::services::{ServeDir, ServeFile};
+#[cfg(debug_assertions)]
+use tower_http::set_header::SetResponseHeaderLayer;
 
 const MAX_HTTP_BODY_BYTES: usize = 1024 * 1024;
 const MAX_WS_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
@@ -32,11 +38,14 @@ struct HostState {
     auth: Arc<Mutex<RemoteAuth>>,
     session_owners: Mutex<std::collections::HashMap<RuntimeTarget, String>>,
     data: HostDataPlane,
+    pi_launch: PiLaunchResolver,
+    port: u16,
 }
 
 pub struct HostServer {
     origin: String,
     shutdown: Option<oneshot::Sender<()>>,
+    state: Arc<HostState>,
 }
 
 impl HostServer {
@@ -59,29 +68,49 @@ impl HostServer {
         if let Some(home) = dirs::home_dir() {
             data = data.with_session_root(home.join(".pi/agent/sessions"));
         }
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, 0))
+            .await
+            .map_err(|error| format!("Cannot bind Picot Host: {error}"))?;
+        let address = listener
+            .local_addr()
+            .map_err(|error| format!("Cannot read Picot Host address: {error}"))?;
+        // Bind on 0.0.0.0 so LAN clients can reach the server, but always use
+        // 127.0.0.1 for the Tauri WebView origin — browsers reject 0.0.0.0 as
+        // a destination address.
+        let loopback_origin = format!("http://127.0.0.1:{}", address.port());
         let state = Arc::new(HostState {
             router: Mutex::new(HostRouter::new()),
             runtimes,
             auth,
             session_owners: Mutex::new(std::collections::HashMap::new()),
             data,
+            pi_launch: PiLaunchResolver::new(static_dir.clone()),
+            port: address.port(),
         });
         let index = static_dir.join("index.html");
         let static_service = ServeDir::new(static_dir).fallback(ServeFile::new(index));
+        #[cfg(debug_assertions)]
+        let static_service = ServiceBuilder::new()
+            .layer(SetResponseHeaderLayer::overriding(
+                CACHE_CONTROL,
+                HeaderValue::from_static("no-store, no-cache, must-revalidate, max-age=0"),
+            ))
+            .layer(SetResponseHeaderLayer::overriding(
+                PRAGMA,
+                HeaderValue::from_static("no-cache"),
+            ))
+            .service(static_service);
         let app = Router::new()
             .route("/health", get(health))
             .route("/v2/ws", get(websocket_upgrade))
             .route("/v2/bootstrap", get(bootstrap_target))
+            .route("/v2/sessions", get(list_all_sessions_http))
             .route("/v2/auth/exchange", post(exchange_pairing))
+            .route("/v2/lan-qr", get(lan_qr))
+            .route("/v2/new-session", post(new_session))
             .fallback_service(static_service)
             .layer(DefaultBodyLimit::max(MAX_HTTP_BODY_BYTES))
-            .with_state(state);
-        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
-            .await
-            .map_err(|error| format!("Cannot bind Picot Host: {error}"))?;
-        let address = listener
-            .local_addr()
-            .map_err(|error| format!("Cannot read Picot Host address: {error}"))?;
+            .with_state(state.clone());
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
         tokio::spawn(async move {
             if let Err(error) = axum::serve(listener, app)
@@ -94,9 +123,27 @@ impl HostServer {
             }
         });
         Ok(Self {
-            origin: format!("http://{address}"),
+            origin: loopback_origin,
             shutdown: Some(shutdown_tx),
+            state,
         })
+    }
+
+    /// Register a workspace root at runtime so its files, sessions, and cost
+    /// data become reachable over the data plane. Used when opening a new
+    /// folder as a workspace after startup.
+    pub fn register_workspace(&self, workspace_id: &str, root: PathBuf) -> Result<(), String> {
+        self.state
+            .data
+            .register_workspace(workspace_id, root)
+            .map_err(|error| format!("Cannot register workspace: {error:?}"))
+    }
+
+    pub fn workspace_root_path(&self, workspace_id: &str) -> Result<PathBuf, String> {
+        self.state
+            .data
+            .workspace_root_path(workspace_id)
+            .map_err(|error| format!("Cannot resolve workspace path: {error:?}"))
     }
 
     pub fn origin(&self) -> &str {
@@ -118,12 +165,97 @@ impl Drop for HostServer {
     }
 }
 
-async fn health() -> Json<Value> {
+async fn health(State(state): State<Arc<HostState>>) -> Json<Value> {
     Json(json!({
         "status": "ok",
         "protocolVersion": PROTOCOL_VERSION,
-        "piVersion": crate::pi_manager::locked_pi_version(),
+        "piVersion": crate::pi_launch::locked_pi_version(),
+        "lanUrl": local_lan_url_with_port(state.port).unwrap_or_default(),
     }))
+}
+
+/// Returns the first non-loopback IPv4 LAN address of this machine,
+/// or an empty string if none is found.
+fn local_lan_ip() -> Option<std::net::IpAddr> {
+    use std::net::{IpAddr, Ipv4Addr, UdpSocket};
+    // Cheapest approach: connect a UDP socket to an external addr (no packet
+    // is actually sent) and read back which local interface was chosen.
+    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).ok()?;
+    socket.connect("8.8.8.8:80").ok()?;
+    let local = socket.local_addr().ok()?;
+    match local.ip() {
+        IpAddr::V4(v4) if !v4.is_loopback() && !v4.is_unspecified() => Some(local.ip()),
+        _ => None,
+    }
+}
+
+/// Returns `None` — the port is only known once the server is bound.
+/// Callers that need a full URL must pass the port in separately.
+fn local_lan_url_with_port(port: u16) -> Option<String> {
+    local_lan_ip().map(|ip| format!("http://{}:{}", ip, port))
+}
+
+fn append_pairing_token(url: &mut String, token: &str) {
+    let separator = if url.contains('?') { '&' } else { '?' };
+    url.push(separator);
+    url.push_str("pairingToken=");
+    url.push_str(&utf8_percent_encode(token, NON_ALPHANUMERIC).to_string());
+}
+
+#[derive(Deserialize)]
+struct LanQrQuery {
+    path: Option<String>,
+}
+
+async fn lan_qr(
+    State(state): State<Arc<HostState>>,
+    Query(query): Query<LanQrQuery>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let port = state.port;
+    let base_url = local_lan_url_with_port(port).unwrap_or_default();
+    if base_url.is_empty() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "No LAN interface found" })),
+        ));
+    }
+    // Append the session path (e.g. /app/workspaces/{id}/sessions/{id}) if provided.
+    let mut url = if let Some(path) = query.path.as_deref() {
+        let path = path.trim_start_matches('/');
+        format!("{}/{}", base_url.trim_end_matches('/'), path)
+    } else {
+        base_url.clone()
+    };
+    let pairing = state
+        .auth
+        .lock()
+        .map_err(|_| {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({ "error": "Remote auth unavailable" })),
+            )
+        })?
+        .create_pairing(now_seconds());
+    append_pairing_token(&mut url, &pairing.token);
+    // Build QR code as SVG, then base64-encode it as a data URL.
+    let code = qrcode::QrCode::new(url.as_bytes()).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("QR encode failed: {e}") })),
+        )
+    })?;
+    let svg_str = code
+        .render()
+        .min_dimensions(200, 200)
+        .dark_color(qrcode::render::svg::Color("#000000"))
+        .light_color(qrcode::render::svg::Color("#ffffff"))
+        .build();
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(svg_str.as_bytes());
+    let data_url = format!("data:image/svg+xml;base64,{b64}");
+    Ok(Json(
+        json!({ "dataUrl": data_url, "url": url, "baseUrl": base_url }),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -133,15 +265,100 @@ struct BootstrapQuery {
     session_id: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionsQuery {
+    workspace_id: String,
+}
+
+async fn list_all_sessions_http(
+    State(state): State<Arc<HostState>>,
+    Query(query): Query<SessionsQuery>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let sessions = state
+        .data
+        .list_all_sessions(&query.workspace_id)
+        .map_err(host_data_http_error)?;
+    let mut sessions = serde_json::to_value(sessions)
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "serialization_failed"))?;
+    if let Ok(statuses) = state.runtimes.statuses() {
+        annotate_live_sessions(&mut sessions, statuses);
+    }
+    Ok(Json(json!({ "sessions": sessions })))
+}
+
 async fn bootstrap_target(
     State(state): State<Arc<HostState>>,
     Query(query): Query<BootstrapQuery>,
 ) -> Result<Json<RuntimeTarget>, (StatusCode, Json<Value>)> {
-    state
+    // A live runtime already exists for this session — reuse it.
+    if let Some(target) = state
         .runtimes
         .target_for_session(&query.workspace_id, &query.session_id)
-        .map(Json)
-        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "runtime_not_found"))
+    {
+        return Ok(Json(target));
+    }
+
+    // Otherwise this is a historical session opened from the sidebar. Lazily
+    // spawn a runtime that resumes the saved session file so its messages load
+    // instead of failing with "runtime stopped/unavailable".
+    let session_path = state
+        .data
+        .resolve_session_path(&query.workspace_id, &query.session_id)
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "session_lookup_failed"))?
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "session_not_found"))?;
+    let cwd = state
+        .data
+        .workspace_root_path(&query.workspace_id)
+        .map_err(|_| api_error(StatusCode::NOT_FOUND, "workspace_not_found"))?;
+    let launch = state
+        .pi_launch
+        .native_launch_spec(
+            &cwd.to_string_lossy(),
+            Some(&session_path.to_string_lossy()),
+        )
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "launch_spec_failed"))?;
+    let target = RuntimeTarget::new(
+        query.workspace_id.clone(),
+        query.session_id.clone(),
+        format!("instance-{}", uuid::Uuid::new_v4().simple()),
+    );
+    state
+        .runtimes
+        .spawn(target.clone(), launch)
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "runtime_spawn_failed"))?;
+    Ok(Json(target))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NewSessionRequest {
+    workspace_id: String,
+}
+
+/// POST /v2/new-session — spawn a fresh temporary runtime for `workspaceId`.
+/// Used by LAN/remote clients that cannot invoke Tauri native commands.
+async fn new_session(
+    State(state): State<Arc<HostState>>,
+    Json(body): Json<NewSessionRequest>,
+) -> Result<Json<RuntimeTarget>, (StatusCode, Json<Value>)> {
+    let cwd = state
+        .data
+        .workspace_root_path(&body.workspace_id)
+        .map_err(|_| api_error(StatusCode::NOT_FOUND, "workspace_not_found"))?;
+    let session_id = format!("temporary-{}", uuid::Uuid::new_v4().simple());
+    let instance_id = format!("instance-{}", uuid::Uuid::new_v4().simple());
+    let target = RuntimeTarget::new(body.workspace_id.clone(), session_id, instance_id);
+    let cwd_str = cwd.to_string_lossy().into_owned();
+    let launch = state
+        .pi_launch
+        .native_launch_spec(&cwd_str, None)
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "launch_spec_failed"))?;
+    state
+        .runtimes
+        .spawn(target.clone(), launch)
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "runtime_spawn_failed"))?;
+    Ok(Json(target))
 }
 
 async fn websocket_upgrade(
@@ -291,7 +508,7 @@ async fn handle_websocket(mut socket: WebSocket, state: Arc<HostState>) {
             event = runtime_events.recv() => {
                 match event {
                     Ok(event) if subscriptions.contains(&event.target) => {
-                        if event.event.get("type").and_then(Value::as_str) == Some("extension_ui_request") {
+                        if extension_ui_requires_owner(&event.event) {
                             let is_owner = state
                                 .session_owners
                                 .lock()
@@ -327,6 +544,16 @@ async fn handle_websocket(mut socket: WebSocket, state: Arc<HostState>) {
     }
 }
 
+fn extension_ui_requires_owner(event: &Value) -> bool {
+    if event.get("type").and_then(Value::as_str) != Some("extension_ui_request") {
+        return false;
+    }
+    matches!(
+        event.get("method").and_then(Value::as_str),
+        Some("select" | "confirm" | "input" | "editor")
+    )
+}
+
 fn runtime_event_frame(event: crate::native_pi_manager::NativeRuntimeEvent) -> Value {
     json!({
         "type": "runtime_event",
@@ -334,6 +561,76 @@ fn runtime_event_frame(event: crate::native_pi_manager::NativeRuntimeEvent) -> V
         "sequence": event.sequence,
         "event": event.event,
     })
+}
+
+fn annotate_live_sessions(sessions: &mut Value, statuses: Vec<RuntimeStatus>) {
+    let Some(items) = sessions.as_array_mut() else {
+        return;
+    };
+    for session in items {
+        let Some(session_id) = session.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(status) = statuses
+            .iter()
+            .find(|status| status.target.session_id == session_id)
+        else {
+            continue;
+        };
+        session["target"] = json!(status.target);
+        session["status"] = json!(status.state);
+    }
+}
+
+fn messages_from_entries_response(response: &Value) -> Value {
+    let Some(entries) = response.pointer("/data/entries").and_then(Value::as_array) else {
+        return json!([]);
+    };
+    let leaf_id = response.pointer("/data/leafId").and_then(Value::as_str);
+    let mut id_to_index = HashMap::new();
+    for (index, entry) in entries.iter().enumerate() {
+        if let Some(id) = entry.get("id").and_then(Value::as_str) {
+            id_to_index.insert(id, index);
+        }
+    }
+
+    let mut branch = Vec::new();
+    let mut current = leaf_id.and_then(|id| id_to_index.get(id).copied());
+    let mut visited = HashSet::new();
+    while let Some(index) = current {
+        if !visited.insert(index) {
+            break;
+        }
+        let entry = &entries[index];
+        if entry.get("type").and_then(Value::as_str) == Some("message") {
+            if let Some(message) = entry.get("message") {
+                branch.push(message_with_entry_id(
+                    message.clone(),
+                    entry.get("id").and_then(Value::as_str),
+                ));
+            }
+        }
+        current = entry
+            .get("parentId")
+            .and_then(Value::as_str)
+            .and_then(|parent_id| id_to_index.get(parent_id).copied());
+    }
+
+    branch.reverse();
+    Value::Array(branch)
+}
+
+fn message_with_entry_id(mut message: Value, entry_id: Option<&str>) -> Value {
+    if message.get("role").and_then(Value::as_str) != Some("user") {
+        return message;
+    }
+    let Some(entry_id) = entry_id else {
+        return message;
+    };
+    if let Some(object) = message.as_object_mut() {
+        object.insert("entryId".to_owned(), Value::String(entry_id.to_owned()));
+    }
+    message
 }
 
 async fn dispatch(
@@ -377,26 +674,17 @@ async fn dispatch(
                             .map_err(|message| ("session_binding_failed", message))?;
                     }
                 }
-                let messages_response = state
+                let entries_response = state
                     .runtimes
                     .request(
                         &target,
-                        json!({ "type": "get_messages" }),
+                        json!({ "type": "get_entries" }),
                         None,
                         Duration::from_secs(10),
                     )
                     .await
                     .map_err(|message| ("snapshot_failed", message))?;
-                let stats_response = state
-                    .runtimes
-                    .request(
-                        &target,
-                        json!({ "type": "get_session_stats" }),
-                        None,
-                        Duration::from_secs(10),
-                    )
-                    .await
-                    .map_err(|message| ("snapshot_failed", message))?;
+                let messages = messages_from_entries_response(&entries_response);
                 let host_snapshot = state
                     .runtimes
                     .snapshot(&target)
@@ -409,8 +697,7 @@ async fn dispatch(
                     "state": {
                         "lifecycle": host_snapshot.state,
                         "pi": state_response.get("data").cloned().unwrap_or(Value::Null),
-                        "messages": messages_response.pointer("/data/messages").cloned().unwrap_or_else(|| json!([])),
-                        "stats": stats_response.get("data").cloned().unwrap_or(Value::Null),
+                        "messages": messages,
                     }
                 }));
             }
@@ -475,6 +762,9 @@ async fn dispatch(
                 }));
             }
             let idempotency_key = frame.get("idempotencyKey").and_then(Value::as_str);
+            if let Ok(mut owners) = state.session_owners.lock() {
+                owners.insert(target.clone(), client_id);
+            }
             let response = state
                 .runtimes
                 .request(&target, command, idempotency_key, Duration::from_secs(30))
@@ -508,10 +798,12 @@ async fn dispatch(
                 "Unsupported auth operation".into(),
             )),
         },
-        RoutedAction::Host { .. } => Err((
-            "host_operation_unimplemented",
-            "Host operation is not implemented on protocol v2".into(),
-        )),
+        RoutedAction::Host {
+            request_id,
+            operation,
+            frame,
+            ..
+        } => dispatch_host_operation(state, &request_id, &operation, &frame).await,
         RoutedAction::Data {
             request_id, frame, ..
         } => match frame.get("operation").and_then(Value::as_str) {
@@ -551,6 +843,27 @@ async fn dispatch(
                     "sessions": sessions,
                 }))
             }
+            Some("list_all_sessions") => {
+                let workspace_id = frame
+                    .get("workspaceId")
+                    .and_then(Value::as_str)
+                    .ok_or(("invalid_workspace", "workspaceId is required".into()))?;
+                let sessions = state
+                    .data
+                    .list_all_sessions(workspace_id)
+                    .map_err(host_data_error)?;
+                let mut sessions = serde_json::to_value(sessions)
+                    .map_err(|error| ("serialization_failed", error.to_string()))?;
+                if let Ok(statuses) = state.runtimes.statuses() {
+                    annotate_live_sessions(&mut sessions, statuses);
+                }
+                Ok(json!({
+                    "type": "data_response",
+                    "requestId": request_id,
+                    "operation": "list_all_sessions",
+                    "sessions": sessions,
+                }))
+            }
             Some("search_sessions") => {
                 let workspace_id = frame
                     .get("workspaceId")
@@ -584,6 +897,42 @@ async fn dispatch(
                     "dashboard": dashboard,
                 }))
             }
+            Some("read_session_messages") => {
+                let workspace_id = frame
+                    .get("workspaceId")
+                    .and_then(Value::as_str)
+                    .ok_or(("invalid_workspace", "workspaceId is required".into()))?;
+                let session_id = frame
+                    .get("sessionId")
+                    .and_then(Value::as_str)
+                    .ok_or(("invalid_session", "sessionId is required".into()))?;
+                let messages = state
+                    .data
+                    .read_session_messages(workspace_id, session_id)
+                    .map_err(host_data_error)?;
+                Ok(json!({
+                    "type": "data_response",
+                    "requestId": request_id,
+                    "operation": "read_session_messages",
+                    "messages": messages,
+                }))
+            }
+            Some("workspace_info") => {
+                let workspace_id = frame
+                    .get("workspaceId")
+                    .and_then(Value::as_str)
+                    .ok_or(("invalid_workspace", "workspaceId is required".into()))?;
+                let info = state
+                    .data
+                    .workspace_info(workspace_id)
+                    .map_err(host_data_error)?;
+                Ok(json!({
+                    "type": "data_response",
+                    "requestId": request_id,
+                    "operation": "workspace_info",
+                    "info": info,
+                }))
+            }
             _ => Err((
                 "unknown_data_operation",
                 "Unsupported data operation".into(),
@@ -593,6 +942,141 @@ async fn dispatch(
             "type": "runtime_subscribed",
             "requestId": request_id,
         })),
+    }
+}
+
+async fn dispatch_host_operation(
+    state: &HostState,
+    request_id: &str,
+    operation: &str,
+    frame: &Value,
+) -> Result<Value, (&'static str, String)> {
+    match operation {
+        "list_pi_packages" => {
+            let resolver = state.pi_launch.clone();
+            let sources = tokio::task::spawn_blocking(move || resolver.list_pi_packages())
+                .await
+                .map_err(|error| ("host_operation_failed", error.to_string()))?
+                .map_err(|message| ("list_pi_packages_failed", message))?;
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "list_pi_packages",
+                "packages": sources,
+            }))
+        }
+        "install_pi_package" | "remove_pi_package" => {
+            let source = frame
+                .get("source")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or(("invalid_source", "Package source cannot be empty".into()))?
+                .to_owned();
+            let resolver = state.pi_launch.clone();
+            let is_install = operation == "install_pi_package";
+            tokio::task::spawn_blocking(move || {
+                if is_install {
+                    resolver.install_pi_package(&source)
+                } else {
+                    resolver.remove_pi_package(&source)
+                }
+            })
+            .await
+            .map_err(|error| ("host_operation_failed", error.to_string()))?
+            .map_err(|message| {
+                if is_install {
+                    ("install_pi_package_failed", message)
+                } else {
+                    ("remove_pi_package_failed", message)
+                }
+            })?;
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": operation,
+                "ok": true,
+            }))
+        }
+        "list_installed_apps" => Ok(json!({
+            "type": "host_response",
+            "requestId": request_id,
+            "operation": "list_installed_apps",
+            "apps": list_installed_apps(),
+        })),
+        "open_in_app" => {
+            let path = frame
+                .get("path")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .ok_or(("invalid_path", "path is required".into()))?;
+            let app_name = frame
+                .get("appName")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            let command = frame
+                .get("command")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            tokio::task::spawn_blocking(move || {
+                open_in_app(&path, app_name.as_deref(), command.as_deref())
+            })
+            .await
+            .map_err(|error| ("host_operation_failed", error.to_string()))?
+            .map_err(|message| ("open_in_app_failed", message))?;
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "open_in_app",
+                "ok": true,
+            }))
+        }
+        "open_external" => {
+            let url = frame
+                .get("url")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .ok_or(("invalid_url", "url is required".into()))?;
+            tokio::task::spawn_blocking(move || open_external(&url))
+                .await
+                .map_err(|error| ("host_operation_failed", error.to_string()))?
+                .map_err(|message| ("open_external_failed", message))?;
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "open_external",
+                "ok": true,
+            }))
+        }
+        "delete_sessions" => {
+            let session_ids: Vec<String> = frame
+                .get("sessionIds")
+                .and_then(Value::as_array)
+                .map(|values| {
+                    values
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let data = state.data.clone();
+            let result = tokio::task::spawn_blocking(move || data.delete_sessions(&session_ids))
+                .await
+                .map_err(|error| ("host_operation_failed", error.to_string()))?
+                .map_err(host_data_error)?;
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "delete_sessions",
+                "deleted": result.deleted,
+                "errors": result.errors,
+            }))
+        }
+        _ => Err((
+            "host_operation_unimplemented",
+            "Host operation is not implemented on protocol v2".into(),
+        )),
     }
 }
 
@@ -611,6 +1095,18 @@ fn host_data_error(error: HostDataError) -> (&'static str, String) {
         ),
         HostDataError::Io(message) => ("file_access_failed", message),
     }
+}
+
+fn host_data_http_error(error: HostDataError) -> (StatusCode, Json<Value>) {
+    let status = match error {
+        HostDataError::UnknownWorkspace => StatusCode::NOT_FOUND,
+        HostDataError::InvalidRelativePath
+        | HostDataError::OutsideWorkspace
+        | HostDataError::NotDirectory => StatusCode::BAD_REQUEST,
+        HostDataError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    let (code, _) = host_data_error(error);
+    api_error(status, code)
 }
 
 #[derive(Deserialize)]
@@ -677,7 +1173,10 @@ fn now_seconds() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::HostServer;
+    use super::{
+        append_pairing_token, extension_ui_requires_owner, messages_from_entries_response,
+        HostServer,
+    };
     use crate::metadata_store::MetadataStore;
     use crate::native_pi_manager::NativePiManager;
     use crate::remote_auth::RemoteAuth;
@@ -687,6 +1186,96 @@ mod tests {
     use std::fs;
     use std::sync::{Arc, Mutex};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn appends_pairing_token_to_lan_deep_link() {
+        let mut plain = "http://192.168.1.10:9000/app/workspaces/a/sessions/b".to_string();
+        append_pairing_token(&mut plain, "picot_pair_a+b");
+        assert_eq!(
+            plain,
+            "http://192.168.1.10:9000/app/workspaces/a/sessions/b?pairingToken=picot%5Fpair%5Fa%2Bb"
+        );
+
+        let mut with_query =
+            "http://192.168.1.10:9000/app/workspaces/a/sessions/b?tab=settings".to_string();
+        append_pairing_token(&mut with_query, "token");
+        assert_eq!(
+            with_query,
+            "http://192.168.1.10:9000/app/workspaces/a/sessions/b?tab=settings&pairingToken=token"
+        );
+    }
+
+    #[test]
+    fn only_blocking_extension_ui_requests_require_the_session_owner() {
+        assert!(extension_ui_requires_owner(&json!({
+            "type": "extension_ui_request",
+            "method": "select"
+        })));
+        assert!(!extension_ui_requires_owner(&json!({
+            "type": "extension_ui_request",
+            "method": "notify",
+            "message": "{\"__picotConfig\":\"cfg-1\",\"ok\":true}"
+        })));
+        assert!(!extension_ui_requires_owner(&json!({
+            "type": "agent_start"
+        })));
+    }
+
+    #[test]
+    fn derives_active_branch_messages_with_user_entry_ids_from_entries() {
+        let response = json!({
+            "type": "response",
+            "command": "get_entries",
+            "success": true,
+            "data": {
+                "leafId": "assistant-2",
+                "entries": [
+                    {
+                        "type": "message",
+                        "id": "user-1",
+                        "parentId": null,
+                        "message": { "role": "user", "content": "first" }
+                    },
+                    {
+                        "type": "message",
+                        "id": "assistant-1",
+                        "parentId": "user-1",
+                        "message": { "role": "assistant", "content": [{ "type": "text", "text": "old" }] }
+                    },
+                    {
+                        "type": "message",
+                        "id": "user-abandoned",
+                        "parentId": "assistant-1",
+                        "message": { "role": "user", "content": "abandoned" }
+                    },
+                    {
+                        "type": "message",
+                        "id": "user-2",
+                        "parentId": "assistant-1",
+                        "message": { "role": "user", "content": "current" }
+                    },
+                    {
+                        "type": "message",
+                        "id": "assistant-2",
+                        "parentId": "user-2",
+                        "message": { "role": "assistant", "content": [{ "type": "text", "text": "new" }] }
+                    }
+                ]
+            }
+        });
+
+        let messages = messages_from_entries_response(&response);
+
+        assert_eq!(
+            messages,
+            json!([
+                { "role": "user", "content": "first", "entryId": "user-1" },
+                { "role": "assistant", "content": [{ "type": "text", "text": "old" }] },
+                { "role": "user", "content": "current", "entryId": "user-2" },
+                { "role": "assistant", "content": [{ "type": "text", "text": "new" }] }
+            ])
+        );
+    }
 
     #[tokio::test]
     async fn serves_health_and_static_assets_from_one_origin() {
@@ -699,7 +1288,7 @@ mod tests {
         fs::create_dir_all(&public).unwrap();
         fs::write(public.join("index.html"), "<h1>Picot native host</h1>").unwrap();
         let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
-        let auth = Arc::new(Mutex::new(RemoteAuth::new(metadata)));
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
         let host = HostServer::start(public, NativePiManager::new(32), auth)
             .await
             .unwrap();
@@ -711,7 +1300,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(health["protocolVersion"], 2);
-        assert_eq!(health["piVersion"], "0.80.10");
+        assert_eq!(health["piVersion"], env!("PI_STUDIO_PI_VERSION_BUNDLED"));
         let index = reqwest::get(format!("{}/app/settings", host.origin()))
             .await
             .unwrap()
@@ -735,7 +1324,7 @@ mod tests {
         fs::create_dir_all(&public).unwrap();
         fs::write(public.join("index.html"), "Picot").unwrap();
         let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
-        let auth = Arc::new(Mutex::new(RemoteAuth::new(metadata)));
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
         let runtimes = NativePiManager::new(32);
         let target = RuntimeTarget::new("workspace-a", "session-a", "instance-a");
         let mut fake = runtimes.register_in_memory(target.clone()).unwrap();
@@ -796,7 +1385,7 @@ mod tests {
         fs::create_dir_all(&public).unwrap();
         fs::write(public.join("index.html"), "Picot").unwrap();
         let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
-        let auth = Arc::new(Mutex::new(RemoteAuth::new(metadata)));
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
         let runtimes = NativePiManager::new(32);
         let target = RuntimeTarget::new("workspace-a", "session-a", "instance-a");
         let mut fake = runtimes.register_in_memory(target.clone()).unwrap();

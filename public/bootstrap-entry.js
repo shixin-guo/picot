@@ -1,5 +1,1 @@
-if (window.location.pathname.startsWith("/app/")) {
-  import("./native/app.js");
-} else {
-  import("./app.js");
-}
+import("./native/app.js");

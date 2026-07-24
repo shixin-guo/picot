@@ -82,4 +82,29 @@ describe("ExtensionUiHost", () => {
       targetA,
     );
   });
+
+  it("uses inline prompts before falling back to modal dialogs", async () => {
+    const runtime = { request: vi.fn().mockResolvedValue({}) };
+    const showDialog = vi.fn();
+    const host = new ExtensionUiHost({
+      runtime,
+      showDialog,
+      showInlinePrompt: () => Promise.resolve({ value: "1. A — Alpha" }),
+    });
+    host.setForegroundSession("a");
+
+    await host.handle(targetA, {
+      type: "extension_ui_request",
+      id: "inline-1",
+      method: "select",
+      title: "[Choice] Pick one",
+      options: ["1. A — Alpha"],
+    });
+
+    expect(showDialog).not.toHaveBeenCalled();
+    expect(runtime.request).toHaveBeenCalledWith(
+      { type: "extension_ui_response", id: "inline-1", value: "1. A — Alpha" },
+      targetA,
+    );
+  });
 });
