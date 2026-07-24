@@ -14,6 +14,10 @@ import { setupComposerImageAttachments } from "./composer-images.js";
 import { setupComposerSlashMenu } from "./composer-slash-menu.js";
 import { setupComposerSubmitHandling } from "./composer-submit.js";
 import { ConfigGateway } from "./config-gateway.js";
+import {
+  setupConfigGatewayConnectionListener,
+  signalConfigGatewayReady,
+} from "./config-gateway-readiness.js";
 import { findLatestAssistantUsage, setupContextUsage } from "./context-usage.js";
 import { HostControlGateway } from "./control-gateway.js";
 import { HostDataGateway } from "./data-gateway.js";
@@ -94,6 +98,7 @@ let currentModelId = null;
 let currentModelContextWindow = 0;
 let availableModels = [];
 let target = provisionalTargetFromRoute(route);
+let configGatewayTargetReady = false;
 let store = createSessionStore(target);
 let navigationGeneration = 0;
 let commandCatalog = buildCommandCatalog({
@@ -176,8 +181,10 @@ runtime.subscribe((frame) => {
   if (previous.queue !== store.queue) renderQueuedMessages(queuedMessages, store.queue);
   handleRuntimeEvent(frame.event).catch(showError);
 });
-adapter.setConnectionListener((connected) => {
-  if (!connected) setStatus("Disconnected");
+setupConfigGatewayConnectionListener({
+  adapter,
+  isReady: () => configGatewayTargetReady,
+  onDisconnected: () => setStatus("Disconnected"),
 });
 adapter.connect();
 
@@ -212,7 +219,12 @@ messagesElement.addEventListener("messagefork", async (event) => {
     showError(error);
   }
 });
-document.getElementById("refresh-sessions-btn")?.addEventListener("click", () => {
+document.getElementById("refresh-sessions-btn")?.addEventListener("click", (e) => {
+  const btn = /** @type {HTMLButtonElement} */ (e.currentTarget);
+  btn.classList.remove("spinning");
+  // Force reflow so re-adding the class restarts the animation
+  void btn.offsetWidth;
+  btn.classList.add("spinning");
   sidebar?.load().catch(showError);
 });
 setupFileBrowser();
@@ -361,6 +373,8 @@ async function loadBootstrapTarget(currentRoute) {
 async function hydrateSnapshot() {
   const snapshot = await runtime.snapshot(target.sessionId);
   await hydrateFromSnapshot(snapshot);
+  configGatewayTargetReady = true;
+  signalConfigGatewayReady();
 }
 
 async function loadCommands() {
@@ -559,10 +573,19 @@ function setupSidebarToggle() {
     overlay?.classList.toggle("visible", !collapsed && isMobile());
   };
 
+  // Auto-collapse on mobile so sidebar doesn't block content on first load
+  if (isMobile()) {
+    setCollapsed(true);
+  }
+
   toggleBtn.addEventListener("click", () => {
     setCollapsed(!sidebarEl.classList.contains("collapsed"));
   });
   overlay?.addEventListener("click", () => setCollapsed(true));
+  overlay?.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    setCollapsed(true);
+  });
 }
 
 function setupFileBrowser() {
@@ -731,6 +754,7 @@ async function adoptTarget(nextTarget, { updateRoute = true } = {}) {
     nextTarget.workspaceId !== previousTarget.workspaceId ||
     nextTarget.instanceId !== previousTarget.instanceId;
   if (!targetChanged) return;
+  configGatewayTargetReady = false;
   if (updateRoute && sessionChanged) {
     replaceTemporarySessionRoute(
       history,

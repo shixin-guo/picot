@@ -5,6 +5,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
+mod extensions;
+
+use extensions::resolve_bundled_extensions;
+
 const PI_VERSION_JSON: &str = include_str!("../../scripts/pi-version.json");
 
 pub fn locked_pi_version() -> &'static str {
@@ -47,46 +51,13 @@ impl PiLaunchResolver {
         session_path: Option<&str>,
     ) -> Result<NativeLaunchSpec, String> {
         let binary = self.resolve_bundled_pi()?;
-        let mut candidates = Vec::new();
-        if let Some(resources) = self.static_dir.parent() {
-            candidates.push(resources.join("extensions").join("picot-bridge.mjs"));
-        }
-        if cfg!(debug_assertions) {
-            candidates.push(
-                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                    .join("..")
-                    .join("extensions")
-                    .join("dist")
-                    .join("picot-bridge.mjs"),
-            );
-            candidates.push(
-                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                    .join("..")
-                    .join("extensions")
-                    .join("picot-bridge.ts"),
-            );
-        }
-        let bridge = candidates
-            .iter()
-            .find(|candidate| candidate.is_file())
-            .cloned()
-            .ok_or_else(|| {
-                format!(
-                    "Could not find picot-bridge extension. Tried:\n{}",
-                    candidates
-                        .iter()
-                        .map(|path| format!("  - {}", path.display()))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                )
-            })?;
+        let extensions =
+            resolve_bundled_extensions(&self.static_dir, Path::new(cwd), session_path.is_some())?;
         Ok(NativeLaunchSpec {
             binary,
             cwd: PathBuf::from(strip_verbatim_prefix(cwd)),
             session_path: session_path.map(|path| PathBuf::from(strip_verbatim_prefix(path))),
-            extensions: vec![PathBuf::from(sanitize_extension_path_for_pi(
-                &strip_verbatim_prefix(&bridge.to_string_lossy()),
-            ))],
+            extensions,
             pi_version: locked_pi_version().to_owned(),
             path_env: build_augmented_path(),
         })
@@ -503,44 +474,4 @@ fn strip_verbatim_prefix(path: &str) -> String {
     } else {
         path.to_string()
     }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn sanitize_extension_path_for_pi(original: &str) -> String {
-    original.to_string()
-}
-
-#[cfg(target_os = "windows")]
-fn sanitize_extension_path_for_pi(original: &str) -> String {
-    if !original.contains(' ') {
-        return original.to_string();
-    }
-    match mirror_to_space_free_dir(Path::new(original)) {
-        Ok(mirrored) => mirrored.to_string_lossy().to_string(),
-        Err(error) => {
-            log::warn!(
-                "[picot-native] failed to mirror extension to a space-free path ({error}); using original"
-            );
-            original.to_string()
-        }
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn mirror_to_space_free_dir(src: &Path) -> std::io::Result<PathBuf> {
-    let file_name = src.file_name().ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "extension path has no file name",
-        )
-    })?;
-    let mut dest_dir = std::env::temp_dir();
-    if dest_dir.to_string_lossy().contains(' ') {
-        dest_dir = PathBuf::from("C:\\ProgramData\\picot");
-    }
-    dest_dir.push("picot-ext");
-    std::fs::create_dir_all(&dest_dir)?;
-    let dest = dest_dir.join(file_name);
-    std::fs::copy(src, &dest)?;
-    Ok(dest)
 }

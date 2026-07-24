@@ -508,7 +508,7 @@ async fn handle_websocket(mut socket: WebSocket, state: Arc<HostState>) {
             event = runtime_events.recv() => {
                 match event {
                     Ok(event) if subscriptions.contains(&event.target) => {
-                        if event.event.get("type").and_then(Value::as_str) == Some("extension_ui_request") {
+                        if extension_ui_requires_owner(&event.event) {
                             let is_owner = state
                                 .session_owners
                                 .lock()
@@ -542,6 +542,16 @@ async fn handle_websocket(mut socket: WebSocket, state: Arc<HostState>) {
     if let Ok(mut owners) = state.session_owners.lock() {
         owners.retain(|_, owner| owner != &client_id);
     }
+}
+
+fn extension_ui_requires_owner(event: &Value) -> bool {
+    if event.get("type").and_then(Value::as_str) != Some("extension_ui_request") {
+        return false;
+    }
+    matches!(
+        event.get("method").and_then(Value::as_str),
+        Some("select" | "confirm" | "input" | "editor")
+    )
 }
 
 fn runtime_event_frame(event: crate::native_pi_manager::NativeRuntimeEvent) -> Value {
@@ -1163,7 +1173,10 @@ fn now_seconds() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{append_pairing_token, messages_from_entries_response, HostServer};
+    use super::{
+        append_pairing_token, extension_ui_requires_owner, messages_from_entries_response,
+        HostServer,
+    };
     use crate::metadata_store::MetadataStore;
     use crate::native_pi_manager::NativePiManager;
     use crate::remote_auth::RemoteAuth;
@@ -1190,6 +1203,22 @@ mod tests {
             with_query,
             "http://192.168.1.10:9000/app/workspaces/a/sessions/b?tab=settings&pairingToken=token"
         );
+    }
+
+    #[test]
+    fn only_blocking_extension_ui_requests_require_the_session_owner() {
+        assert!(extension_ui_requires_owner(&json!({
+            "type": "extension_ui_request",
+            "method": "select"
+        })));
+        assert!(!extension_ui_requires_owner(&json!({
+            "type": "extension_ui_request",
+            "method": "notify",
+            "message": "{\"__picotConfig\":\"cfg-1\",\"ok\":true}"
+        })));
+        assert!(!extension_ui_requires_owner(&json!({
+            "type": "agent_start"
+        })));
     }
 
     #[test]

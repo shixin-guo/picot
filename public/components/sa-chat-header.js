@@ -65,7 +65,9 @@ class SAChatHeader extends HTMLElement {
 
     this._syncLanQrButton();
     this._handleChatConfigUpdated = () => this._loadServiceStatus();
+    this._handleConfigGatewayReady = () => this._loadServiceStatus();
     window.addEventListener("picot-chat-config-updated", this._handleChatConfigUpdated);
+    window.addEventListener("picot-config-gateway-ready", this._handleConfigGatewayReady);
     this._loadServiceStatus();
   }
 
@@ -73,6 +75,9 @@ class SAChatHeader extends HTMLElement {
     this._lanQrObserver?.disconnect();
     if (this._handleChatConfigUpdated) {
       window.removeEventListener("picot-chat-config-updated", this._handleChatConfigUpdated);
+    }
+    if (this._handleConfigGatewayReady) {
+      window.removeEventListener("picot-config-gateway-ready", this._handleConfigGatewayReady);
     }
   }
 
@@ -93,6 +98,8 @@ class SAChatHeader extends HTMLElement {
   }
 
   async _loadServiceStatus() {
+    const generation = (this._serviceStatusLoadGeneration ?? 0) + 1;
+    this._serviceStatusLoadGeneration = generation;
     const connectedServices = new Set();
 
     try {
@@ -105,6 +112,7 @@ class SAChatHeader extends HTMLElement {
       // Keep services disabled when config cannot be read.
     }
 
+    if (generation !== this._serviceStatusLoadGeneration) return;
     this._setServiceConnected("telegram", connectedServices.has("telegram"));
   }
 

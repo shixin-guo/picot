@@ -90,9 +90,9 @@ export class HostRuntimeAdapter {
         }
         this.#connected = true;
         this.#reconnectAttempts = 0;
+        for (const target of this.#subscriptions.values()) this.#sendSubscription(target);
         for (const listener of this.#connectionListeners) listener(true);
         for (const resolve of this.#readyWaiters.splice(0)) resolve();
-        for (const target of this.#subscriptions.values()) this.#sendSubscription(target);
         return;
       }
       if (frame.type === "runtime_subscribed") return;

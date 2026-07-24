@@ -11,6 +11,7 @@ describe("sa-chat-header", () => {
   beforeEach(() => {
     document.body.innerHTML =
       '<super-agent-runtime class="super-agent-runtime collapsed"></super-agent-runtime>';
+    delete window.__picotConfigCall;
     vi.restoreAllMocks();
   });
 
@@ -93,6 +94,38 @@ describe("sa-chat-header", () => {
 
     const telegram = header.querySelector('[data-action="telegram"]');
 
+    expect(telegram.disabled).toBe(false);
+    expect(telegram.classList.contains("connected")).toBe(true);
+  });
+
+  it("reloads service status when the native config gateway becomes ready", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: false });
+
+    const Header = customElements.get("sa-chat-header");
+    const header = new Header();
+    document.body.appendChild(header);
+    await Promise.resolve();
+
+    window.__picotConfigCall = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        content: JSON.stringify({
+          accounts: {
+            "telegram-main": {
+              service: "telegram",
+              botToken: "token",
+              channels: {},
+            },
+          },
+        }),
+      },
+    });
+    window.dispatchEvent(new CustomEvent("picot-config-gateway-ready"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const telegram = header.querySelector('[data-action="telegram"]');
+    expect(window.__picotConfigCall).toHaveBeenCalledWith("read_chat_config");
     expect(telegram.disabled).toBe(false);
     expect(telegram.classList.contains("connected")).toBe(true);
   });

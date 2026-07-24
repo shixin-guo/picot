@@ -134,4 +134,27 @@ describe("HostRuntimeAdapter", () => {
       vi.useRealTimers();
     }
   });
+
+  it("restores target subscriptions before announcing a connected transport", () => {
+    FakeWebSocket.instances.length = 0;
+    const adapter = new HostRuntimeAdapter({
+      url: "ws://host/v2/ws",
+      WebSocketImpl: FakeWebSocket,
+      clientId: "desktop-a",
+    });
+    adapter.subscribeTarget(target);
+    adapter.setConnectionListener((connected) => {
+      if (connected) {
+        FakeWebSocket.instances[0].send(JSON.stringify({ type: "listener_ready_probe" }));
+      }
+    });
+
+    adapter.connect();
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    socket.receive({ type: "hello_ack", protocolVersion: 2 });
+
+    expect(socket.sent[1]).toMatchObject({ type: "runtime_subscribe", target });
+    expect(socket.sent[2]).toEqual({ type: "listener_ready_probe" });
+  });
 });

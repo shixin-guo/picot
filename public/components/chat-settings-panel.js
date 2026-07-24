@@ -113,7 +113,15 @@ class ChatSettingsPanel extends HTMLElement {
       }
     });
 
+    this._handleConfigGatewayReady = () => this._load();
+    window.addEventListener("picot-config-gateway-ready", this._handleConfigGatewayReady);
     this._load();
+  }
+
+  disconnectedCallback() {
+    if (this._handleConfigGatewayReady) {
+      window.removeEventListener("picot-config-gateway-ready", this._handleConfigGatewayReady);
+    }
   }
 
   // ── Super Agent toggle ──────────────────────────────────────────────────
