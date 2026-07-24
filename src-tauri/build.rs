@@ -35,6 +35,24 @@ fn main() {
 
     tauri_build::build();
 
+    // Expose the locked pi version as a compile-time env var so Rust code can
+    // reference it via env!("PI_STUDIO_PI_VERSION_BUNDLED") instead of
+    // duplicating the literal string across multiple files.
+    let pi_version_json = manifest_dir
+        .join("..")
+        .join("scripts")
+        .join("pi-version.json");
+    if let Ok(contents) = fs::read_to_string(&pi_version_json) {
+        // Minimal parse: extract the "version" field without pulling in serde.
+        if let Some(version) = contents
+            .lines()
+            .find(|l| l.contains("\"version\""))
+            .and_then(|l| l.split('"').nth(3))
+        {
+            println!("cargo:rustc-env=PI_STUDIO_PI_VERSION_BUNDLED={version}");
+        }
+    }
+
     // Re-run if the version pin or the binary itself changes, so cached
     // builds notice when fetch:pi has been run between invocations.
     println!("cargo:rerun-if-changed=resources/pi/.version");
