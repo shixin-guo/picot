@@ -19,6 +19,22 @@ identifier = "allow-open-session-in-project"
 description = "Allow opening or focusing a project's workspace window at a saved session."
 commands.allow = ["open_session_in_project"]
 
+[[permission]]
+identifier = "allow-check-beta-update"
+description = "Allow checking the prerelease Picot updater channel."
+commands.allow = ["check_beta_update"]
+
+[[permission]]
+identifier = "allow-install-beta-update"
+description = "Allow installing an available prerelease Picot update."
+commands.allow = ["install_beta_update"]
+
 [default]
 description = "Default set of Picot app command permissions."
-permissions = ["allow-open-folder-as-workspace", "allow-open-new-session-in-workspace", "allow-open-session-in-project"]
+permissions = [
+  "allow-open-folder-as-workspace",
+  "allow-open-new-session-in-workspace",
+  "allow-open-session-in-project",
+  "allow-check-beta-update",
+  "allow-install-beta-update",
+]

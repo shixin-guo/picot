@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import "./chat-settings-panel.js";
 
-async function flushPromises(count = 4) {
+async function flushPromises(count = 8) {
   for (let i = 0; i < count; i++) await Promise.resolve();
 }
 

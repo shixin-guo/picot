@@ -1,4 +1,5 @@
 import { reconcileSnapshotTarget } from "../session/bootstrap-target.js";
+import { selectSuperAgentSessionToLaunch } from "../super-agent/autolaunch.js";
 import { isSuperAgentProjectPath } from "../super-agent/session.js";
 import { isSuperAgentEnabled } from "../super-agent/settings.js";
 import { buildTaskComposerPrompt } from "../super-agent/task-state.js";
@@ -119,6 +120,7 @@ const runtime = new RuntimeGateway(adapter);
 const data = new HostDataGateway(adapter, { fetchImpl: window.fetch.bind(window) });
 const control = new HostControlGateway(adapter);
 const config = new ConfigGateway({ runtime, getTarget: () => target });
+window.__picotConfigCall = (op, params, options) => config.call(op, params, options);
 const contextUsage = setupContextUsage();
 const extensionUi = new ExtensionUiHost({
   runtime,
@@ -508,18 +510,16 @@ document.addEventListener("sa-view-session", (event) => {
 });
 
 function autoLaunchSuperAgentOnce(sessions) {
-  if (_superAgentLaunched) return;
-  if (!isSuperAgentEnabled()) return;
   const invoke = globalThis.__TAURI__?.core?.invoke;
   if (!invoke) return;
-
-  const superAgentSessions = (sessions ?? []).filter((s) => isSuperAgentProjectPath(s.projectPath));
-  if (superAgentSessions.length === 0) return;
-
+  const latest = selectSuperAgentSessionToLaunch({
+    alreadyLaunched: _superAgentLaunched,
+    enabled: isSuperAgentEnabled(),
+    sessions,
+    currentSessionId: target.sessionId,
+  });
+  if (!latest) return;
   _superAgentLaunched = true;
-  const latest = superAgentSessions.reduce((a, b) =>
-    (a.timestamp ?? 0) >= (b.timestamp ?? 0) ? a : b,
-  );
   invoke("open_session_in_project", {
     projectPath: latest.projectPath,
     sessionId: latest.id,

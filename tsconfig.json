@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "strict": false,
+    "paths": {
+      "@earendil-works/pi-coding-agent": ["./src-tauri/resources/pi/dist/index.d.ts"]
+    }
+  },
+  "include": ["extensions/**/*.ts", "public/**/*.js"]
+}

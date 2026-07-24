@@ -96,13 +96,10 @@ class SAChatHeader extends HTMLElement {
     const connectedServices = new Set();
 
     try {
-      const res = await fetch("/api/chat-config");
-      if (res.ok) {
-        const data = await res.json();
-        const config = JSON.parse(data?.content || "{}");
-        for (const account of Object.values(config.accounts || {})) {
-          if (isConfiguredAccount(account)) connectedServices.add(account.service);
-        }
+      const data = await readChatConfig();
+      const config = JSON.parse(data?.content || "{}");
+      for (const account of Object.values(config.accounts || {})) {
+        if (isConfiguredAccount(account)) connectedServices.add(account.service);
       }
     } catch {
       // Keep services disabled when config cannot be read.
@@ -136,6 +133,17 @@ function isConfiguredAccount(account) {
   if (!account || typeof account !== "object") return false;
   if (account.service === "telegram") return Boolean(account.botToken);
   return false;
+}
+
+async function readChatConfig() {
+  if (typeof window.__picotConfigCall === "function") {
+    const result = await window.__picotConfigCall("read_chat_config");
+    if (!result?.ok) throw new Error(result?.error || "Failed to load chat config");
+    return result.data || {};
+  }
+  const res = await fetch("/api/chat-config");
+  if (!res.ok) throw new Error("Failed to load chat config");
+  return res.json();
 }
 
 function capitalize(value) {

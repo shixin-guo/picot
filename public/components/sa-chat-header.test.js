@@ -88,6 +88,8 @@ describe("sa-chat-header", () => {
     document.body.appendChild(header);
     await Promise.resolve();
     await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
     const telegram = header.querySelector('[data-action="telegram"]');
 
