@@ -148,7 +148,7 @@ export function setupSettingsConfig({ configGateway, onModelConfigurationChanged
       checkHealthBtn.type = "button";
       checkHealthBtn.className = "api-model-check-visible";
       checkHealthBtn.textContent = "Check health";
-      checkHealthBtn.disabled = !models.some((model) => model.visible !== false && model.available);
+      checkHealthBtn.disabled = !models.some((model) => model.available);
       checkHealthBtn.addEventListener("click", () => checkModelHealth(p.provider));
       actions.appendChild(checkHealthBtn);
     }

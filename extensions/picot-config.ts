@@ -467,10 +467,7 @@ export async function handlePicotConfig(
         const models = reg.getAll().filter((model) => {
           if (model.provider !== provider || !model.id) return false;
           if (modelId) return model.id === modelId;
-          return (
-            preferences.isVisible(provider, model.id as string) &&
-            availableKeys.has(modelPreferenceKey(provider, model.id as string))
-          );
+          return availableKeys.has(modelPreferenceKey(provider, model.id as string));
         });
         if (models.length === 0) throw new Error("No matching models available for health check");
         const results = [];
