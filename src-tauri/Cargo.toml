@@ -1,6 +1,6 @@
 [package]
 name = "picot"
-version = "0.3.1-10005"
+version = "0.3.1-10006"
 description = "Pi Agent Desktop - session manager for pi coding agent"
 authors = ["Pi Desktop"]
 edition = "2021"
