@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { t } from "../i18n/index.js";
 import { getOnboardingState } from "./onboarding.js";
 
 describe("onboarding state", () => {
@@ -14,7 +15,7 @@ describe("onboarding state", () => {
       canType: false,
       needsProject: true,
       needsModel: false,
-      message: "Open a project to start chatting.",
+      message: t("onboarding.needsProject"),
     });
   });
 
@@ -30,7 +31,7 @@ describe("onboarding state", () => {
       canType: true,
       needsProject: false,
       needsModel: true,
-      message: "Configure an API key or provider to start chatting.",
+      message: t("onboarding.needsModel"),
     });
   });
 

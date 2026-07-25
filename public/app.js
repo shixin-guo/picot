@@ -296,7 +296,7 @@ async function stopSuperAgentInstances() {
     ),
   );
   if (shutdown.navigateToPort) {
-    const dismiss = showSwapOverlay("Closing Agent Inbox…");
+    const dismiss = showSwapOverlay(t("superAgent.closingInbox"));
     try {
       const url = new URL(withBrokerWs(buildWorkspaceUrl(shutdown.navigateToPort), transport));
       if (shutdown.portsToStopAfterNavigation.length > 0) {
@@ -696,8 +696,11 @@ function refreshHeaderOpenAppButton() {
   }
   headerOpenApp.el.classList.remove("hidden");
   if (headerOpenApp.logo) headerOpenApp.logo.innerHTML = renderOpenAppLogo(selected);
-  headerOpenApp.btn.title = `Open ${path} in ${selected.label}`;
-  headerOpenApp.btn.setAttribute("aria-label", `Open workspace in ${selected.label}`);
+  headerOpenApp.btn.title = t("chrome.openPathInApp", { path, app: selected.label });
+  headerOpenApp.btn.setAttribute(
+    "aria-label",
+    t("chrome.openWorkspaceInApp", { app: selected.label }),
+  );
 }
 
 async function openWorkspaceInApp(app) {
@@ -733,8 +736,8 @@ function toggleHeaderOpenAppMenu() {
     row.type = "button";
     row.className = "header-open-app-menu-item";
     if (app.id === headerOpenApp.selectedId) row.classList.add("active");
-    row.title = `Open in ${app.label}`;
-    row.setAttribute("aria-label", `Open in ${app.label}`);
+    row.title = t("chrome.openInApp", { app: app.label });
+    row.setAttribute("aria-label", t("chrome.openInApp", { app: app.label }));
     row.innerHTML = `<span class="header-open-app-logo" aria-hidden="true">${renderOpenAppLogo(app)}</span><span>${app.label}</span>`;
     row.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -922,7 +925,10 @@ function rebuildNavDots() {
   while (convNavTrack.children.length < turns.length) {
     const dot = document.createElement("button");
     dot.className = "conv-nav-dot";
-    dot.setAttribute("aria-label", `Jump to conversation ${convNavTrack.children.length + 1}`);
+    dot.setAttribute(
+      "aria-label",
+      t("chrome.jumpToConversation", { n: convNavTrack.children.length + 1 }),
+    );
     convNavTrack.appendChild(dot);
   }
   // Remove extra dots
@@ -936,7 +942,7 @@ function rebuildNavDots() {
 
   [...convNavTrack.children].forEach((dot, i) => {
     dot.classList.toggle("active", i === activeIdx);
-    dot.setAttribute("aria-label", `Jump to conversation ${i + 1}`);
+    dot.setAttribute("aria-label", t("chrome.jumpToConversation", { n: i + 1 }));
     dot.onclick = () => jumpToConversation(turns[i], i);
     dot.onmouseenter = () => {
       _navHoverIdx = i;
@@ -2475,7 +2481,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     if (nativeAvailable()) {
       transport.openDevtools().catch((err) => {
-        messageRenderer.renderError(`Failed to open inspector: ${err}`);
+        messageRenderer.renderError(t("chrome.failedOpenInspector", { error: err }));
       });
     }
   }

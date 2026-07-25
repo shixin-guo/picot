@@ -2,6 +2,8 @@
  * Dialogs - Handles extension UI dialogs
  */
 
+import { t } from "../i18n/index.js";
+
 export class DialogHandler {
   constructor(container, wsClient) {
     this.container = container;
@@ -18,10 +20,10 @@ export class DialogHandler {
     const dialog = document.createElement("div");
     dialog.className = "dialog";
     dialog.innerHTML = `
-      <div class="dialog-title">${this.escapeHtml(title || "Select an option")}</div>
+      <div class="dialog-title">${this.escapeHtml(title || t("dialogs.selectTitle"))}</div>
       <div class="dialog-options" id="dialog-options"></div>
       <div class="dialog-actions">
-        <button id="dialog-cancel">Cancel</button>
+        <button id="dialog-cancel">${t("common.cancel")}</button>
       </div>
     `;
 
@@ -52,11 +54,11 @@ export class DialogHandler {
     const dialog = document.createElement("div");
     dialog.className = "dialog";
     dialog.innerHTML = `
-      <div class="dialog-title">${this.escapeHtml(title || "Confirm")}</div>
+      <div class="dialog-title">${this.escapeHtml(title || t("dialogs.confirmTitle"))}</div>
       ${message ? `<div class="dialog-message">${this.escapeHtml(message)}</div>` : ""}
       <div class="dialog-actions">
-        <button id="dialog-no">No</button>
-        <button id="dialog-yes">Yes</button>
+        <button id="dialog-no">${t("common.no")}</button>
+        <button id="dialog-yes">${t("common.yes")}</button>
       </div>
     `;
 
@@ -79,11 +81,11 @@ export class DialogHandler {
     const dialog = document.createElement("div");
     dialog.className = "dialog";
     dialog.innerHTML = `
-      <div class="dialog-title">${this.escapeHtml(title || "Input")}</div>
+      <div class="dialog-title">${this.escapeHtml(title || t("dialogs.inputTitle"))}</div>
       <input type="text" class="dialog-input" id="dialog-input" placeholder="${this.escapeHtml(placeholder || "")}" />
       <div class="dialog-actions">
-        <button id="dialog-cancel">Cancel</button>
-        <button id="dialog-submit">Submit</button>
+        <button id="dialog-cancel">${t("common.cancel")}</button>
+        <button id="dialog-submit">${t("common.submit")}</button>
       </div>
     `;
 
@@ -117,11 +119,11 @@ export class DialogHandler {
     const dialog = document.createElement("div");
     dialog.className = "dialog";
     dialog.innerHTML = `
-      <div class="dialog-title">${this.escapeHtml(title || "Editor")}</div>
+      <div class="dialog-title">${this.escapeHtml(title || t("dialogs.editorTitle"))}</div>
       <textarea class="dialog-textarea" id="dialog-textarea">${this.escapeHtml(prefill || "")}</textarea>
       <div class="dialog-actions">
-        <button id="dialog-cancel">Cancel</button>
-        <button id="dialog-save">Save</button>
+        <button id="dialog-cancel">${t("common.cancel")}</button>
+        <button id="dialog-save">${t("common.save")}</button>
       </div>
     `;
 

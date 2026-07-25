@@ -97,6 +97,11 @@ export default {
   "chrome.failedLoadSession": "Failed to load session: {error}",
   "chrome.modelRequestFailed": "Model request failed",
   "chrome.extensionError": "Extension error: {error}",
+  "chrome.openPathInApp": "Open {path} in {app}",
+  "chrome.openWorkspaceInApp": "Open workspace in {app}",
+  "chrome.openInApp": "Open in {app}",
+  "chrome.jumpToConversation": "Jump to conversation {n}",
+  "chrome.failedOpenInspector": "Failed to open inspector: {error}",
 
   // Usage / cost infobar
   "usage.totalCost": "Total cost",
@@ -158,6 +163,10 @@ export default {
   "common.checkNow": "Check now",
   "common.status": "Status",
   "common.unknownError": "unknown error",
+  "common.delete": "Delete",
+  "common.yes": "Yes",
+  "common.no": "No",
+  "common.submit": "Submit",
 
   // Settings nav
   "settings.title": "Settings",
@@ -329,4 +338,90 @@ export default {
   "chat.bindStep2": "Send /start in the private chat.",
   "chat.openTelegram": "Open Telegram",
   "chat.requestFailed": "Request failed",
+
+  // Package install status
+  "packages.installFailed": "Install failed",
+  "packages.uninstallFailed": "Uninstall failed",
+  "packages.installFailedNote":
+    "This extension requires npm. Make sure npm is installed and available to Picot, then try again.",
+  "packages.uninstallFailedNote":
+    "Picot could not remove this extension package. Check the error details, then try again.",
+  "packages.permissionDenied":
+    "Permission denied in ~/.pi/agent/npm (check owner/permissions).",
+
+  // Sidebar
+  "sidebar.deleteArchivedConfirmOne":
+    "Delete {count} archived session permanently? This cannot be undone.",
+  "sidebar.deleteArchivedConfirmMany":
+    "Delete {count} archived sessions permanently? This cannot be undone.",
+  "sidebar.deleteArchivedAria": "Delete archived sessions",
+  "sidebar.loadFailed": "Failed to load sessions.",
+  "sidebar.loadFailedRuntime": "Failed to load sessions. Pi runtime may be unavailable.",
+  "sidebar.messageMatches": "Message matches",
+  "sidebar.matchCount": " · {count} matches",
+  "sidebar.archive": "Archive",
+  "sidebar.unarchive": "Unarchive",
+  "sidebar.archiveSession": "Archive session",
+  "sidebar.unarchiveSession": "Unarchive session",
+  "sidebar.emptySession": "Empty session",
+  "sidebar.pinned": "Pinned",
+  "sidebar.showMore": "Show more",
+  "sidebar.showLess": "Show less",
+  "sidebar.favourites": "Favourites",
+  "sidebar.newChatIn": "New chat in {name}",
+  "sidebar.archived": "Archived",
+  "sidebar.deleteAllArchived": "Delete all archived sessions",
+  "sidebar.openProject": "Open project",
+  "sidebar.openProjectLabel": "Open Project",
+  "sidebar.timeJustNow": "Just now",
+  "sidebar.timeMinutesAgo": "{n}m ago",
+  "sidebar.timeHoursAgo": "{n}h ago",
+  "sidebar.timeYesterday": "Yesterday",
+
+  // Onboarding
+  "onboarding.needsProject": "Open a project to start chatting.",
+  "onboarding.needsModel": "Configure an API key or provider to start chatting.",
+
+  // Extension dialogs (defaults)
+  "dialogs.selectTitle": "Select an option",
+  "dialogs.confirmTitle": "Confirm",
+  "dialogs.inputTitle": "Input",
+  "dialogs.editorTitle": "Editor",
+
+  // Super Agent UI
+  "superAgent.entryName": "AGENT INBOX",
+  "superAgent.entryStatusIncoming": "Incoming work · Telegram",
+  "superAgent.listening": "Listening",
+  "superAgent.taskBoard": "Task board",
+  "superAgent.toggleTaskBoard": "Toggle task board",
+  "superAgent.serviceSettings": "{service} settings",
+  "superAgent.serviceNotConfigured": "{service} is not configured",
+  "superAgent.tasks": "Tasks",
+  "superAgent.closePanelAria": "Close activity panel",
+  "superAgent.filterPending": "Pending",
+  "superAgent.filterRunning": "Running",
+  "superAgent.noTasks": "No tasks…",
+  "superAgent.noTasksWithStatus": "No tasks with status \"{status}\"…",
+  "superAgent.approve": "Approve",
+  "superAgent.approveCount": "Approve {count}",
+  "superAgent.clearDone": "Clear Done",
+  "superAgent.promptAi": "Prompt AI",
+  "superAgent.dismiss": "Dismiss",
+  "superAgent.clear": "Clear",
+  "superAgent.forceCancel": "Force Cancel",
+  "superAgent.viewSession": "View Session →",
+  "superAgent.history": "History",
+  "superAgent.target": "Target:",
+  "superAgent.project": "Project:",
+  "superAgent.projectName": "Project: {name}",
+  "superAgent.source": "Source: {channel}",
+  "superAgent.untitled": "(untitled)",
+  "superAgent.waitingForInput": "Waiting for input.",
+  "superAgent.chooseProject": "Choose a project…",
+  "superAgent.chooseProjectBeforeApproval": "Choose a project before approval.",
+  "superAgent.chooseProjectWhenCreating": "Choose a project when creating this task.",
+  "superAgent.loadingProjects": "Loading projects…",
+  "superAgent.projectRunningSuffix": " · running",
+  "superAgent.closingInbox": "Closing Agent Inbox…",
+  "superAgent.failManuallyCancelled": "Manually cancelled from Runtime panel.",
 };

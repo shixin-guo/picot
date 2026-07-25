@@ -1,5 +1,6 @@
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { t } from "../i18n/index.js";
 import { SessionSidebar } from "./index.js";
 
 afterEach(() => {
@@ -39,7 +40,7 @@ describe("SessionSidebar project session pagination", () => {
     expect(document.querySelectorAll(".project-group .session-item")).toHaveLength(5);
     let showMoreButton = getShowMoreButton();
     expect(showMoreButton).not.toBeNull();
-    expect(showMoreButton.textContent).toBe("Show more");
+    expect(showMoreButton.textContent).toBe(t("sidebar.showMore"));
     expect(document.querySelector(".project-sessions-toggle-less")).toBeNull();
 
     showMoreButton.click();
