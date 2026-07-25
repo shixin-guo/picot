@@ -513,6 +513,7 @@
                             <textarea
                                 id="message-input"
                                 placeholder="Type a message, or use / to call a skill…"
+                                data-i18n-placeholder="chrome.typeMessage"
                                 autocomplete="off"
                                 rows="2"
                             ></textarea>
@@ -1459,10 +1460,10 @@
                 ></div>
             </div>
             <div class="config-editor-footer">
-                <button class="config-editor-cancel" id="config-editor-cancel">
+                <button class="config-editor-cancel" id="config-editor-cancel" data-i18n="common.cancel">
                     Cancel
                 </button>
-                <button class="ui-button ui-button--primary btn-primary" id="config-editor-save">
+                <button class="ui-button ui-button--primary btn-primary" id="config-editor-save" data-i18n="common.save">
                     Save
                 </button>
             </div>
@@ -1493,11 +1494,12 @@
             <div class="lan-qr-modal-backdrop" id="lan-qr-modal-backdrop"></div>
             <div class="lan-qr-modal-content">
                 <div class="lan-qr-modal-header">
-                    <span class="lan-qr-modal-title">Open on Mobile</span>
+                    <span class="lan-qr-modal-title" data-i18n="chrome.openOnMobile">Open on Mobile</span>
                     <button
                         class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost lan-qr-modal-close icon-btn"
                         id="lan-qr-modal-close"
                         aria-label="Close"
+                        data-i18n-aria-label="chrome.close"
                     >
                         <svg
                             width="16"
@@ -1515,7 +1517,7 @@
                     </button>
                 </div>
                 <div class="lan-qr-modal-body">
-                    <div class="lan-qr-loading" id="lan-qr-loading">
+                    <div class="lan-qr-loading" id="lan-qr-loading" data-i18n="chrome.generatingQr">
                         Generating QR code…
                     </div>
                     <img
@@ -1523,7 +1525,7 @@
                         id="lan-qr-image"
                         alt="QR code for mobile access"
                     />
-                    <div class="lan-qr-hint">
+                    <div class="lan-qr-hint" data-i18n="chrome.qrHint">
                         Scan with your phone to open Picot on the same network
                     </div>
                     <button
@@ -1547,7 +1549,7 @@
                             <polyline points="15 3 21 3 21 9" />
                             <line x1="10" y1="14" x2="21" y2="3" />
                         </svg>
-                        <span>Open Link</span>
+                        <span data-i18n="chrome.openLink">Open Link</span>
                     </button>
                 </div>
             </div>

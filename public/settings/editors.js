@@ -1,3 +1,5 @@
+import { t } from "../i18n/index.js";
+
 export function setupSettingsEditors({
   rpcCommand,
   closeSettings,
@@ -16,12 +18,11 @@ export function setupSettingsEditors({
     const scrollContainer = options.preserveUi ? getSettingsScrollContainer() : null;
     const scrollTop = scrollContainer?.scrollTop ?? 0;
     if (!options.preserveUi) {
-      apiKeysContainer.innerHTML =
-        '<div class="settings-api-keys-loading">Loading providers…</div>';
+      apiKeysContainer.innerHTML = `<div class="settings-api-keys-loading">${t("settings.config.loadingProviders")}</div>`;
     }
     const data = await rpcCommand({ type: "list_model_catalog" });
     if (!data?.success || !Array.isArray(data.data?.providers)) {
-      renderApiKeysPanelError(data?.error || "Failed to load providers.");
+      renderApiKeysPanelError(data?.error || t("settings.config.failedProviders"));
       restoreScroll(scrollContainer, scrollTop);
       return;
     }
@@ -66,7 +67,7 @@ export function setupSettingsEditors({
     const retry = document.createElement("button");
     retry.type = "button";
     retry.className = "config-editor-cancel";
-    retry.textContent = "Retry";
+    retry.textContent = t("common.retry");
     retry.style.marginTop = "8px";
     retry.addEventListener("click", () => loadApiKeysPanel());
     wrap.appendChild(msg);
@@ -77,7 +78,7 @@ export function setupSettingsEditors({
   function renderApiKeysPanel(providers) {
     apiKeysContainer.innerHTML = "";
     if (providers.length === 0) {
-      apiKeysContainer.innerHTML = '<div class="settings-api-keys-empty">No providers known.</div>';
+      apiKeysContainer.innerHTML = `<div class="settings-api-keys-empty">${t("settings.config.noProviders")}</div>`;
       return;
     }
     for (const p of [...providers].sort((a, b) => Number(b.configured) - Number(a.configured))) {
@@ -120,7 +121,9 @@ export function setupSettingsEditors({
     actions.className = "api-key-row-actions";
     const setBtn = document.createElement("button");
     setBtn.type = "button";
-    setBtn.textContent = p.configured ? "Update" : "Set key";
+    setBtn.textContent = p.configured
+      ? t("settings.config.updateKey")
+      : t("settings.config.setKey");
     setBtn.addEventListener("click", () => openApiKeyEditor(row, p));
 
     const models = getProviderModels(p);
@@ -129,7 +132,7 @@ export function setupSettingsEditors({
       const checkHealthBtn = document.createElement("button");
       checkHealthBtn.type = "button";
       checkHealthBtn.className = "api-model-check-visible";
-      checkHealthBtn.textContent = "Check health";
+      checkHealthBtn.textContent = t("settings.config.checkHealth");
       checkHealthBtn.disabled = !models.some((model) => model.visible !== false && model.available);
       checkHealthBtn.addEventListener("click", () => checkModelHealth(p.provider));
       actions.appendChild(checkHealthBtn);
@@ -139,7 +142,7 @@ export function setupSettingsEditors({
       const removeBtn = document.createElement("button");
       removeBtn.type = "button";
       removeBtn.className = "danger";
-      removeBtn.textContent = "Remove";
+      removeBtn.textContent = t("common.remove");
       removeBtn.addEventListener("click", () => removeApiKey(p));
       actions.appendChild(removeBtn);
     }
@@ -199,7 +202,7 @@ export function setupSettingsEditors({
     columnLabels.className = "api-model-list-heading";
     const statusColumn = document.createElement("span");
     const modelColumn = document.createElement("span");
-    modelColumn.textContent = "Model";
+    modelColumn.textContent = t("settings.config.model");
 
     const actions = document.createElement("div");
     actions.className = "api-model-list-heading-actions";
@@ -329,7 +332,7 @@ export function setupSettingsEditors({
 
   function describeModelStatus(model) {
     const parts = [];
-    if (!model.available) parts.push("No key available");
+    if (!model.available) parts.push(t("settings.config.noKeyAvailable"));
     parts.push(describeModelHealth(model.health || { status: "unknown" }));
     return parts.join(" · ");
   }
@@ -338,15 +341,19 @@ export function setupSettingsEditors({
     const enabled = models.filter((model) => model.visible !== false).length;
     const healthy = models.filter((model) => model.health?.status === "healthy").length;
     const issues = models.filter((model) => model.health?.status === "unhealthy").length;
-    return `${enabled} enabled · ${healthy} healthy · ${issues} issues`;
+    return t("settings.config.summary", { enabled, healthy, issues });
   }
 
   function describeModelHealth(health) {
-    if (!health || health.status === "unknown") return "Health unknown";
+    if (!health || health.status === "unknown") return t("settings.config.healthUnknown");
     if (health.status === "healthy") {
-      return health.latencyMs ? `Healthy (${health.latencyMs}ms)` : "Healthy";
+      return health.latencyMs
+        ? t("settings.config.healthyMs", { ms: health.latencyMs })
+        : t("settings.config.healthy");
     }
-    return health.error ? `Failed: ${health.error}` : "Failed";
+    return health.error
+      ? t("settings.config.failedWithError", { error: health.error })
+      : t("settings.config.failed");
   }
 
   function setModelRowChecking(row) {
@@ -355,16 +362,18 @@ export function setupSettingsEditors({
     const status = row.querySelector(".api-model-health-status");
     if (dot) {
       dot.className = "api-model-health-dot checking";
-      dot.title = "Checking health";
+      dot.title = t("settings.config.checkingHealthTitle");
     }
-    if (status) status.textContent = "Checking health...";
+    if (status) status.textContent = t("settings.config.checkingHealth");
   }
 
   function setModelRowHealthError(row, message) {
     if (!row) return;
     const dot = row.querySelector(".api-model-health-dot");
     const status = row.querySelector(".api-model-health-status");
-    const text = `Failed: ${message || "Health check failed"}`;
+    const text = t("settings.config.failedWithError", {
+      error: message || t("settings.config.healthCheckFailed"),
+    });
     if (dot) {
       dot.className = "api-model-health-dot unknown";
       dot.title = text;
@@ -403,7 +412,7 @@ export function setupSettingsEditors({
     if (resp?.success && Array.isArray(resp.data?.results)) {
       for (const result of resp.data.results) applyHealthResult(result);
     } else {
-      const message = resp?.error || "Health check failed";
+      const message = resp?.error || t("settings.config.healthCheckFailed");
       for (const modelRow of getProviderModelRows(provider)) {
         const toggle = modelRow.querySelector(".api-model-visibility-toggle");
         if (toggle?.checked && modelRow.dataset.available !== "false") {
@@ -419,14 +428,16 @@ export function setupSettingsEditors({
 
     const title = document.createElement("div");
     title.className = "api-key-row-name";
-    title.textContent = `${p.displayName || p.provider} API key`;
+    title.textContent = t("settings.config.apiKeyTitle", {
+      name: p.displayName || p.provider,
+    });
     editor.appendChild(title);
 
     const input = document.createElement("input");
     input.type = "password";
     input.autocomplete = "off";
     input.spellcheck = false;
-    input.placeholder = "Paste API key…";
+    input.placeholder = t("settings.config.pasteApiKey");
     editor.appendChild(input);
 
     const err = document.createElement("div");
@@ -439,11 +450,11 @@ export function setupSettingsEditors({
     const cancelBtn = document.createElement("button");
     cancelBtn.type = "button";
     cancelBtn.className = "config-editor-cancel";
-    cancelBtn.textContent = "Cancel";
+    cancelBtn.textContent = t("common.cancel");
     const saveBtn = document.createElement("button");
     saveBtn.type = "button";
     saveBtn.className = "btn-primary";
-    saveBtn.textContent = "Save";
+    saveBtn.textContent = t("common.save");
     actions.appendChild(cancelBtn);
     actions.appendChild(saveBtn);
     editor.appendChild(actions);
@@ -459,7 +470,7 @@ export function setupSettingsEditors({
     const save = async () => {
       const key = input.value.trim();
       if (!key) {
-        err.textContent = "Key cannot be empty.";
+        err.textContent = t("settings.config.keyEmpty");
         err.style.display = "";
         return;
       }
@@ -472,7 +483,7 @@ export function setupSettingsEditors({
         await onModelConfigurationChanged?.();
         loadApiKeysPanel();
       } else {
-        err.textContent = resp?.error || "Failed to save key.";
+        err.textContent = resp?.error || t("settings.config.failedSaveKey");
         err.style.display = "";
         saveBtn.disabled = false;
       }
@@ -491,7 +502,9 @@ export function setupSettingsEditors({
   }
 
   async function removeApiKey(p) {
-    const ok = confirm(`Remove stored API key for ${p.displayName || p.provider}?`);
+    const ok = confirm(
+      t("settings.config.removeKeyConfirm", { name: p.displayName || p.provider }),
+    );
     if (!ok) return;
     const resp = await rpcCommand(
       { type: "remove_api_key", provider: p.provider },
@@ -535,7 +548,7 @@ export function setupSettingsEditors({
           }
           configEditorPath.textContent = data.path || "";
         } else {
-          showConfigError(data.error || "Failed to load config");
+          showConfigError(data.error || t("settings.config.failedLoadConfig"));
         }
       })
       .catch((e) => showConfigError(e.message));
@@ -555,11 +568,11 @@ export function setupSettingsEditors({
     if (!inlineConfigTextarea) return;
     inlineConfigError?.classList.add("hidden");
     inlineConfigTextarea.value = "";
-    if (inlineConfigPath) inlineConfigPath.textContent = "Loading…";
+    if (inlineConfigPath) inlineConfigPath.textContent = t("common.loading");
     try {
       const resp = await fetch("/api/agent-config");
       const data = await resp.json();
-      if (!data.success) throw new Error(data.error || "Failed to load config");
+      if (!data.success) throw new Error(data.error || t("settings.config.failedLoadConfig"));
       try {
         inlineConfigTextarea.value = JSON.stringify(JSON.parse(data.content), null, 2);
       } catch {
@@ -587,7 +600,10 @@ export function setupSettingsEditors({
     try {
       JSON.parse(content);
     } catch (e) {
-      showSettingsSaveError(inlineConfigError, `Invalid JSON: ${e.message}`);
+      showSettingsSaveError(
+        inlineConfigError,
+        t("settings.config.invalidJson", { message: e.message }),
+      );
       return;
     }
     setSettingsSaveButtonSaving(inlineConfigSave, true);
@@ -598,7 +614,7 @@ export function setupSettingsEditors({
         body: JSON.stringify({ content }),
       });
       const data = await resp.json();
-      if (!data.success) throw new Error(data.error || "Failed to save config");
+      if (!data.success) throw new Error(data.error || t("settings.config.failedSaveConfig"));
       showSettingsSaveSuccess(inlineConfigError);
     } catch (e) {
       showSettingsSaveError(inlineConfigError, e.message || String(e));
@@ -617,7 +633,7 @@ export function setupSettingsEditors({
     try {
       JSON.parse(content);
     } catch (e) {
-      showConfigError(`Invalid JSON: ${e.message}`);
+      showConfigError(t("settings.config.invalidJson", { message: e.message }));
       return;
     }
     configEditorSave.disabled = true;
@@ -631,7 +647,7 @@ export function setupSettingsEditors({
       if (data.success) {
         closeConfigEditor();
       } else {
-        showConfigError(data.error || "Failed to save config");
+        showConfigError(data.error || t("settings.config.failedSaveConfig"));
       }
     } catch (e) {
       showConfigError(e.message);
@@ -678,11 +694,11 @@ export function setupSettingsEditors({
     if (!inlineModelsTextarea) return;
     clearInlineModelsError();
     inlineModelsTextarea.value = "";
-    if (inlineModelsPath) inlineModelsPath.textContent = "Loading…";
+    if (inlineModelsPath) inlineModelsPath.textContent = t("common.loading");
     try {
       const resp = await fetch("/api/models-config");
       const data = await resp.json();
-      if (!data.success) throw new Error(data.error || "Failed to load models.json");
+      if (!data.success) throw new Error(data.error || t("settings.config.failedLoadModels"));
       try {
         inlineModelsTextarea.value = JSON.stringify(JSON.parse(data.content), null, 2);
       } catch {
@@ -703,18 +719,18 @@ export function setupSettingsEditors({
     try {
       parsed = JSON.parse(content);
     } catch (e) {
-      showInlineModelsError(`Invalid JSON: ${e.message}`);
+      showInlineModelsError(t("settings.config.invalidJson", { message: e.message }));
       return;
     }
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      showInlineModelsError("models.json must be a JSON object.");
+      showInlineModelsError(t("settings.config.modelsMustObject"));
       return;
     }
     if (
       "providers" in parsed &&
       (typeof parsed.providers !== "object" || Array.isArray(parsed.providers))
     ) {
-      showInlineModelsError("'providers' must be an object.");
+      showInlineModelsError(t("settings.config.providersMustObject"));
       return;
     }
     setSettingsSaveButtonSaving(inlineModelsSave, true);
@@ -725,7 +741,7 @@ export function setupSettingsEditors({
         body: JSON.stringify({ content }),
       });
       const data = await resp.json();
-      if (!data.success) throw new Error(data.error || "Failed to save models.json");
+      if (!data.success) throw new Error(data.error || t("settings.config.failedSaveModels"));
       showSettingsSaveSuccess(inlineModelsError);
       await onModelConfigurationChanged?.();
     } catch (e) {
@@ -739,7 +755,7 @@ export function setupSettingsEditors({
     if (!inlineModelsTextarea) return;
     const current = inlineModelsTextarea.value.trim();
     if (current && current !== "{}" && current !== '{\n  "providers": {}\n}') {
-      if (!confirm("Replace current content with the Ollama example?")) return;
+      if (!confirm(t("settings.config.replaceExample"))) return;
     }
     inlineModelsTextarea.value = MODELS_JSON_EXAMPLE;
     clearInlineModelsError();
