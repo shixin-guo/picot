@@ -2,6 +2,8 @@
 
 Operational guide for the bilingual UI work on branch `feature/i18n-bilingual`.
 
+Install layout, release upgrade, and surgical `public/` deploy rules: [`upgrade-maintain-handbook.md`](./upgrade-maintain-handbook.md).
+
 ## Status (2026-07-25)
 
 | Packet | Scope | Commit | Product estimate |
@@ -59,6 +61,8 @@ public/app.js          → boot: setupLocaleToggle + refreshLocalizedUi + onLoca
 5. Prefer vitest (`npx vitest run …`). Tests that touch `document` need `// @vitest-environment jsdom` or the project jsdom config.
 
 ## Install-tree deploy (Windows release)
+
+Full upgrade/maintain context: [`upgrade-maintain-handbook.md`](./upgrade-maintain-handbook.md) §5.
 
 Installed Picot serves static files from:
 
