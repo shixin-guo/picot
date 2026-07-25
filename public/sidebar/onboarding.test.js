@@ -1,5 +1,6 @@
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { t } from "../i18n/index.js";
 import { SessionSidebar } from "./index.js";
 
 afterEach(() => {
@@ -22,8 +23,8 @@ describe("SessionSidebar onboarding empty state", () => {
 
     const button = document.querySelector(".session-empty-open-project");
     expect(button).not.toBeNull();
-    expect(button.getAttribute("aria-label")).toBe("Open project");
-    expect(button.textContent).toContain("Open Project");
+    expect(button.getAttribute("aria-label")).toBe(t("sidebar.openProject"));
+    expect(button.textContent).toContain(t("sidebar.openProjectLabel"));
 
     button.click();
     expect(onOpenProject).toHaveBeenCalledTimes(1);

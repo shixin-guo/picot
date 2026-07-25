@@ -59,8 +59,15 @@ import {
   withBrokerWs,
 } from "./workspace/actions.js";
 import { FileBrowser } from "./workspace/file-browser.js";
+import {
+  applyI18n,
+  getLocale,
+  onLocaleChange,
+  setLocale,
+  t,
+} from "./i18n/index.js";
 
-const COMPOSER_PLACEHOLDER = "Type a message, or use / to call a skill…";
+const composerPlaceholder = () => t("chrome.typeMessage");
 
 const fetchInstances = async () => {
   try {
@@ -289,7 +296,7 @@ async function stopSuperAgentInstances() {
     ),
   );
   if (shutdown.navigateToPort) {
-    const dismiss = showSwapOverlay("Closing Agent Inbox…");
+    const dismiss = showSwapOverlay(t("superAgent.closingInbox"));
     try {
       const url = new URL(withBrokerWs(buildWorkspaceUrl(shutdown.navigateToPort), transport));
       if (shutdown.portsToStopAfterNavigation.length > 0) {
@@ -480,7 +487,7 @@ document
 const gitBranchEl = document.createElement("div");
 gitBranchEl.id = "git-branch-indicator";
 gitBranchEl.className = "pill git-branch-indicator hidden";
-gitBranchEl.title = "Current git branch";
+gitBranchEl.title = t("chrome.gitBranchTitle");
 document
   .querySelector(".header-right")
   ?.insertBefore(gitBranchEl, document.querySelector("#context-viz"));
@@ -490,11 +497,12 @@ function updateGitBranchIndicator(branch = "") {
   if (!name) {
     gitBranchEl.classList.add("hidden");
     gitBranchEl.textContent = "";
+    gitBranchEl.title = t("chrome.gitBranchTitle");
     return;
   }
   gitBranchEl.classList.remove("hidden");
   gitBranchEl.textContent = name;
-  gitBranchEl.title = `Branch: ${name}`;
+  gitBranchEl.title = t("chrome.gitBranchOf", { name });
 }
 
 async function refreshGitBranch() {
@@ -571,7 +579,7 @@ function setWorkspaceLaunchInProgress(inProgress) {
   if (openFolderBtn) {
     openFolderBtn.disabled = inProgress;
     openFolderBtn.setAttribute("aria-busy", inProgress ? "true" : "false");
-    openFolderBtn.title = inProgress ? "Opening workspace..." : "Open folder as workspace";
+    openFolderBtn.title = inProgress ? t("chrome.openingWorkspace") : t("chrome.openFolder");
   }
 }
 
@@ -688,8 +696,11 @@ function refreshHeaderOpenAppButton() {
   }
   headerOpenApp.el.classList.remove("hidden");
   if (headerOpenApp.logo) headerOpenApp.logo.innerHTML = renderOpenAppLogo(selected);
-  headerOpenApp.btn.title = `Open ${path} in ${selected.label}`;
-  headerOpenApp.btn.setAttribute("aria-label", `Open workspace in ${selected.label}`);
+  headerOpenApp.btn.title = t("chrome.openPathInApp", { path, app: selected.label });
+  headerOpenApp.btn.setAttribute(
+    "aria-label",
+    t("chrome.openWorkspaceInApp", { app: selected.label }),
+  );
 }
 
 async function openWorkspaceInApp(app) {
@@ -725,8 +736,8 @@ function toggleHeaderOpenAppMenu() {
     row.type = "button";
     row.className = "header-open-app-menu-item";
     if (app.id === headerOpenApp.selectedId) row.classList.add("active");
-    row.title = `Open in ${app.label}`;
-    row.setAttribute("aria-label", `Open in ${app.label}`);
+    row.title = t("chrome.openInApp", { app: app.label });
+    row.setAttribute("aria-label", t("chrome.openInApp", { app: app.label }));
     row.innerHTML = `<span class="header-open-app-logo" aria-hidden="true">${renderOpenAppLogo(app)}</span><span>${app.label}</span>`;
     row.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -914,7 +925,10 @@ function rebuildNavDots() {
   while (convNavTrack.children.length < turns.length) {
     const dot = document.createElement("button");
     dot.className = "conv-nav-dot";
-    dot.setAttribute("aria-label", `Jump to conversation ${convNavTrack.children.length + 1}`);
+    dot.setAttribute(
+      "aria-label",
+      t("chrome.jumpToConversation", { n: convNavTrack.children.length + 1 }),
+    );
     convNavTrack.appendChild(dot);
   }
   // Remove extra dots
@@ -928,7 +942,7 @@ function rebuildNavDots() {
 
   [...convNavTrack.children].forEach((dot, i) => {
     dot.classList.toggle("active", i === activeIdx);
-    dot.setAttribute("aria-label", `Jump to conversation ${i + 1}`);
+    dot.setAttribute("aria-label", t("chrome.jumpToConversation", { n: i + 1 }));
     dot.onclick = () => jumpToConversation(turns[i], i);
     dot.onmouseenter = () => {
       _navHoverIdx = i;
@@ -1026,11 +1040,11 @@ messagesContainer.addEventListener("messagefork", async (e) => {
   const { entryId } = e.detail || {};
   if (!entryId) return;
   if (state.isStreaming) {
-    messageRenderer.renderError("Cannot fork while a response is streaming.");
+    messageRenderer.renderError(t("chrome.forkWhileStreaming"));
     return;
   }
   if (!canUseSessionControl()) {
-    messageRenderer.renderError("Fork requires the desktop app.");
+    messageRenderer.renderError(t("chrome.forkRequiresDesktop"));
     return;
   }
   const btn = e.target.closest(".message-fork-btn");
@@ -1046,7 +1060,7 @@ messagesContainer.addEventListener("messagefork", async (e) => {
     await transport.fork(entryId, getActivePort());
     refreshSidebarAfterUserPrompt();
   } catch (err) {
-    messageRenderer.renderError(`Fork failed: ${err}`);
+    messageRenderer.renderError(t("chrome.forkFailed", { error: err }));
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -1099,7 +1113,7 @@ wsClient.addEventListener("disconnected", () => {
 
 wsClient.addEventListener("reconnectFailed", () => {
   updateConnectionStatus("disconnected");
-  messageRenderer.renderError("Connection lost. Please refresh the page.");
+  messageRenderer.renderError(t("chrome.connectionLost"));
 });
 
 wsClient.addEventListener("rpcEvent", (e) => {
@@ -1126,11 +1140,9 @@ wsClient.addEventListener("commandUndeliverable", (e) => {
   showTypingIndicator(false);
   const detail =
     reason === "no_route"
-      ? "no running session to receive it"
-      : "the session process is no longer reachable";
-  messageRenderer.renderError(
-    `Message not delivered (${detail}). The session may have closed — start a new chat or try again.`,
-  );
+      ? t("chrome.msgNotDeliveredNoRoute")
+      : t("chrome.msgNotDeliveredUnreachable");
+  messageRenderer.renderError(t("chrome.msgNotDelivered", { detail }));
   if (pending.message && !messageInput.value.trim()) {
     messageInput.value = pending.message;
     messageInput.style.height = "auto";
@@ -1234,7 +1246,7 @@ function handleRPCEvent(event) {
       handleExtensionUIRequest(event);
       break;
     case "extension_error":
-      messageRenderer.renderError(`Extension error: ${event.error}`);
+      messageRenderer.renderError(t("chrome.extensionError", { error: event.error }));
       break;
     case "session_name":
       // Auto-title: update sidebar with new session name
@@ -1276,7 +1288,7 @@ function handleCompactionStart() {
   const el = document.createElement("div");
   el.className = "system-message compaction-message";
   el.id = "compaction-indicator";
-  el.innerHTML = '<span class="compaction-spinner">⟳</span> Compacting context…';
+  el.innerHTML = `<span class="compaction-spinner">⟳</span> ${t("chrome.compacting")}`;
   messagesContainer.appendChild(el);
   scrollToBottom();
 }
@@ -1384,7 +1396,7 @@ function handleCompactionEnd(event) {
   const indicator = document.getElementById("compaction-indicator");
   if (indicator) {
     const summary = event.summary ? ` — ${event.summary}` : "";
-    indicator.innerHTML = `✓ Context compacted${summary}`;
+    indicator.textContent = t("chrome.contextCompacted", { summary });
     indicator.classList.add("compaction-done");
   }
   // Reset token tracking — next message will update
@@ -1460,9 +1472,9 @@ function handleAutoRetryStart(event = null) {
   const attempt = event?.attempt;
   const maxAttempts = event?.maxAttempts;
   if (attempt && maxAttempts) {
-    statusText.textContent = `Retrying (${attempt}/${maxAttempts})...`;
+    statusText.textContent = t("chrome.retryingProgress", { attempt, maxAttempts });
   } else {
-    statusText.textContent = "Retrying…";
+    statusText.textContent = t("chrome.retrying");
   }
   updateUI();
 }
@@ -1492,7 +1504,7 @@ function handleAgentEnd(event = null) {
     foregroundPort = findPortForSession(liveInstances, targetPath, foregroundPort);
     syncWorkspaceIndicatorFromInstances();
     transport.switchSession(targetPath, foregroundPort).catch((e) => {
-      messageRenderer.renderError(`Failed to switch session: ${e}`);
+      messageRenderer.renderError(t("chrome.failedSwitchSessionError", { error: e }));
     });
     return;
   }
@@ -1603,7 +1615,7 @@ function handleMessageEnd(message) {
     const model = message?.model ? String(message.model) : "unknown";
     const errorMessage = message?.errorMessage
       ? String(message.errorMessage)
-      : "Model request failed";
+      : t("chrome.modelRequestFailed");
     messageRenderer.renderError(`[${provider}/${model}] ${errorMessage}`);
     // Latch the error so a subsequent model switch aborts the stuck run
     // (pi may still be auto-retrying this same failing model).
@@ -1952,9 +1964,9 @@ function renderQueuedMessages() {
     const el = document.createElement("div");
     el.className = "queued-msg";
     el.innerHTML = `
-      <span class="queued-msg-label">Queued</span>
+      <span class="queued-msg-label">${escapeHtml(t("chrome.queued"))}</span>
       <span class="queued-msg-text">${escapeHtml(cmd.message)}</span>
-      <button class="queued-msg-cancel" title="Cancel">×</button>
+      <button class="queued-msg-cancel" title="${escapeHtml(t("common.cancel"))}">×</button>
     `;
     el.querySelector(".queued-msg-cancel").addEventListener("click", () => {
       messageQueue.splice(i, 1);
@@ -1999,32 +2011,32 @@ const commandList = document.getElementById("command-list");
 const commands = [
   {
     icon: "🗜️",
-    label: "Compact",
-    desc: "Compact context to save tokens",
-    action: () => rpcCommand({ type: "compact" }, "Compacting…"),
+    labelKey: "chrome.compact",
+    descKey: "chrome.compactDesc",
+    action: () => rpcCommand({ type: "compact" }, t("chrome.compacting")),
   },
   {
     icon: "📋",
-    label: "Export HTML",
-    desc: "Export session as HTML file",
+    labelKey: "chrome.exportHtml",
+    descKey: "chrome.exportHtmlDesc",
     action: () => rpcExportHtml(),
   },
   {
     icon: "📊",
-    label: "Session Stats",
-    desc: "Show session statistics",
+    labelKey: "chrome.sessionStats",
+    descKey: "chrome.sessionStatsDesc",
     action: () => showSessionStats(),
   },
   {
     icon: "⬇️",
-    label: "Expand All Tools",
-    desc: "Expand all tool cards",
+    labelKey: "chrome.expandAllTools",
+    descKey: "chrome.expandAllToolsDesc",
     action: () => toolCardRenderer.expandAll(),
   },
   {
     icon: "⬆️",
-    label: "Collapse All Tools",
-    desc: "Collapse all tool cards",
+    labelKey: "chrome.collapseAllTools",
+    descKey: "chrome.collapseAllToolsDesc",
     action: () => toolCardRenderer.collapseAll(),
   },
 ];
@@ -2034,11 +2046,13 @@ function openCommandPalette() {
   commands.forEach((cmd) => {
     const el = document.createElement("div");
     el.className = "command-item";
+    const label = t(cmd.labelKey);
+    const desc = t(cmd.descKey);
     el.innerHTML = `
       <div class="command-icon">${cmd.icon}</div>
       <div>
-        <div class="command-label">${cmd.label}</div>
-        <div class="command-desc">${cmd.desc}</div>
+        <div class="command-label">${label}</div>
+        <div class="command-desc">${desc}</div>
       </div>
     `;
     el.addEventListener("click", () => {
@@ -2069,16 +2083,16 @@ async function rpcCommand(cmd, statusMsg, silent = false) {
     });
     const data = await resp.json();
     if (data.success && !silent) {
-      statusText.textContent = "Done";
+      statusText.textContent = t("chrome.done");
       setTimeout(() => {
-        statusText.textContent = "Connected";
+        statusText.textContent = t("chrome.connected");
       }, 2000);
     } else if (!data.success) {
       console.error("rpcCommand failed:", cmd.type, data.error);
       if (!silent) {
-        statusText.textContent = data.error || "Failed";
+        statusText.textContent = data.error || t("chrome.failed");
         setTimeout(() => {
-          statusText.textContent = "Connected";
+          statusText.textContent = t("chrome.connected");
         }, 3000);
       }
     }
@@ -2086,35 +2100,43 @@ async function rpcCommand(cmd, statusMsg, silent = false) {
   } catch (e) {
     console.error("rpcCommand error:", cmd.type, e);
     if (!silent) {
-      statusText.textContent = "Error";
+      statusText.textContent = t("chrome.error");
       setTimeout(() => {
-        statusText.textContent = "Connected";
+        statusText.textContent = t("chrome.connected");
       }, 3000);
     }
   }
 }
 
 async function rpcExportHtml() {
-  const data = await rpcCommand({ type: "export_html" }, "Exporting…");
+  const data = await rpcCommand({ type: "export_html" }, t("chrome.exporting"));
   if (data?.success && data.data?.path) {
-    statusText.textContent = `Exported: ${data.data.path}`;
+    statusText.textContent = t("chrome.exportedPath", { path: data.data.path });
     setTimeout(() => {
-      statusText.textContent = "Connected";
+      statusText.textContent = t("chrome.connected");
     }, 4000);
   }
 }
 
 async function showSessionStats() {
-  const data = await rpcCommand({ type: "get_session_stats" }, "Loading stats…");
+  const data = await rpcCommand({ type: "get_session_stats" }, t("chrome.loadingStats"));
   if (data?.success && data.data) {
     const s = data.data;
     const lines = [
-      `📊 Session Stats`,
-      `Messages: ${s.totalMessages} (${s.userMessages} user, ${s.assistantMessages} assistant)`,
-      `Tool calls: ${s.toolCalls}`,
+      t("chrome.sessionStatsTitle"),
+      t("chrome.sessionStatsMessages", {
+        total: s.totalMessages,
+        user: s.userMessages,
+        assistant: s.assistantMessages,
+      }),
+      t("chrome.sessionStatsToolCalls", { count: s.toolCalls }),
     ];
     if (s.tokens) {
-      lines.push(`Context: ~${(s.tokens.input / 1000).toFixed(1)}k tokens`);
+      lines.push(
+        t("chrome.sessionStatsContext", {
+          tokens: (s.tokens.input / 1000).toFixed(1),
+        }),
+      );
     }
     messageRenderer.renderSystemMessage(lines.join("\n"));
   }
@@ -2130,14 +2152,14 @@ const modelDropdownLabel = document.getElementById("model-dropdown-label");
 const modelDropdownMenu = document.getElementById("model-dropdown-menu");
 const thinkingBtn = document.getElementById("thinking-btn");
 function formatCompactThinkingLevelLabel(level) {
-  return `Think ${level || "off"}`;
+  return t("chrome.thinkingLevel", { level: level || "off" });
 }
 function updateThinkingBtn() {
   thinkingBtn.textContent = formatCompactThinkingLevelLabel(currentThinkingLevel);
-  thinkingBtn.title = "Thinking effort controls reasoning depth. Click to cycle.";
+  thinkingBtn.title = t("chrome.thinkingBtnTitle");
   thinkingBtn.setAttribute(
     "aria-label",
-    `Thinking effort: ${currentThinkingLevel}. Click to cycle reasoning depth.`,
+    t("chrome.thinkingBtnAria", { level: currentThinkingLevel }),
   );
   thinkingBtn.classList.toggle("off", currentThinkingLevel === "off");
   renderThinkingEffort(currentThinkingLevel || "off", {
@@ -2254,7 +2276,7 @@ function maybeAutoOpenEmptyModelsDropdown() {
 
 function updateModelLabel() {
   const shortName = currentModelId.replace(/^claude-/, "").replace(/-\d{8}$/, "");
-  modelDropdownLabel.textContent = shortName || "model";
+  modelDropdownLabel.textContent = shortName || t("chrome.modelFallback");
 }
 
 function toggleModelDropdown() {
@@ -2272,7 +2294,7 @@ function openModelDropdown() {
   // Search input
   const search = document.createElement("input");
   search.className = "model-dropdown-search";
-  search.placeholder = "Search models…";
+  search.placeholder = t("chrome.searchModelsPlaceholder");
   search.type = "text";
   modelDropdownMenu.appendChild(search);
 
@@ -2292,9 +2314,9 @@ function openModelDropdown() {
       empty.className = "model-dropdown-empty";
       empty.innerHTML = `
         <div style="padding:14px;color:var(--text-dim);font-size:12px;line-height:1.5">
-          <div style="color:var(--text-primary);margin-bottom:6px">No models available</div>
-          <div>No API keys configured. Set a key in Settings &rarr; Configuration.</div>
-          <button type="button" class="btn-primary" style="margin-top:10px">Open Settings</button>
+          <div style="color:var(--text-primary);margin-bottom:6px">${escapeHtml(t("chrome.noModelsAvailable"))}</div>
+          <div>${escapeHtml(t("chrome.noModelsHint"))}</div>
+          <button type="button" class="btn-primary" style="margin-top:10px">${escapeHtml(t("chrome.openSettings"))}</button>
         </div>`;
       empty.querySelector("button").addEventListener("click", () => {
         closeModelDropdown();
@@ -2355,7 +2377,11 @@ function openModelDropdown() {
           },
         });
         if (!result?.success) {
-          messageRenderer.renderError(`Model switch failed: ${result?.error || "unknown error"}`);
+          messageRenderer.renderError(
+            t("chrome.modelSwitchFailed", {
+              error: result?.error || t("common.unknownError"),
+            }),
+          );
         }
       });
       itemsContainer.appendChild(el);
@@ -2397,7 +2423,7 @@ document.addEventListener("click", (e) => {
 
 // Thinking level button — cycles through levels
 thinkingBtn.addEventListener("click", async () => {
-  const data = await rpcCommand({ type: "cycle_thinking_level" }, "Cycling thinking…");
+  const data = await rpcCommand({ type: "cycle_thinking_level" }, t("chrome.cyclingThinking"));
   if (data?.success && data.data?.level) {
     currentThinkingLevel = data.data.level;
     updateThinkingBtn();
@@ -2446,7 +2472,7 @@ document.addEventListener("keydown", (e) => {
   if ((e.key === "n" || e.key === "N") && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
     e.preventDefault();
     newSession().catch((err) => {
-      messageRenderer.renderError(`Failed to start new session: ${err}`);
+      messageRenderer.renderError(t("chrome.failedStartSession", { error: err }));
     });
   }
 
@@ -2455,7 +2481,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     if (nativeAvailable()) {
       transport.openDevtools().catch((err) => {
-        messageRenderer.renderError(`Failed to open inspector: ${err}`);
+        messageRenderer.renderError(t("chrome.failedOpenInspector", { error: err }));
       });
     }
   }
@@ -2641,7 +2667,7 @@ async function activateNewParallelSession(port, cwd) {
 
 async function newSession() {
   if (isSuperAgentSession(null, { path: getCurrentWorkspacePath() }, superAgentPath)) {
-    messageRenderer.renderSystemMessage("Agent Inbox uses one shared session.");
+    messageRenderer.renderSystemMessage(t("chrome.agentInboxSharedSession"));
     return;
   }
 
@@ -2675,7 +2701,7 @@ async function newSession() {
       await transport.newSession(getActivePort());
       await resetUiForNewSession();
     } catch (err) {
-      messageRenderer.renderError(`Failed to start new session: ${err}`);
+      messageRenderer.renderError(t("chrome.failedStartSession", { error: err }));
       return;
     }
     if (isMobile()) {
@@ -2691,9 +2717,9 @@ async function newSession() {
   lastInputTokens = 0;
   updateCostDisplay();
   updateTokenUsage();
-  const data = await rpcCommand({ type: "new_session" }, "Starting new session…");
+  const data = await rpcCommand({ type: "new_session" }, t("chrome.startingSession"));
   if (data?.success === false || data?.data?.cancelled) {
-    messageRenderer.renderError(data?.error || "New session was cancelled");
+    messageRenderer.renderError(data?.error || t("chrome.newSessionCancelled"));
     return;
   }
   await resetUiForNewSession();
@@ -2723,9 +2749,7 @@ async function handleNewProjectChat(project) {
       if (isCurrentProject) {
         await newSession();
       } else {
-        messageRenderer.renderError(
-          "Starting a new chat in another project requires the desktop broker. Reopen the mobile QR code.",
-        );
+        messageRenderer.renderError(t("chrome.crossProjectNeedsDesktopBroker"));
       }
       if (isMobile()) {
         sidebarEl.classList.add("collapsed");
@@ -2884,7 +2908,7 @@ async function handleSessionSelectImpl(session, project) {
         }
       }
       if (shouldSpawnForWorkspace) {
-        messageRenderer.renderError("Failed to open session in its workspace process.");
+        messageRenderer.renderError(t("chrome.failedOpenSessionWorkspace"));
         if (isMobile()) {
           sidebarEl.classList.add("collapsed");
           sidebarOverlay.classList.remove("visible");
@@ -2910,7 +2934,7 @@ async function handleSessionSelectImpl(session, project) {
       await transport.switchSession(session.filePath, foregroundPort);
       wsClient.send({ type: "mirror_sync_request" });
     } catch (e) {
-      messageRenderer.renderError(`Failed to switch session: ${e}`);
+      messageRenderer.renderError(t("chrome.failedSwitchSessionError", { error: e }));
     }
     if (isMobile()) {
       sidebarEl.classList.add("collapsed");
@@ -2936,7 +2960,7 @@ async function renderSelectedSessionHistory(session, project) {
     return;
   }
 
-  messageRenderer.renderSystemMessage("Loading session…");
+  messageRenderer.renderSystemMessage(t("chrome.loadingSession"));
   const dirName = project?.dirName;
   const file = session.file;
   if (!dirName || !file) {
@@ -2976,7 +3000,7 @@ async function renderSelectedSessionHistory(session, project) {
       selectedSession: session?.filePath,
       error: e,
     });
-    messageRenderer.renderError(`Failed to load session: ${e}`);
+    messageRenderer.renderError(t("chrome.failedLoadSession", { error: e }));
   }
 }
 
@@ -2987,7 +3011,7 @@ async function switchSession(sessionFile, session = null, project = null) {
     toolCardRenderer.clear();
 
     if (sessionFile && session) {
-      messageRenderer.renderSystemMessage("Loading session…");
+      messageRenderer.renderSystemMessage(t("chrome.loadingSession"));
 
       const dirName = project?.dirName;
       const file = session.file;
@@ -3049,12 +3073,14 @@ async function switchSession(sessionFile, session = null, project = null) {
 
       if (!res.ok) {
         const err = await res.json();
-        messageRenderer.renderError(`Failed to switch session: ${err.error}`);
+        messageRenderer.renderError(
+          t("chrome.failedSwitchSessionError", { error: err.error }),
+        );
       }
     }
   } catch (error) {
     console.error("[App] Failed to switch session:", error);
-    messageRenderer.renderError("Failed to switch session");
+    messageRenderer.renderError(t("chrome.failedSwitchSession"));
   }
 }
 
@@ -3210,11 +3236,11 @@ function updateMirrorInputState() {
   const inputArea = document.querySelector(".input-area");
   if (viewingActiveSession) {
     messageInput.disabled = false;
-    messageInput.placeholder = COMPOSER_PLACEHOLDER;
+    messageInput.placeholder = composerPlaceholder();
     inputArea?.classList.remove("mirror-readonly");
   } else {
     messageInput.disabled = true;
-    messageInput.placeholder = "Viewing historical session (read-only)";
+    messageInput.placeholder = t("chrome.historicalReadonly");
     inputArea?.classList.add("mirror-readonly");
   }
 }
@@ -3356,7 +3382,7 @@ function showTypingIndicator(show) {
 
 function abortCurrentRun() {
   wsClient.send({ type: "abort" });
-  messageRenderer.renderError("Aborted by user");
+  messageRenderer.renderError(t("chrome.abortedByUser"));
   showTypingIndicator(false);
 
   // In some abort paths, backend agent_end can be delayed or missing.
@@ -3390,7 +3416,10 @@ function updateTokenUsage() {
     } else if (pct >= 60) {
       tokenUsageEl.classList.add("warning");
     }
-    tokenUsageEl.title = `Context: ${(lastInputTokens / 1000).toFixed(1)}k / ${(contextWindowSize / 1000).toFixed(0)}k tokens`;
+    tokenUsageEl.title = t("chrome.contextTokensTitle", {
+      used: (lastInputTokens / 1000).toFixed(1),
+      total: (contextWindowSize / 1000).toFixed(0),
+    });
     if (pct >= 80) {
       showCompactButton();
     } else {
@@ -3409,10 +3438,10 @@ function showCompactButton() {
   const btn = document.createElement("button");
   btn.id = "compact-btn";
   btn.className = "compact-btn";
-  btn.textContent = "Compact";
-  btn.title = "Context is over 80% — compact to save tokens";
+  btn.textContent = t("chrome.compact");
+  btn.title = t("chrome.compactOver80");
   btn.addEventListener("click", () => {
-    rpcCommand({ type: "compact" }, "Compacting…");
+    rpcCommand({ type: "compact" }, t("chrome.compacting"));
     hideCompactButton();
   });
   // Insert next to token usage in header
@@ -3422,6 +3451,13 @@ function showCompactButton() {
 function hideCompactButton() {
   const btn = document.getElementById("compact-btn");
   if (btn) btn.remove();
+}
+
+function refreshCompactButtonLocale() {
+  const btn = document.getElementById("compact-btn");
+  if (!btn) return;
+  btn.textContent = t("chrome.compact");
+  btn.title = t("chrome.compactOver80");
 }
 
 async function fetchContextWindow() {
@@ -3472,7 +3508,7 @@ async function openLanQrModal() {
     }
     if (lanQrLoading) lanQrLoading.style.display = "none";
   } catch {
-    if (lanQrLoading) lanQrLoading.textContent = "QR code unavailable";
+    if (lanQrLoading) lanQrLoading.textContent = t("chrome.qrUnavailable");
   }
 }
 
@@ -3507,10 +3543,10 @@ async function refreshLanUrl() {
     lanUrl = typeof data?.lanUrl === "string" ? data.lanUrl : "";
     if (!lanUrl && lanUrls.length > 0) lanUrl = lanUrls[0];
     if (tailscaleUrl) {
-      statusText.textContent = "Connected • TS";
+      statusText.textContent = t("chrome.connectedTs");
       statusText.title = tailscaleUrl;
     } else if (lanUrl) {
-      statusText.textContent = "Connected • LAN";
+      statusText.textContent = t("chrome.connectedLan");
       statusText.title = lanUrl;
     }
     updateLanQrButton(lanUrl);
@@ -3524,13 +3560,13 @@ function updateConnectionStatus(status) {
 
   if (status === "connected") {
     if (tailscaleUrl) {
-      statusText.textContent = "Connected • TS";
+      statusText.textContent = t("chrome.connectedTs");
       statusText.title = tailscaleUrl;
     } else if (lanUrl) {
-      statusText.textContent = "Connected • LAN";
+      statusText.textContent = t("chrome.connectedLan");
       statusText.title = lanUrl;
     } else {
-      statusText.textContent = "Connected";
+      statusText.textContent = t("chrome.connected");
       statusText.title = "";
     }
     // Fetch network link metadata on first connect
@@ -3538,7 +3574,7 @@ function updateConnectionStatus(status) {
       void refreshLanUrl();
     }
   } else if (status === "disconnected") {
-    statusText.textContent = "Disconnected";
+    statusText.textContent = t("chrome.disconnected");
   }
 }
 
@@ -3551,11 +3587,20 @@ function updateUI() {
   if (isStreaming) {
     statusIndicator.classList.add("streaming");
     statusIndicator.classList.remove("connected");
-    statusText.textContent = "Working…";
+    statusText.textContent = t("chrome.working");
   } else {
     statusIndicator.classList.remove("streaming");
     statusIndicator.classList.add("connected");
-    statusText.textContent = "Connected";
+    if (tailscaleUrl) {
+      statusText.textContent = t("chrome.connectedTs");
+      statusText.title = tailscaleUrl;
+    } else if (lanUrl) {
+      statusText.textContent = t("chrome.connectedLan");
+      statusText.title = lanUrl;
+    } else {
+      statusText.textContent = t("chrome.connected");
+      statusText.title = "";
+    }
   }
 
   messageInput.disabled = !onboarding.canType;
@@ -3576,9 +3621,9 @@ function updateUI() {
     messageInput.disabled = true;
     sendBtn.disabled = true;
     abortBtn.classList.add("hidden");
-    messageInput.placeholder = "Waiting for current session to finish…";
+    messageInput.placeholder = t("chrome.waitingSessionFinish");
   } else if (onboarding.canQuery) {
-    messageInput.placeholder = COMPOSER_PLACEHOLDER;
+    messageInput.placeholder = composerPlaceholder();
   }
 }
 
@@ -3601,6 +3646,7 @@ const settingsClose = document.getElementById("settings-close");
 const settingsNavItems = Array.from(document.querySelectorAll(".settings-nav-item"));
 const settingsTabs = Array.from(document.querySelectorAll(".settings-tab"));
 const themeGrid = document.getElementById("theme-grid");
+const localeToggle = document.getElementById("locale-toggle");
 
 const toggleAutoCompact = document.getElementById("toggle-auto-compact");
 const thinkingEffortSteps = document.getElementById("thinking-effort-steps");
@@ -3678,7 +3724,7 @@ async function loadPiVersion() {
           piVersionCache = version;
           piVersionValue.textContent = piVersionCache;
         } else {
-          piVersionValue.textContent = "Unavailable (empty version)";
+          piVersionValue.textContent = t("settings.updates.unavailableEmpty");
         }
       } else {
         const data = await rpcCommand({ type: "get_pi_version" });
@@ -3688,13 +3734,13 @@ async function loadPiVersion() {
         } else {
           const reason = formatPiVersionError(data?.error, "version missing in response");
           console.error("[settings] failed to load pi version:", data);
-          piVersionValue.textContent = `Unavailable (${reason})`;
+          piVersionValue.textContent = t("settings.updates.unavailableReason", { reason });
         }
       }
     } catch (err) {
       const reason = formatPiVersionError(err);
       console.error("[settings] failed to load pi version:", err);
-      piVersionValue.textContent = `Unavailable (${reason})`;
+      piVersionValue.textContent = t("settings.updates.unavailableReason", { reason });
     } finally {
       piVersionInflight = null;
     }
@@ -3752,8 +3798,7 @@ async function loadBrowsePackages(force = false) {
     return;
   }
   browseLoading = true;
-  browseListEl.innerHTML =
-    '<div class="settings-api-keys-loading pkg-browse-full-row">Loading packages...</div>';
+  browseListEl.innerHTML = `<div class="settings-api-keys-loading pkg-browse-full-row">${escapeHtml(t("settings.extensions.loading"))}</div>`;
   try {
     const [packages, installed] = await Promise.all([
       fetchBrowsePackages(),
@@ -3764,8 +3809,8 @@ async function loadBrowsePackages(force = false) {
     browseLoaded = true;
     renderBrowsePackages();
   } catch (err) {
-    const message = String(err?.message || err || "Failed to load packages");
-    browseListEl.innerHTML = `<div class="settings-api-keys-empty pkg-browse-full-row">${escapeHtml(message)} <button type="button" class="settings-value-btn" id="pkg-browse-retry">Retry</button></div>`;
+    const message = String(err?.message || err || t("settings.extensions.failedLoad"));
+    browseListEl.innerHTML = `<div class="settings-api-keys-empty pkg-browse-full-row">${escapeHtml(message)} <button type="button" class="settings-value-btn" id="pkg-browse-retry">${escapeHtml(t("common.retry"))}</button></div>`;
     const retry = document.getElementById("pkg-browse-retry");
     if (retry) retry.addEventListener("click", () => loadBrowsePackages(true));
   } finally {
@@ -3925,18 +3970,23 @@ function renderBrowsePackages() {
 
   if (browseCountEl) {
     if (results.length === 0) {
-      browseCountEl.textContent = `0 of ${results.length}`;
+      browseCountEl.textContent = t("settings.extensions.countZero", {
+        total: results.length,
+      });
     } else {
       const rangeStart = start + 1;
       const rangeEnd = start + pageResults.length;
-      browseCountEl.textContent = `${rangeStart}–${rangeEnd} of ${results.length}`;
+      browseCountEl.textContent = t("settings.extensions.countOf", {
+        start: rangeStart,
+        end: rangeEnd,
+        total: results.length,
+      });
     }
   }
 
   browseListEl.innerHTML = "";
   if (!results.length) {
-    browseListEl.innerHTML =
-      '<div class="settings-api-keys-empty pkg-browse-full-row">No packages match your filters.</div>';
+    browseListEl.innerHTML = `<div class="settings-api-keys-empty pkg-browse-full-row">${escapeHtml(t("settings.extensions.noMatch"))}</div>`;
     renderBrowsePagination(totalPages);
     return;
   }
@@ -4031,7 +4081,9 @@ function createBrowseRow(pkg) {
   }
   const downloads = document.createElement("span");
   downloads.className = "pkg-browse-meta";
-  downloads.textContent = `${(pkg.downloads || 0).toLocaleString()}/mo`;
+  downloads.textContent = t("settings.extensions.perMonth", {
+    count: (pkg.downloads || 0).toLocaleString(),
+  });
   badges.appendChild(downloads);
   info.appendChild(badges);
 
@@ -4051,17 +4103,23 @@ function createBrowseRow(pkg) {
   const canManage = nativeAvailable();
   if (!canManage) {
     button.disabled = true;
-    setExtensionActionButton(button, "Desktop only");
+    setExtensionActionButton(button, t("settings.extensions.desktopOnly"));
   } else {
-    setExtensionActionButton(button, installed ? "Uninstall" : "Install");
+    setExtensionActionButton(
+      button,
+      installed ? t("common.uninstall") : t("common.install"),
+    );
     button.addEventListener("click", async () => {
       button.disabled = true;
       button.classList.add("loading");
-      const previous = installed ? "Uninstall" : "Install";
-      setExtensionActionButton(button, installed ? "Uninstalling…" : "Installing…", true);
+      setExtensionActionButton(
+        button,
+        installed ? t("common.uninstalling") : t("common.installing"),
+        true,
+      );
       status.hidden = false;
       status.classList.remove("is-error");
-      status.textContent = installed ? "Removing…" : "Installing…";
+      status.textContent = installed ? t("common.removing") : t("common.installing");
       status.title = status.textContent;
       try {
         if (installed) {
@@ -4076,7 +4134,10 @@ function createBrowseRow(pkg) {
         renderPackageInstallFailure(status, err, installed ? "uninstall" : "install");
         button.disabled = false;
         button.classList.remove("loading");
-        setExtensionActionButton(button, previous);
+        setExtensionActionButton(
+          button,
+          installed ? t("common.uninstall") : t("common.install"),
+        );
       }
     });
   }
@@ -4161,6 +4222,7 @@ wsClient.addEventListener("capabilities", () => {
 });
 
 function buildThemeGrid() {
+  if (!themeGrid) return;
   themeGrid.innerHTML = "";
   const current = getCurrentTheme();
 
@@ -4180,6 +4242,28 @@ function buildThemeGrid() {
     });
     themeGrid.appendChild(btn);
   }
+}
+
+function syncLocaleToggle(locale = getLocale()) {
+  if (!localeToggle) return;
+  localeToggle.querySelectorAll(".locale-toggle-btn").forEach((btn) => {
+    const active = btn.dataset.locale === locale;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function setupLocaleToggle() {
+  if (!localeToggle || localeToggle.dataset.bound === "1") return;
+  localeToggle.dataset.bound = "1";
+  localeToggle.addEventListener("click", (event) => {
+    const btn = event.target.closest(".locale-toggle-btn");
+    if (!btn || !localeToggle.contains(btn)) return;
+    const next = btn.dataset.locale;
+    if (!next || next === getLocale()) return;
+    setLocale(next);
+  });
+  syncLocaleToggle();
 }
 
 function normalizeSettingsTabKey(tabKey) {
@@ -4219,8 +4303,10 @@ async function openSettings(tabKey = "general", options = {}) {
   document.querySelector(".mode-link:first-child")?.classList.remove("active");
   selectSettingsTab(targetTabKey);
   buildThemeGrid();
+  syncLocaleToggle();
+  applyI18n(settingsPanel);
   if (piVersionValue) {
-    piVersionValue.textContent = piVersionCache || "Loading…";
+    piVersionValue.textContent = piVersionCache || t("common.loading");
   }
   setTimeout(() => {
     if (!settingsPanel.classList.contains("hidden")) loadPiVersion();
@@ -4435,5 +4521,34 @@ if (splash) {
     setTimeout(() => splash.remove(), 300);
   });
 }
+
+// ═══════════════════════════════════════
+// Display language (i18n)
+// ═══════════════════════════════════════
+
+function refreshLocalizedUi() {
+  applyI18n();
+  syncLocaleToggle();
+  updateUI();
+  updateThinkingBtn();
+  updateModelLabel();
+  updateTokenUsage();
+  updateCostDisplay();
+  renderQueuedMessages();
+  if (browseLoaded) renderBrowsePackages();
+  if (gitBranchEl?.textContent) {
+    updateGitBranchIndicator(gitBranchEl.textContent);
+  } else {
+    gitBranchEl.title = t("chrome.gitBranchTitle");
+  }
+  refreshCompactButtonLocale();
+  updateMirrorInputState();
+}
+
+setupLocaleToggle();
+refreshLocalizedUi();
+onLocaleChange(() => {
+  refreshLocalizedUi();
+});
 
 console.log("🚀 Picot initialized");

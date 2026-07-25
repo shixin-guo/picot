@@ -13,6 +13,34 @@
         <link rel="stylesheet" href="design-system.css" />
         <link rel="stylesheet" href="style.css" />
         <script>
+            // Early locale apply (before body paint) to minimize English flash.
+            // Mirrors public/i18n/index.js storage key + default logic.
+            (function () {
+                try {
+                    var key = "pi-studio-locale";
+                    var stored = null;
+                    try {
+                        stored = localStorage.getItem(key);
+                    } catch (_e) {}
+                    var locale =
+                        stored === "zh" || stored === "en"
+                            ? stored
+                            : String(
+                                  navigator.language ||
+                                      navigator.userLanguage ||
+                                      "en",
+                              )
+                                  .toLowerCase()
+                                  .indexOf("zh") === 0
+                              ? "zh"
+                              : "en";
+                    document.documentElement.lang =
+                        locale === "zh" ? "zh-CN" : "en";
+                    document.documentElement.dataset.locale = locale;
+                } catch (_e) {}
+            })();
+        </script>
+        <script>
             // Detect macOS for overlay title bar padding (TitleBarStyle::Overlay in Rust
             // extends the WebView into the native title bar area; we add padding so
             // app content clears the traffic-light buttons).
@@ -53,6 +81,7 @@
             <div
                 class="instance-swap-overlay__label"
                 id="instance-swap-overlay-label"
+                data-i18n="chrome.startingSession"
             >
                 Starting session…
             </div>
@@ -94,6 +123,7 @@
                             id="session-search-input"
                             class="ui-input ui-input--sm sidebar-search-input"
                             placeholder="Search..."
+                            data-i18n-placeholder="chrome.searchPlaceholder"
                             autocomplete="off"
                         />
                         <button
@@ -102,6 +132,8 @@
                             class="sidebar-search-clear hidden"
                             title="Clear search"
                             aria-label="Clear search"
+                            data-i18n-title="chrome.clearSearch"
+                            data-i18n-aria-label="chrome.clearSearch"
                         >
                             <svg
                                 width="12"
@@ -123,6 +155,8 @@
                             id="open-folder-btn"
                             title="Open folder as workspace"
                             aria-label="Open folder"
+                            data-i18n-title="chrome.openFolder"
+                            data-i18n-aria-label="chrome.openFolderAria"
                         >
                             <svg
                                 width="14"
@@ -146,6 +180,8 @@
                             id="refresh-sessions-btn"
                             title="Refresh sessions"
                             aria-label="Refresh sessions"
+                            data-i18n-title="chrome.refreshSessions"
+                            data-i18n-aria-label="chrome.refreshSessions"
                         >
                             <svg
                                 width="14"
@@ -166,7 +202,9 @@
                     </div>
                 </div>
                 <div class="session-list" id="session-list">
-                    <div class="session-loading">Loading sessions...</div>
+                    <div class="session-loading" data-i18n="chrome.loadingSessions">
+                        Loading sessions...
+                    </div>
                 </div>
                 <div class="sidebar-footer">
                     <div class="sidebar-settings-row">
@@ -175,6 +213,8 @@
                             id="settings-btn"
                             title="Settings"
                             aria-label="Settings"
+                            data-i18n-title="chrome.settings"
+                            data-i18n-aria-label="chrome.settings"
                         >
                             <svg
                                 width="14"
@@ -191,15 +231,17 @@
                                 />
                                 <circle cx="12" cy="12" r="3" />
                             </svg>
-                            <span>Settings</span>
+                            <span data-i18n="chrome.settings">Settings</span>
                         </button>
                         <button
                             class="sidebar-update-pill hidden"
                             id="sidebar-update-btn"
                             title="Update available"
                             aria-label="Open updates in settings"
+                            data-i18n-title="chrome.updateAvailable"
+                            data-i18n-aria-label="chrome.openUpdatesAria"
                         >
-                            Update
+                            <span data-i18n="chrome.update">Update</span>
                         </button>
                     </div>
                 </div>
@@ -218,6 +260,8 @@
                             id="sidebar-toggle"
                             title="Toggle sidebar"
                             aria-label="Toggle sidebar"
+                            data-i18n-title="chrome.toggleSidebar"
+                            data-i18n-aria-label="chrome.toggleSidebar"
                         >
                             <svg
                                 width="18"
@@ -239,6 +283,8 @@
                             id="lan-qr-btn"
                             title="Show mobile QR code"
                             aria-label="Show mobile QR code"
+                            data-i18n-title="chrome.showMobileQr"
+                            data-i18n-aria-label="chrome.showMobileQr"
                         >
                             <svg
                                 width="16"
@@ -266,7 +312,10 @@
                                 class="status-indicator"
                                 id="status-indicator"
                             ></span>
-                            <span class="status-text" id="status-text"
+                            <span
+                                class="status-text"
+                                id="status-text"
+                                data-i18n="chrome.connecting"
                                 >Connecting...</span
                             >
                         </div>
@@ -276,15 +325,22 @@
                             class="pill session-cost"
                             id="session-cost"
                             title="Session cost"
+                            data-i18n-title="chrome.sessionCost"
                         ></span>
                         <span
                             class="pill token-usage"
                             id="token-usage"
                             title="Context usage"
+                            data-i18n-title="chrome.contextUsage"
                         ></span>
 
                         <div class="context-viz hidden" id="context-viz">
-                            <div class="context-viz-title">Context Window</div>
+                            <div
+                                class="context-viz-title"
+                                data-i18n="chrome.contextWindow"
+                            >
+                                Context Window
+                            </div>
                             <div class="context-bar" id="context-bar"></div>
                             <div
                                 class="context-legend"
@@ -457,6 +513,7 @@
                             <textarea
                                 id="message-input"
                                 placeholder="Type a message, or use / to call a skill…"
+                                data-i18n-placeholder="chrome.typeMessage"
                                 autocomplete="off"
                                 rows="2"
                             ></textarea>
@@ -467,7 +524,9 @@
                                         class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost input-icon-btn"
                                         id="attach-btn"
                                         title="Attach image"
+                                        data-i18n-title="chrome.attachImage"
                                         aria-label="Attach image"
+                                        data-i18n-aria-label="chrome.attachImageAria"
                                         tabindex="-1"
                                     >
                                         <svg
@@ -499,7 +558,9 @@
                                         class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost input-icon-btn"
                                         id="command-btn"
                                         title="Commands"
+                                        data-i18n-title="chrome.commands"
                                         aria-label="Open commands"
+                                        data-i18n-aria-label="chrome.openCommandsAria"
                                         tabindex="-1"
                                     >
                                         <svg
@@ -753,46 +814,106 @@
 
         <div class="settings-panel hidden" id="settings-panel">
             <aside class="settings-nav">
-                <div class="settings-nav-title">Settings</div>
+                <div class="settings-nav-title" data-i18n="settings.title">Settings</div>
                 <button
                     class="settings-nav-item active"
                     data-settings-tab="general"
+                    data-i18n="settings.nav.general"
                 >
                     General
                 </button>
                 <button
                     class="settings-nav-item"
                     data-settings-tab="extensions"
+                    data-i18n="settings.nav.extensions"
                 >
                     Extensions
                 </button>
-                <button class="settings-nav-item" data-settings-tab="usage">
+                <button
+                    class="settings-nav-item"
+                    data-settings-tab="usage"
+                    data-i18n="settings.nav.usage"
+                >
                     Usage
                 </button>
                 <button
                     class="settings-nav-item"
                     data-settings-tab="configuration"
+                    data-i18n="settings.nav.configuration"
                 >
                     Configuration
                 </button>
-                <button class="settings-nav-item" data-settings-tab="chat">
+                <button
+                    class="settings-nav-item"
+                    data-settings-tab="chat"
+                    data-i18n="settings.nav.agentInbox"
+                >
                     Agent Inbox
                 </button>
                 <button class="settings-nav-back" id="settings-close">
-                    <span class="settings-nav-back-icon">‹</span> Back to chat
+                    <span class="settings-nav-back-icon">‹</span>
+                    <span data-i18n="settings.backToChat">Back to chat</span>
                 </button>
             </aside>
             <section class="settings-content">
                 <div class="settings-tab active" data-settings-panel="general">
                     <div class="settings-body">
                         <div class="settings-section">
-                            <div class="settings-section-title">Appearance</div>
+                            <div
+                                class="settings-section-title"
+                                data-i18n="settings.appearance.title"
+                            >
+                                Appearance
+                            </div>
+                            <div
+                                class="settings-row"
+                                id="setting-display-language"
+                            >
+                                <span
+                                    class="settings-label"
+                                    data-i18n="settings.appearance.displayLanguage"
+                                    >Display language</span
+                                >
+                                <div
+                                    class="locale-toggle"
+                                    id="locale-toggle"
+                                    role="group"
+                                    data-i18n-aria-label="settings.appearance.displayLanguageAria"
+                                    aria-label="Display language"
+                                >
+                                    <button
+                                        type="button"
+                                        class="locale-toggle-btn"
+                                        data-locale="en"
+                                        data-i18n="settings.appearance.langEn"
+                                        aria-pressed="false"
+                                    >
+                                        English
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="locale-toggle-btn"
+                                        data-locale="zh"
+                                        data-i18n="settings.appearance.langZh"
+                                        aria-pressed="false"
+                                    >
+                                        中文
+                                    </button>
+                                </div>
+                            </div>
                             <div class="theme-grid" id="theme-grid"></div>
                         </div>
                         <div class="settings-section">
-                            <div class="settings-section-title">Agent</div>
+                            <div
+                                class="settings-section-title"
+                                data-i18n="settings.agent.title"
+                            >
+                                Agent
+                            </div>
                             <div class="settings-row" id="setting-auto-compact">
-                                <span class="settings-label"
+                                <span
+                                    class="settings-label"
+                                    data-i18n="settings.agent.autoCompaction"
                                     >Auto-compaction</span
                                 >
                                 <button
@@ -804,10 +925,14 @@
                                 <span
                                     class="settings-label settings-label-stack"
                                 >
-                                    <span class="settings-label-main"
+                                    <span
+                                        class="settings-label-main"
+                                        data-i18n="settings.agent.thinkingEffort"
                                         >Thinking effort</span
                                     >
-                                    <span class="settings-label-sub"
+                                    <span
+                                        class="settings-label-sub"
+                                        data-i18n="settings.agent.reasoningDepth"
                                         >Reasoning depth</span
                                     >
                                 </span>
@@ -815,16 +940,17 @@
                                     class="thinking-effort"
                                     id="thinking-effort"
                                     role="radiogroup"
+                                    data-i18n-aria-label="settings.agent.thinkingEffortAria"
                                     aria-label="Thinking effort"
                                 >
                                     <div class="thinking-effort-ends">
-                                        <span>Faster</span>
+                                        <span data-i18n="settings.agent.faster">Faster</span>
                                         <span
                                             class="thinking-effort-name"
                                             id="thinking-effort-name"
                                             >off</span
                                         >
-                                        <span>Smarter</span>
+                                        <span data-i18n="settings.agent.smarter">Smarter</span>
                                     </div>
                                     <div
                                         class="thinking-effort-track"
@@ -884,7 +1010,9 @@
                                 </div>
                             </div>
                             <div class="settings-row">
-                                <span class="settings-label"
+                                <span
+                                    class="settings-label"
+                                    data-i18n="settings.agent.showThinking"
                                     >Show thinking</span
                                 >
                                 <button
@@ -897,32 +1025,48 @@
                             class="settings-section"
                             id="setting-updater-section"
                         >
-                            <div class="settings-section-title">Updates</div>
+                            <div
+                                class="settings-section-title"
+                                data-i18n="settings.updates.title"
+                            >
+                                Updates
+                            </div>
                             <div class="settings-row" id="setting-pi-version">
-                                <span class="settings-label">Pi version</span>
+                                <span
+                                    class="settings-label"
+                                    data-i18n="settings.updates.piVersion"
+                                    >Pi version</span
+                                >
                                 <span
                                     class="settings-static-value"
                                     id="setting-pi-version-value"
+                                    data-i18n="common.loading"
                                     >Loading...</span
                                 >
                             </div>
                             <div class="settings-row">
-                                <span class="settings-label"
+                                <span
+                                    class="settings-label"
+                                    data-i18n="settings.updates.picotVersion"
                                     >Picot version</span
                                 >
                                 <span
                                     class="settings-static-value"
                                     id="setting-app-version-value"
+                                    data-i18n="common.loading"
                                     >Loading...</span
                                 >
                             </div>
                             <div class="settings-row">
-                                <span class="settings-label"
+                                <span
+                                    class="settings-label"
+                                    data-i18n="settings.updates.checkForUpdates"
                                     >Check for updates</span
                                 >
                                 <button
                                     class="ui-button ui-button--secondary settings-value-btn"
                                     id="btn-check-updates"
+                                    data-i18n="settings.updates.checkNow"
                                 >
                                     Check now
                                 </button>
@@ -932,7 +1076,11 @@
                                 id="setting-update-status-row"
                                 hidden
                             >
-                                <span class="settings-label">Status</span>
+                                <span
+                                    class="settings-label"
+                                    data-i18n="settings.updates.status"
+                                    >Status</span
+                                >
                                 <span
                                     class="settings-static-value"
                                     id="setting-update-status"
@@ -946,11 +1094,13 @@
                                 <span
                                     class="settings-label"
                                     id="setting-update-install-label"
+                                    data-i18n="settings.updates.updateAvailable"
                                     >Update available</span
                                 >
                                 <button
                                     class="ui-button ui-button--secondary settings-value-btn"
                                     id="btn-install-update"
+                                    data-i18n="settings.updates.downloadInstall"
                                 >
                                     Download &amp; install
                                 </button>
@@ -962,10 +1112,16 @@
                 <div class="settings-tab" data-settings-panel="extensions">
                     <div class="settings-body">
                         <div class="settings-section">
-                            <div class="settings-section-title">
+                            <div
+                                class="settings-section-title"
+                                data-i18n="settings.extensions.title"
+                            >
                                 Browse Community Packages
                             </div>
-                            <p class="settings-help">
+                            <p
+                                class="settings-help"
+                                data-i18n="settings.extensions.help"
+                            >
                                 Discover extensions, skills, themes, and prompts
                                 from the Pi ecosystem. Install with one click.
                             </p>
@@ -975,6 +1131,7 @@
                                     id="pkg-browse-search"
                                     class="pkg-browse-search"
                                     placeholder="Search packages..."
+                                    data-i18n-placeholder="settings.extensions.searchPlaceholder"
                                     autocomplete="off"
                                     spellcheck="false"
                                 />
@@ -986,6 +1143,7 @@
                                         type="button"
                                         class="pkg-browse-pill active"
                                         data-pkg-type="all"
+                                        data-i18n="settings.extensions.all"
                                     >
                                         All
                                     </button>
@@ -993,6 +1151,7 @@
                                         type="button"
                                         class="pkg-browse-pill"
                                         data-pkg-type="extension"
+                                        data-i18n="settings.extensions.extensions"
                                     >
                                         Extensions
                                     </button>
@@ -1000,6 +1159,7 @@
                                         type="button"
                                         class="pkg-browse-pill"
                                         data-pkg-type="skill"
+                                        data-i18n="settings.extensions.skills"
                                     >
                                         Skills
                                     </button>
@@ -1007,6 +1167,7 @@
                                         type="button"
                                         class="pkg-browse-pill"
                                         data-pkg-type="theme"
+                                        data-i18n="settings.extensions.themes"
                                     >
                                         Themes
                                     </button>
@@ -1014,6 +1175,7 @@
                                         type="button"
                                         class="pkg-browse-pill"
                                         data-pkg-type="prompt"
+                                        data-i18n="settings.extensions.prompts"
                                     >
                                         Prompts
                                     </button>
@@ -1023,18 +1185,30 @@
                                         type="checkbox"
                                         id="pkg-browse-installed-only"
                                     />
-                                    <span>Installed only</span>
+                                    <span data-i18n="settings.extensions.installedOnly">Installed only</span>
                                 </label>
                                 <select
                                     id="pkg-browse-sort"
                                     class="pkg-browse-sort"
+                                    data-i18n-aria-label="settings.extensions.sortAria"
                                     aria-label="Sort packages"
                                 >
-                                    <option value="downloads">
+                                    <option
+                                        value="downloads"
+                                        data-i18n="settings.extensions.sortDownloads"
+                                    >
                                         Most downloads
                                     </option>
-                                    <option value="name">Name (A–Z)</option>
-                                    <option value="updated">
+                                    <option
+                                        value="name"
+                                        data-i18n="settings.extensions.sortName"
+                                    >
+                                        Name (A–Z)
+                                    </option>
+                                    <option
+                                        value="updated"
+                                        data-i18n="settings.extensions.sortUpdated"
+                                    >
                                         Recently updated
                                     </option>
                                 </select>
@@ -1069,10 +1243,16 @@
                 <div class="settings-tab" data-settings-panel="configuration">
                     <div class="settings-body">
                         <div class="settings-section">
-                            <div class="settings-section-title">
+                            <div
+                                class="settings-section-title"
+                                data-i18n="settings.config.authTitle"
+                            >
                                 Authentication
                             </div>
-                            <p class="settings-help">
+                            <p
+                                class="settings-help"
+                                data-i18n="settings.config.authHelp"
+                            >
                                 Keys are stored locally in
                                 <code>~/.pi/agent/auth.json</code> (chmod 600).
                                 Picot launched from Finder does not read shell
@@ -1083,7 +1263,10 @@
                                 class="settings-api-keys"
                                 id="settings-api-keys"
                             >
-                                <div class="settings-api-keys-loading">
+                                <div
+                                    class="settings-api-keys-loading"
+                                    data-i18n="settings.config.loadingProviders"
+                                >
                                     Loading providers…
                                 </div>
                             </div>
@@ -1093,9 +1276,16 @@
                             id="settings-auth-section"
                             style="display: none"
                         >
-                            <div class="settings-section-title">Protection</div>
+                            <div
+                                class="settings-section-title"
+                                data-i18n="settings.config.protection"
+                            >
+                                Protection
+                            </div>
                             <div class="settings-row">
-                                <span class="settings-label"
+                                <span
+                                    class="settings-label"
+                                    data-i18n="settings.config.requireLogin"
                                     >Require login</span
                                 >
                                 <button
@@ -1106,9 +1296,16 @@
                         </div>
 
                         <div class="settings-section">
-                            <div class="settings-section-title">Agent</div>
+                            <div
+                                class="settings-section-title"
+                                data-i18n="settings.config.agentTitle"
+                            >
+                                Agent
+                            </div>
                             <div class="settings-config-meta">
-                                <span class="settings-label"
+                                <span
+                                    class="settings-label"
+                                    data-i18n="settings.config.agentConfigFile"
                                     >Agent config file</span
                                 >
                                 <span
@@ -1135,6 +1332,7 @@
                                     <button
                                         class="ui-button ui-button--primary btn-primary"
                                         id="inline-config-save"
+                                        data-i18n="common.save"
                                     >
                                         Save
                                     </button>
@@ -1143,22 +1341,27 @@
                         </div>
 
                         <div class="settings-section">
-                            <div class="settings-section-title">
+                            <div
+                                class="settings-section-title"
+                                data-i18n="settings.config.llmProviders"
+                            >
                                 LLM providers
                             </div>
                             <p class="settings-help">
-                                Edit <code>~/.pi/agent/models.json</code> to add
-                                custom providers (Ollama, vLLM, LM Studio,
-                                OpenAI-compatible proxies, OpenRouter routing
-                                overrides, etc). See the
-                                <a href="#" id="models-config-docs-link"
+                                <span data-i18n="settings.config.llmHelp"
+                                    >Edit ~/.pi/agent/models.json to add custom providers (Ollama, vLLM, LM Studio, OpenAI-compatible proxies, OpenRouter routing overrides, etc). See the models.json docs for the full schema. Changes are picked up immediately — no restart needed.</span
+                                >
+                                <a
+                                    href="#"
+                                    id="models-config-docs-link"
+                                    data-i18n="settings.config.modelsDocs"
                                     >models.json docs</a
                                 >
-                                for the full schema. Changes are picked up
-                                immediately — no restart needed.
                             </p>
                             <div class="settings-config-meta">
-                                <span class="settings-label"
+                                <span
+                                    class="settings-label"
+                                    data-i18n="settings.config.providersFile"
                                     >Providers file</span
                                 >
                                 <span
@@ -1186,12 +1389,14 @@
                                     <button
                                         class="ui-button ui-button--secondary"
                                         id="inline-models-insert-example"
+                                        data-i18n="settings.config.insertExample"
                                     >
                                         Insert example
                                     </button>
                                     <button
                                         class="ui-button ui-button--primary"
                                         id="inline-models-save"
+                                        data-i18n="common.save"
                                     >
                                         Save
                                     </button>
@@ -1216,7 +1421,9 @@
         <div class="config-editor-modal hidden" id="config-editor-modal">
             <div class="config-editor-header">
                 <div class="config-editor-title-group">
-                    <h3>Agent Configuration</h3>
+                    <h3 data-i18n="settings.config.agentConfiguration">
+                        Agent Configuration
+                    </h3>
                     <span
                         class="config-editor-path"
                         id="config-editor-path"
@@ -1253,10 +1460,10 @@
                 ></div>
             </div>
             <div class="config-editor-footer">
-                <button class="config-editor-cancel" id="config-editor-cancel">
+                <button class="config-editor-cancel" id="config-editor-cancel" data-i18n="common.cancel">
                     Cancel
                 </button>
-                <button class="ui-button ui-button--primary btn-primary" id="config-editor-save">
+                <button class="ui-button ui-button--primary btn-primary" id="config-editor-save" data-i18n="common.save">
                     Save
                 </button>
             </div>
@@ -1268,7 +1475,7 @@
             id="command-palette-overlay"
         ></div>
         <div class="command-palette hidden" id="command-palette">
-            <div class="command-palette-header">Commands</div>
+            <div class="command-palette-header" data-i18n="chrome.commands">Commands</div>
             <div class="command-list" id="command-list"></div>
         </div>
 
@@ -1287,11 +1494,12 @@
             <div class="lan-qr-modal-backdrop" id="lan-qr-modal-backdrop"></div>
             <div class="lan-qr-modal-content">
                 <div class="lan-qr-modal-header">
-                    <span class="lan-qr-modal-title">Open on Mobile</span>
+                    <span class="lan-qr-modal-title" data-i18n="chrome.openOnMobile">Open on Mobile</span>
                     <button
                         class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost lan-qr-modal-close icon-btn"
                         id="lan-qr-modal-close"
                         aria-label="Close"
+                        data-i18n-aria-label="chrome.close"
                     >
                         <svg
                             width="16"
@@ -1309,7 +1517,7 @@
                     </button>
                 </div>
                 <div class="lan-qr-modal-body">
-                    <div class="lan-qr-loading" id="lan-qr-loading">
+                    <div class="lan-qr-loading" id="lan-qr-loading" data-i18n="chrome.generatingQr">
                         Generating QR code…
                     </div>
                     <img
@@ -1317,7 +1525,7 @@
                         id="lan-qr-image"
                         alt="QR code for mobile access"
                     />
-                    <div class="lan-qr-hint">
+                    <div class="lan-qr-hint" data-i18n="chrome.qrHint">
                         Scan with your phone to open Picot on the same network
                     </div>
                     <button
@@ -1341,7 +1549,7 @@
                             <polyline points="15 3 21 3 21 9" />
                             <line x1="10" y1="14" x2="21" y2="3" />
                         </svg>
-                        <span>Open Link</span>
+                        <span data-i18n="chrome.openLink">Open Link</span>
                     </button>
                 </div>
             </div>

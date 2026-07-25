@@ -6,6 +6,8 @@
  * writes the full internal ~/.pi/agent/chat/config.json automatically.
  */
 
+import { applyI18n, onLocaleChange, t } from "../i18n/index.js";
+
 class ChatSettingsPanel extends HTMLElement {
   connectedCallback() {
     if (this._initialized) return;
@@ -13,61 +15,61 @@ class ChatSettingsPanel extends HTMLElement {
     this.innerHTML = `
       <div class="settings-body">
         <div class="settings-section">
-          <div class="settings-section-title">Agent Inbox</div>
+          <div class="settings-section-title" data-i18n="chat.agentInbox">Agent Inbox</div>
           <div class="settings-row" id="setting-super-agent">
             <span class="settings-label settings-label-stack">
-              <span class="settings-label-main">Start automatically</span>
-              <span class="settings-label-sub">Launch Agent Inbox when Picot opens</span>
+              <span class="settings-label-main" data-i18n="chat.startAutomatically">Start automatically</span>
+              <span class="settings-label-sub" data-i18n="chat.startAutomaticallySub">Launch Agent Inbox when Picot opens</span>
             </span>
             <button class="settings-toggle" id="toggle-super-agent"></button>
           </div>
         </div>
 
         <div class="settings-section">
-          <div class="settings-section-title">Telegram</div>
-          <p class="settings-help">
+          <div class="settings-section-title" data-i18n="chat.telegram">Telegram</div>
+          <p class="settings-help" data-i18n="chat.telegramHelp">
             Paste a Telegram bot token from <code>@BotFather</code>. Picot will detect your
             Telegram DM automatically after you send <code>/start</code> to the bot.
           </p>
-          <p class="settings-help telegram-safety-note">
+          <p class="settings-help telegram-safety-note" data-i18n="chat.telegramSafety">
             Telegram messages enter Agent Inbox first. Picot keeps project-agent dispatch
             behind local approval.
           </p>
           <div class="telegram-setup-card">
-            <label class="telegram-token-label" for="telegram-bot-token">Bot token</label>
+            <label class="telegram-token-label" for="telegram-bot-token" data-i18n="chat.botToken">Bot token</label>
             <div class="telegram-token-row">
               <input id="telegram-bot-token" class="ui-input telegram-token-input"
                 data-token-input type="password" autocomplete="off" spellcheck="false"
-                placeholder="123456:ABCDEF…" />
-              <button class="ui-button ui-button--primary" data-action="connect-telegram">Connect Telegram</button>
-              <button class="ui-button ui-button--secondary" data-action="cancel-telegram" hidden>Cancel</button>
+                placeholder="123456:ABCDEF…" data-i18n-placeholder="chat.botTokenPlaceholder" />
+              <button class="ui-button ui-button--primary" data-action="connect-telegram" data-i18n="chat.connectTelegram">Connect Telegram</button>
+              <button class="ui-button ui-button--secondary" data-action="cancel-telegram" data-i18n="chat.cancel" hidden>Cancel</button>
             </div>
             <div class="settings-save-status hidden" data-status aria-live="polite" role="status"></div>
             <div class="telegram-bind-instructions hidden" data-bind-instructions></div>
           </div>
           <div class="telegram-doctor-card" data-telegram-doctor>
             <div class="chat-account-header">
-              <span class="chat-account-name">Telegram Doctor</span>
-              <button class="ui-button ui-button--secondary" data-action="run-telegram-doctor">Run Doctor</button>
+              <span class="chat-account-name" data-i18n="chat.telegramDoctor">Telegram Doctor</span>
+              <button class="ui-button ui-button--secondary" data-action="run-telegram-doctor" data-i18n="chat.runDoctor">Run Doctor</button>
             </div>
-            <div class="settings-help" data-telegram-doctor-summary>Not checked yet.</div>
+            <div class="settings-help" data-telegram-doctor-summary data-i18n="chat.notCheckedYet">Not checked yet.</div>
             <div class="telegram-doctor-checks" data-telegram-doctor-checks></div>
           </div>
           <div class="chat-accounts-list" data-accounts-list></div>
         </div>
 
         <details class="settings-section chat-advanced-config" hidden>
-          <summary class="settings-section-title">Advanced Raw Config</summary>
-          <p class="settings-help">
+          <summary class="settings-section-title" data-i18n="chat.advancedRawConfig">Advanced Raw Config</summary>
+          <p class="settings-help" data-i18n="chat.advancedHelp">
             Internal config stored in <code>~/.pi/agent/chat/config.json</code>. You normally do not
             need to edit this manually.
           </p>
           <textarea class="ui-textarea config-editor-textarea settings-config-textarea"
             data-textarea spellcheck="false" autocomplete="off"
-            autocorrect="off" autocapitalize="off" placeholder="Loading…"></textarea>
+            autocorrect="off" autocapitalize="off" placeholder="Loading…" data-i18n-placeholder="chat.loading"></textarea>
           <div class="settings-config-actions">
             <div class="settings-config-button-group">
-              <button class="ui-button ui-button--primary" data-action="save">Save Raw Config</button>
+              <button class="ui-button ui-button--primary" data-action="save" data-i18n="chat.saveRawConfig">Save Raw Config</button>
             </div>
           </div>
         </details>
@@ -81,6 +83,9 @@ class ChatSettingsPanel extends HTMLElement {
     this._bindInstructionsEl = this.querySelector("[data-bind-instructions]");
     this._doctorSummaryEl = this.querySelector("[data-telegram-doctor-summary]");
     this._doctorChecksEl = this.querySelector("[data-telegram-doctor-checks]");
+    this._lastDoctorReport = null;
+    this._lastRawContent = "{}";
+    this._lastBindBot = null;
 
     this.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-action]");
@@ -106,7 +111,25 @@ class ChatSettingsPanel extends HTMLElement {
       }
     });
 
+    applyI18n(this);
+    this._unsubLocale = onLocaleChange(() => this._refreshLocale());
     this._load();
+  }
+
+  disconnectedCallback() {
+    if (this._unsubLocale) {
+      this._unsubLocale();
+      this._unsubLocale = null;
+    }
+  }
+
+  _refreshLocale() {
+    applyI18n(this);
+    if (this._lastRawContent != null) this._renderAccounts(this._lastRawContent);
+    if (this._lastDoctorReport) this._renderTelegramDoctor(this._lastDoctorReport);
+    if (this._lastBindBot && !this._bindInstructionsEl.classList.contains("hidden")) {
+      this._renderBindInstructions(this._lastBindBot);
+    }
   }
 
   // ── API ───────────────────────────────────────────────────────────────────
@@ -127,7 +150,7 @@ class ChatSettingsPanel extends HTMLElement {
     try {
       JSON.parse(content);
     } catch {
-      this._showError("Invalid JSON");
+      this._showError(t("chat.invalidJson"));
       return;
     }
     this._clearStatus();
@@ -140,9 +163,9 @@ class ChatSettingsPanel extends HTMLElement {
         body: JSON.stringify({ content }),
       });
       const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Save failed");
+      if (!data.success) throw new Error(data.error || t("chat.saveFailed"));
       this._renderAccounts(content);
-      this._showSuccess("Saved raw config.");
+      this._showSuccess(t("chat.savedRawConfig"));
       await this._loadTelegramDoctor();
     } catch (e) {
       this._showError(messageFromError(e));
@@ -154,7 +177,7 @@ class ChatSettingsPanel extends HTMLElement {
   async _connectTelegram() {
     const botToken = this._tokenInput.value.trim();
     if (!botToken) {
-      this._showError("Paste your Telegram bot token first.");
+      this._showError(t("chat.pasteTokenFirst"));
       this._tokenInput.focus();
       return;
     }
@@ -166,7 +189,7 @@ class ChatSettingsPanel extends HTMLElement {
     this._clearBindInstructions();
 
     try {
-      this._showInfo("Validating Telegram bot token…");
+      this._showInfo(t("chat.validatingToken"));
       const validated = await postJson(
         "/api/chat-telegram/validate",
         { botToken },
@@ -174,7 +197,7 @@ class ChatSettingsPanel extends HTMLElement {
       );
       const bot = validated.bot || {};
       this._renderBindInstructions(bot);
-      this._showInfo("Bot connected. Send /start to the bot in Telegram to finish setup.");
+      this._showInfo(t("chat.botConnected"));
 
       const bound = await postJson(
         "/api/chat-telegram/bind",
@@ -184,13 +207,13 @@ class ChatSettingsPanel extends HTMLElement {
       this._setRawContent(bound.content || "{}");
       this._renderAccounts(bound.content);
       this._tokenInput.value = "";
-      this._showSuccess("Telegram connected. Only the detected DM user is authorized.");
+      this._showSuccess(t("chat.telegramConnected"));
       this._clearBindInstructions();
       await this._loadTelegramDoctor();
       window.dispatchEvent(new CustomEvent("picot-chat-config-updated"));
     } catch (e) {
       if (controller.signal.aborted) {
-        this._showInfo("Telegram setup canceled.");
+        this._showInfo(t("chat.setupCanceled"));
       } else {
         this._showError(messageFromError(e));
       }
@@ -208,7 +231,7 @@ class ChatSettingsPanel extends HTMLElement {
   }
 
   async _disconnectTelegram() {
-    if (!window.confirm("Disconnect Telegram from Picot?")) return;
+    if (!window.confirm(t("chat.disconnectConfirm"))) return;
     try {
       const config = JSON.parse(this._textarea.value || "{}");
       const accounts = Object.entries(config.accounts || {}).filter(
@@ -222,10 +245,10 @@ class ChatSettingsPanel extends HTMLElement {
         body: JSON.stringify({ content }),
       });
       const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Disconnect failed");
+      if (!data.success) throw new Error(data.error || t("chat.disconnectFailed"));
       this._setRawContent(content);
       this._renderAccounts(content);
-      this._showSuccess("Telegram disconnected.");
+      this._showSuccess(t("chat.telegramDisconnected"));
       await this._loadTelegramDoctor();
       window.dispatchEvent(new CustomEvent("picot-chat-config-updated"));
     } catch (e) {
@@ -236,15 +259,16 @@ class ChatSettingsPanel extends HTMLElement {
   async _loadTelegramDoctor() {
     const runBtn = this.querySelector('[data-action="run-telegram-doctor"]');
     runBtn.disabled = true;
-    this._doctorSummaryEl.textContent = "Checking Telegram…";
+    this._doctorSummaryEl.textContent = t("chat.checkingTelegram");
     this._doctorChecksEl.innerHTML = "";
     try {
       const res = await fetch("/api/chat-telegram/doctor");
       const data = await res.json();
       if (!res.ok || data.success === false)
-        throw new Error(data.error || "Telegram doctor failed");
+        throw new Error(data.error || t("chat.doctorFailed"));
       this._renderTelegramDoctor(data.report);
     } catch (e) {
+      this._lastDoctorReport = null;
       this._doctorSummaryEl.textContent = messageFromError(e);
       this._doctorChecksEl.innerHTML = "";
     } finally {
@@ -253,9 +277,14 @@ class ChatSettingsPanel extends HTMLElement {
   }
 
   _renderTelegramDoctor(report) {
+    this._lastDoctorReport = report;
     const summary = report?.summary || "error";
     const label =
-      summary === "ready" ? "Ready" : summary === "warning" ? "Needs attention" : "Not ready";
+      summary === "ready"
+        ? t("chat.doctorReady")
+        : summary === "warning"
+          ? t("chat.doctorWarning")
+          : t("chat.doctorNotReady");
     this._doctorSummaryEl.textContent = label;
     this._doctorChecksEl.innerHTML = (report?.checks || [])
       .map(
@@ -272,33 +301,37 @@ class ChatSettingsPanel extends HTMLElement {
   // ── Render accounts list ──────────────────────────────────────────────────
 
   _renderAccounts(rawContent) {
+    this._lastRawContent = rawContent || "{}";
     try {
       const config = JSON.parse(rawContent || "{}");
       const accountEntry = Object.entries(config.accounts || {}).find(
         ([, account]) => account?.service === "telegram",
       );
       if (!accountEntry) {
-        this._accountsEl.innerHTML = `<p class="settings-help">Telegram is not connected.</p>`;
-        this._tokenInput.placeholder = "123456:ABCDEF...";
-        this.querySelector('[data-action="connect-telegram"]').textContent = "Connect Telegram";
+        this._accountsEl.innerHTML = `<p class="settings-help">${esc(t("chat.notConnected"))}</p>`;
+        this._tokenInput.placeholder = t("chat.botTokenPlaceholder");
+        this.querySelector('[data-action="connect-telegram"]').textContent =
+          t("chat.connectTelegram");
         return;
       }
 
       const [id, account] = accountEntry;
       const dm = Object.values(account.channels || {}).find((channel) => channel?.dm === true);
       const botName = account.botUsername ? `@${account.botUsername}` : account.name || id;
-      const authorizedUser = dm?.name || dm?.access?.allowedUserIds?.[0] || dm?.id || "Detected DM";
-      this._tokenInput.placeholder = "Paste a new token to reconnect";
-      this.querySelector('[data-action="connect-telegram"]').textContent = "Reconnect Telegram";
+      const authorizedUser =
+        dm?.name || dm?.access?.allowedUserIds?.[0] || dm?.id || t("chat.detectedDm");
+      this._tokenInput.placeholder = t("chat.reconnectPlaceholder");
+      this.querySelector('[data-action="connect-telegram"]').textContent =
+        t("chat.reconnectTelegram");
       this._accountsEl.innerHTML = `
         <div class="chat-account-card">
           <div class="chat-account-header">
             <span class="chat-account-name">${esc(botName)}</span>
           </div>
-          <div class="chat-account-detail">Authorized DM: ${esc(authorizedUser)}</div>
-          <div class="chat-account-detail">Internal ID: <code>${esc(id)}</code></div>
+          <div class="chat-account-detail">${esc(t("chat.authorizedDm", { user: authorizedUser }))}</div>
+          <div class="chat-account-detail">${esc(t("chat.internalId"))} <code>${esc(id)}</code></div>
           <div class="chat-account-actions">
-            <button class="ui-button ui-button--danger" data-action="disconnect-telegram">Disconnect</button>
+            <button class="ui-button ui-button--danger" data-action="disconnect-telegram">${esc(t("chat.disconnect"))}</button>
           </div>
         </div>
       `;
@@ -308,17 +341,21 @@ class ChatSettingsPanel extends HTMLElement {
   }
 
   _renderBindInstructions(bot) {
+    this._lastBindBot = bot;
     const username = bot.username;
     const link = bot.webUrl || (username ? `https://web.telegram.org/k/#@${username}` : "");
+    const step1 = username
+      ? t("chat.bindStep1User", { username })
+      : t("chat.bindStep1Bot");
     this._bindInstructionsEl.innerHTML = `
-      <div class="telegram-bind-title">Waiting for your Telegram DM…</div>
+      <div class="telegram-bind-title">${esc(t("chat.waitingDm"))}</div>
       <ol class="telegram-bind-steps">
-        <li>Open ${username ? `<code>@${esc(username)}</code>` : "the bot"} in Telegram.</li>
-        <li>Send <code>/start</code> in the private chat.</li>
+        <li>${esc(step1)}</li>
+        <li>${esc(t("chat.bindStep2"))}</li>
       </ol>
       ${
         link
-          ? `<a class="ui-button ui-button--secondary telegram-open-link" href="${escAttr(link)}" target="_blank" rel="noreferrer">Open Telegram</a>`
+          ? `<a class="ui-button ui-button--secondary telegram-open-link" href="${escAttr(link)}" target="_blank" rel="noreferrer">${esc(t("chat.openTelegram"))}</a>`
           : ""
       }
     `;
@@ -326,12 +363,14 @@ class ChatSettingsPanel extends HTMLElement {
   }
 
   _clearBindInstructions() {
+    this._lastBindBot = null;
     this._bindInstructionsEl.classList.add("hidden");
     this._bindInstructionsEl.innerHTML = "";
   }
 
   _setRawContent(content) {
     this._textarea.value = content || "{}";
+    this._lastRawContent = content || "{}";
   }
 
   _setTelegramBusy(isBusy) {
@@ -373,7 +412,7 @@ async function postJson(url, payload, options = {}) {
     signal: options.signal,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.success === false) throw new Error(data.error || "Request failed");
+  if (!res.ok || data.success === false) throw new Error(data.error || t("chat.requestFailed"));
   return data;
 }
 
