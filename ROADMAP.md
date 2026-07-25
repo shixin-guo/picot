@@ -6,6 +6,9 @@ Ideas and planned features. Nothing here is committed — just captured so it do
 
 ## ✅ Done
 
+### Bilingual UI core (EN / 中文)
+Locale helper + Appearance language toggle; chrome/Usage/settings/chat + Packet 4 long-tail (sidebar, packages install, Super Agent). Handbook: `docs/i18n-handbook.md`.
+
 ### PWA / Install to Home Screen
 Service worker, manifest, custom icons. Installable on iOS/Android/macOS as a standalone app.
 
@@ -63,7 +66,7 @@ Theme picker, auto-compaction toggle, thinking level, show/hide thinking blocks,
 ## 🔜 Low-Hanging Fruit
 
 ### Bilingual UI (i18n)
-Finish EN/中文 coverage for remaining settings, chat, and packages strings beyond chrome + usage infobar.
+**Mostly done (Packets 1–4 on `feature/i18n-bilingual`).** EN/中文 covers chrome, Usage, settings/chat, packages install status, sidebar, dialogs, and Super Agent UI (~382 keys). Residual: packages browse labels beyond install-status, some Super Agent routing notes, long-tail toasts. See `docs/i18n-handbook.md`.
 
 ### Quick Actions on Tool Results
 Copy output button on tool cards. Expand/collapse all. Maybe re-run command. ~30 mins.
