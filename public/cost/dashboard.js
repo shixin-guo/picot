@@ -1,3 +1,4 @@
+import { onLocaleChange } from "../i18n/index.js";
 import { renderCostInfobar } from "./infobar.js";
 
 const FILTER_STORAGE_KEY = "pi-studio-cost-filters";
@@ -151,13 +152,26 @@ export class CostDashboard extends HTMLElement {
     renderShell(this._root);
     this._section = this._root.querySelector("#infobar-cost-section");
     this._rangeChips = Array.from(this._root.querySelectorAll("[data-range-chip]"));
+    this._lastPayload = null;
     this._bindEvents();
     this._syncRangeChips();
+    this._unsubLocale = onLocaleChange(() => {
+      if (this._section && this._lastPayload) {
+        renderCostInfobar(this._section, this._lastPayload);
+      }
+    });
 
     if (!this.hasAttribute("defer-load")) {
       this.ensureLoaded().catch((error) => {
         console.error("[Cost] Initial load failed:", error);
       });
+    }
+  }
+
+  disconnectedCallback() {
+    if (typeof this._unsubLocale === "function") {
+      this._unsubLocale();
+      this._unsubLocale = null;
     }
   }
 
@@ -189,6 +203,7 @@ export class CostDashboard extends HTMLElement {
       })
       .then((payload) => {
         if (loadVersion !== this._loadVersion) return;
+        this._lastPayload = payload;
         renderCostInfobar(this._section, payload);
         this._hasLoaded = true;
       })

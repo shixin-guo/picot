@@ -3093,6 +3093,53 @@ body {
   color: var(--text-primary);
 }
 
+/* Display language segmented control */
+.locale-toggle {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-glass);
+}
+
+.locale-toggle-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  min-width: 4.5rem;
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.locale-toggle-btn + .locale-toggle-btn {
+  border-left: 1px solid var(--border);
+}
+
+.locale-toggle-btn:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+}
+
+.locale-toggle-btn.active {
+  background: var(--bg-glass-strong, var(--bg-glass-hover));
+  color: var(--accent-text, var(--accent));
+  font-weight: 600;
+}
+
+.locale-toggle-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
 /* Theme grid */
 .theme-grid {
   display: grid;

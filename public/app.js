@@ -59,8 +59,15 @@ import {
   withBrokerWs,
 } from "./workspace/actions.js";
 import { FileBrowser } from "./workspace/file-browser.js";
+import {
+  applyI18n,
+  getLocale,
+  onLocaleChange,
+  setLocale,
+  t,
+} from "./i18n/index.js";
 
-const COMPOSER_PLACEHOLDER = "Type a message, or use / to call a skill…";
+const composerPlaceholder = () => t("chrome.typeMessage");
 
 const fetchInstances = async () => {
   try {
@@ -571,7 +578,7 @@ function setWorkspaceLaunchInProgress(inProgress) {
   if (openFolderBtn) {
     openFolderBtn.disabled = inProgress;
     openFolderBtn.setAttribute("aria-busy", inProgress ? "true" : "false");
-    openFolderBtn.title = inProgress ? "Opening workspace..." : "Open folder as workspace";
+    openFolderBtn.title = inProgress ? t("chrome.openingWorkspace") : t("chrome.openFolder");
   }
 }
 
@@ -1276,7 +1283,7 @@ function handleCompactionStart() {
   const el = document.createElement("div");
   el.className = "system-message compaction-message";
   el.id = "compaction-indicator";
-  el.innerHTML = '<span class="compaction-spinner">⟳</span> Compacting context…';
+  el.innerHTML = `<span class="compaction-spinner">⟳</span> ${t("chrome.compacting")}`;
   messagesContainer.appendChild(el);
   scrollToBottom();
 }
@@ -1460,9 +1467,9 @@ function handleAutoRetryStart(event = null) {
   const attempt = event?.attempt;
   const maxAttempts = event?.maxAttempts;
   if (attempt && maxAttempts) {
-    statusText.textContent = `Retrying (${attempt}/${maxAttempts})...`;
+    statusText.textContent = t("chrome.retryingProgress", { attempt, maxAttempts });
   } else {
-    statusText.textContent = "Retrying…";
+    statusText.textContent = t("chrome.retrying");
   }
   updateUI();
 }
@@ -1999,32 +2006,32 @@ const commandList = document.getElementById("command-list");
 const commands = [
   {
     icon: "🗜️",
-    label: "Compact",
-    desc: "Compact context to save tokens",
-    action: () => rpcCommand({ type: "compact" }, "Compacting…"),
+    labelKey: "chrome.compact",
+    descKey: "chrome.compactDesc",
+    action: () => rpcCommand({ type: "compact" }, t("chrome.compacting")),
   },
   {
     icon: "📋",
-    label: "Export HTML",
-    desc: "Export session as HTML file",
+    labelKey: "chrome.exportHtml",
+    descKey: "chrome.exportHtmlDesc",
     action: () => rpcExportHtml(),
   },
   {
     icon: "📊",
-    label: "Session Stats",
-    desc: "Show session statistics",
+    labelKey: "chrome.sessionStats",
+    descKey: "chrome.sessionStatsDesc",
     action: () => showSessionStats(),
   },
   {
     icon: "⬇️",
-    label: "Expand All Tools",
-    desc: "Expand all tool cards",
+    labelKey: "chrome.expandAllTools",
+    descKey: "chrome.expandAllToolsDesc",
     action: () => toolCardRenderer.expandAll(),
   },
   {
     icon: "⬆️",
-    label: "Collapse All Tools",
-    desc: "Collapse all tool cards",
+    labelKey: "chrome.collapseAllTools",
+    descKey: "chrome.collapseAllToolsDesc",
     action: () => toolCardRenderer.collapseAll(),
   },
 ];
@@ -2034,11 +2041,13 @@ function openCommandPalette() {
   commands.forEach((cmd) => {
     const el = document.createElement("div");
     el.className = "command-item";
+    const label = t(cmd.labelKey);
+    const desc = t(cmd.descKey);
     el.innerHTML = `
       <div class="command-icon">${cmd.icon}</div>
       <div>
-        <div class="command-label">${cmd.label}</div>
-        <div class="command-desc">${cmd.desc}</div>
+        <div class="command-label">${label}</div>
+        <div class="command-desc">${desc}</div>
       </div>
     `;
     el.addEventListener("click", () => {
@@ -2069,16 +2078,16 @@ async function rpcCommand(cmd, statusMsg, silent = false) {
     });
     const data = await resp.json();
     if (data.success && !silent) {
-      statusText.textContent = "Done";
+      statusText.textContent = t("chrome.done");
       setTimeout(() => {
-        statusText.textContent = "Connected";
+        statusText.textContent = t("chrome.connected");
       }, 2000);
     } else if (!data.success) {
       console.error("rpcCommand failed:", cmd.type, data.error);
       if (!silent) {
-        statusText.textContent = data.error || "Failed";
+        statusText.textContent = data.error || t("chrome.failed");
         setTimeout(() => {
-          statusText.textContent = "Connected";
+          statusText.textContent = t("chrome.connected");
         }, 3000);
       }
     }
@@ -2086,35 +2095,43 @@ async function rpcCommand(cmd, statusMsg, silent = false) {
   } catch (e) {
     console.error("rpcCommand error:", cmd.type, e);
     if (!silent) {
-      statusText.textContent = "Error";
+      statusText.textContent = t("chrome.error");
       setTimeout(() => {
-        statusText.textContent = "Connected";
+        statusText.textContent = t("chrome.connected");
       }, 3000);
     }
   }
 }
 
 async function rpcExportHtml() {
-  const data = await rpcCommand({ type: "export_html" }, "Exporting…");
+  const data = await rpcCommand({ type: "export_html" }, t("chrome.exporting"));
   if (data?.success && data.data?.path) {
-    statusText.textContent = `Exported: ${data.data.path}`;
+    statusText.textContent = t("chrome.exportedPath", { path: data.data.path });
     setTimeout(() => {
-      statusText.textContent = "Connected";
+      statusText.textContent = t("chrome.connected");
     }, 4000);
   }
 }
 
 async function showSessionStats() {
-  const data = await rpcCommand({ type: "get_session_stats" }, "Loading stats…");
+  const data = await rpcCommand({ type: "get_session_stats" }, t("chrome.loadingStats"));
   if (data?.success && data.data) {
     const s = data.data;
     const lines = [
-      `📊 Session Stats`,
-      `Messages: ${s.totalMessages} (${s.userMessages} user, ${s.assistantMessages} assistant)`,
-      `Tool calls: ${s.toolCalls}`,
+      t("chrome.sessionStatsTitle"),
+      t("chrome.sessionStatsMessages", {
+        total: s.totalMessages,
+        user: s.userMessages,
+        assistant: s.assistantMessages,
+      }),
+      t("chrome.sessionStatsToolCalls", { count: s.toolCalls }),
     ];
     if (s.tokens) {
-      lines.push(`Context: ~${(s.tokens.input / 1000).toFixed(1)}k tokens`);
+      lines.push(
+        t("chrome.sessionStatsContext", {
+          tokens: (s.tokens.input / 1000).toFixed(1),
+        }),
+      );
     }
     messageRenderer.renderSystemMessage(lines.join("\n"));
   }
@@ -3210,11 +3227,11 @@ function updateMirrorInputState() {
   const inputArea = document.querySelector(".input-area");
   if (viewingActiveSession) {
     messageInput.disabled = false;
-    messageInput.placeholder = COMPOSER_PLACEHOLDER;
+    messageInput.placeholder = composerPlaceholder();
     inputArea?.classList.remove("mirror-readonly");
   } else {
     messageInput.disabled = true;
-    messageInput.placeholder = "Viewing historical session (read-only)";
+    messageInput.placeholder = t("chrome.historicalReadonly");
     inputArea?.classList.add("mirror-readonly");
   }
 }
@@ -3409,10 +3426,10 @@ function showCompactButton() {
   const btn = document.createElement("button");
   btn.id = "compact-btn";
   btn.className = "compact-btn";
-  btn.textContent = "Compact";
-  btn.title = "Context is over 80% — compact to save tokens";
+  btn.textContent = t("chrome.compact");
+  btn.title = t("chrome.compactOver80");
   btn.addEventListener("click", () => {
-    rpcCommand({ type: "compact" }, "Compacting…");
+    rpcCommand({ type: "compact" }, t("chrome.compacting"));
     hideCompactButton();
   });
   // Insert next to token usage in header
@@ -3422,6 +3439,13 @@ function showCompactButton() {
 function hideCompactButton() {
   const btn = document.getElementById("compact-btn");
   if (btn) btn.remove();
+}
+
+function refreshCompactButtonLocale() {
+  const btn = document.getElementById("compact-btn");
+  if (!btn) return;
+  btn.textContent = t("chrome.compact");
+  btn.title = t("chrome.compactOver80");
 }
 
 async function fetchContextWindow() {
@@ -3472,7 +3496,7 @@ async function openLanQrModal() {
     }
     if (lanQrLoading) lanQrLoading.style.display = "none";
   } catch {
-    if (lanQrLoading) lanQrLoading.textContent = "QR code unavailable";
+    if (lanQrLoading) lanQrLoading.textContent = t("chrome.qrUnavailable");
   }
 }
 
@@ -3507,10 +3531,10 @@ async function refreshLanUrl() {
     lanUrl = typeof data?.lanUrl === "string" ? data.lanUrl : "";
     if (!lanUrl && lanUrls.length > 0) lanUrl = lanUrls[0];
     if (tailscaleUrl) {
-      statusText.textContent = "Connected • TS";
+      statusText.textContent = t("chrome.connectedTs");
       statusText.title = tailscaleUrl;
     } else if (lanUrl) {
-      statusText.textContent = "Connected • LAN";
+      statusText.textContent = t("chrome.connectedLan");
       statusText.title = lanUrl;
     }
     updateLanQrButton(lanUrl);
@@ -3524,13 +3548,13 @@ function updateConnectionStatus(status) {
 
   if (status === "connected") {
     if (tailscaleUrl) {
-      statusText.textContent = "Connected • TS";
+      statusText.textContent = t("chrome.connectedTs");
       statusText.title = tailscaleUrl;
     } else if (lanUrl) {
-      statusText.textContent = "Connected • LAN";
+      statusText.textContent = t("chrome.connectedLan");
       statusText.title = lanUrl;
     } else {
-      statusText.textContent = "Connected";
+      statusText.textContent = t("chrome.connected");
       statusText.title = "";
     }
     // Fetch network link metadata on first connect
@@ -3538,7 +3562,7 @@ function updateConnectionStatus(status) {
       void refreshLanUrl();
     }
   } else if (status === "disconnected") {
-    statusText.textContent = "Disconnected";
+    statusText.textContent = t("chrome.disconnected");
   }
 }
 
@@ -3551,11 +3575,20 @@ function updateUI() {
   if (isStreaming) {
     statusIndicator.classList.add("streaming");
     statusIndicator.classList.remove("connected");
-    statusText.textContent = "Working…";
+    statusText.textContent = t("chrome.working");
   } else {
     statusIndicator.classList.remove("streaming");
     statusIndicator.classList.add("connected");
-    statusText.textContent = "Connected";
+    if (tailscaleUrl) {
+      statusText.textContent = t("chrome.connectedTs");
+      statusText.title = tailscaleUrl;
+    } else if (lanUrl) {
+      statusText.textContent = t("chrome.connectedLan");
+      statusText.title = lanUrl;
+    } else {
+      statusText.textContent = t("chrome.connected");
+      statusText.title = "";
+    }
   }
 
   messageInput.disabled = !onboarding.canType;
@@ -3576,9 +3609,9 @@ function updateUI() {
     messageInput.disabled = true;
     sendBtn.disabled = true;
     abortBtn.classList.add("hidden");
-    messageInput.placeholder = "Waiting for current session to finish…";
+    messageInput.placeholder = t("chrome.waitingSessionFinish");
   } else if (onboarding.canQuery) {
-    messageInput.placeholder = COMPOSER_PLACEHOLDER;
+    messageInput.placeholder = composerPlaceholder();
   }
 }
 
@@ -3601,6 +3634,7 @@ const settingsClose = document.getElementById("settings-close");
 const settingsNavItems = Array.from(document.querySelectorAll(".settings-nav-item"));
 const settingsTabs = Array.from(document.querySelectorAll(".settings-tab"));
 const themeGrid = document.getElementById("theme-grid");
+const localeToggle = document.getElementById("locale-toggle");
 
 const toggleAutoCompact = document.getElementById("toggle-auto-compact");
 const thinkingEffortSteps = document.getElementById("thinking-effort-steps");
@@ -3678,7 +3712,7 @@ async function loadPiVersion() {
           piVersionCache = version;
           piVersionValue.textContent = piVersionCache;
         } else {
-          piVersionValue.textContent = "Unavailable (empty version)";
+          piVersionValue.textContent = t("settings.updates.unavailableEmpty");
         }
       } else {
         const data = await rpcCommand({ type: "get_pi_version" });
@@ -3688,13 +3722,13 @@ async function loadPiVersion() {
         } else {
           const reason = formatPiVersionError(data?.error, "version missing in response");
           console.error("[settings] failed to load pi version:", data);
-          piVersionValue.textContent = `Unavailable (${reason})`;
+          piVersionValue.textContent = t("settings.updates.unavailableReason", { reason });
         }
       }
     } catch (err) {
       const reason = formatPiVersionError(err);
       console.error("[settings] failed to load pi version:", err);
-      piVersionValue.textContent = `Unavailable (${reason})`;
+      piVersionValue.textContent = t("settings.updates.unavailableReason", { reason });
     } finally {
       piVersionInflight = null;
     }
@@ -4161,6 +4195,7 @@ wsClient.addEventListener("capabilities", () => {
 });
 
 function buildThemeGrid() {
+  if (!themeGrid) return;
   themeGrid.innerHTML = "";
   const current = getCurrentTheme();
 
@@ -4180,6 +4215,28 @@ function buildThemeGrid() {
     });
     themeGrid.appendChild(btn);
   }
+}
+
+function syncLocaleToggle(locale = getLocale()) {
+  if (!localeToggle) return;
+  localeToggle.querySelectorAll(".locale-toggle-btn").forEach((btn) => {
+    const active = btn.dataset.locale === locale;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function setupLocaleToggle() {
+  if (!localeToggle || localeToggle.dataset.bound === "1") return;
+  localeToggle.dataset.bound = "1";
+  localeToggle.addEventListener("click", (event) => {
+    const btn = event.target.closest(".locale-toggle-btn");
+    if (!btn || !localeToggle.contains(btn)) return;
+    const next = btn.dataset.locale;
+    if (!next || next === getLocale()) return;
+    setLocale(next);
+  });
+  syncLocaleToggle();
 }
 
 function normalizeSettingsTabKey(tabKey) {
@@ -4219,8 +4276,10 @@ async function openSettings(tabKey = "general", options = {}) {
   document.querySelector(".mode-link:first-child")?.classList.remove("active");
   selectSettingsTab(targetTabKey);
   buildThemeGrid();
+  syncLocaleToggle();
+  applyI18n(settingsPanel);
   if (piVersionValue) {
-    piVersionValue.textContent = piVersionCache || "Loading…";
+    piVersionValue.textContent = piVersionCache || t("common.loading");
   }
   setTimeout(() => {
     if (!settingsPanel.classList.contains("hidden")) loadPiVersion();
@@ -4435,5 +4494,23 @@ if (splash) {
     setTimeout(() => splash.remove(), 300);
   });
 }
+
+// ═══════════════════════════════════════
+// Display language (i18n)
+// ═══════════════════════════════════════
+
+function refreshLocalizedUi() {
+  applyI18n();
+  syncLocaleToggle();
+  updateUI();
+  refreshCompactButtonLocale();
+  updateMirrorInputState();
+}
+
+setupLocaleToggle();
+refreshLocalizedUi();
+onLocaleChange(() => {
+  refreshLocalizedUi();
+});
 
 console.log("🚀 Picot initialized");

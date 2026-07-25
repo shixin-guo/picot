@@ -62,6 +62,9 @@ Theme picker, auto-compaction toggle, thinking level, show/hide thinking blocks,
 
 ## 🔜 Low-Hanging Fruit
 
+### Bilingual UI (i18n)
+Finish EN/中文 coverage for remaining settings, chat, and packages strings beyond chrome + usage infobar.
+
 ### Quick Actions on Tool Results
 Copy output button on tool cards. Expand/collapse all. Maybe re-run command. ~30 mins.
 
