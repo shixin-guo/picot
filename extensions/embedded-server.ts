@@ -655,6 +655,106 @@ type UnifiedWS = {
   isAlive?: boolean;
 };
 
+/**
+ * Minimal credential write surface used by Settings → Configuration API keys.
+ *
+ * pi-coding-agent ≥0.80.8 removed `AuthStorage.set` / `.remove` and no longer
+ * exposes `ModelRegistry.authStorage`. The process store is
+ * `ModelRegistry.runtime.credentials` (`CredentialStore.modify` / `delete`).
+ * We also accept a legacy `{ set, remove }` shape so older bundled pi still works.
+ */
+export type ApiKeyCredentialStore = {
+  modify: (
+    provider: string,
+    fn: (current: unknown) => Promise<unknown>,
+  ) => Promise<unknown>;
+  delete: (provider: string) => Promise<void>;
+};
+
+type LegacyApiKeyStorage = {
+  set: (provider: string, credential: unknown) => void;
+  remove: (provider: string) => void;
+};
+
+type RegistryAuthAccess = {
+  runtime?: {
+    credentials?: ApiKeyCredentialStore;
+    refresh?: (options?: { allowNetwork?: boolean }) => Promise<unknown>;
+  };
+  credentials?: ApiKeyCredentialStore;
+  authStorage?: ApiKeyCredentialStore | LegacyApiKeyStorage;
+  refresh?: () => Promise<void>;
+};
+
+function isCredentialStore(value: unknown): value is ApiKeyCredentialStore {
+  if (!value || typeof value !== "object") return false;
+  const store = value as Partial<ApiKeyCredentialStore>;
+  return typeof store.modify === "function" && typeof store.delete === "function";
+}
+
+function isLegacyApiKeyStorage(value: unknown): value is LegacyApiKeyStorage {
+  if (!value || typeof value !== "object") return false;
+  const store = value as Partial<LegacyApiKeyStorage>;
+  return typeof store.set === "function" && typeof store.remove === "function";
+}
+
+function adaptLegacyApiKeyStorage(storage: LegacyApiKeyStorage): ApiKeyCredentialStore {
+  return {
+    async modify(provider, fn) {
+      const next = await fn(undefined);
+      if (next !== undefined) storage.set(provider, next);
+      return next;
+    },
+    async delete(provider) {
+      storage.remove(provider);
+    },
+  };
+}
+
+/** Resolve the process credential store from a ModelRegistry-like object. */
+export function resolveRegistryCredentialStore(registry: unknown): ApiKeyCredentialStore | null {
+  const access = registry as RegistryAuthAccess | null | undefined;
+  if (!access) return null;
+  const candidates: unknown[] = [
+    access.runtime?.credentials,
+    access.credentials,
+    access.authStorage,
+  ];
+  for (const candidate of candidates) {
+    if (isCredentialStore(candidate)) return candidate;
+    if (isLegacyApiKeyStorage(candidate)) return adaptLegacyApiKeyStorage(candidate);
+  }
+  return null;
+}
+
+export async function persistProviderApiKey(
+  store: ApiKeyCredentialStore,
+  provider: string,
+  apiKey: string,
+): Promise<void> {
+  await store.modify(provider, async () => ({ type: "api_key", key: apiKey }));
+}
+
+export async function removeProviderApiKey(
+  store: ApiKeyCredentialStore,
+  provider: string,
+): Promise<void> {
+  await store.delete(provider);
+}
+
+/** Reload auth availability after a credential mutation (awaited). */
+export async function refreshRegistryAfterAuthChange(registry: unknown): Promise<void> {
+  const access = registry as RegistryAuthAccess | null | undefined;
+  if (!access) return;
+  if (typeof access.runtime?.refresh === "function") {
+    await access.runtime.refresh({ allowNetwork: false });
+    return;
+  }
+  if (typeof access.refresh === "function") {
+    await access.refresh();
+  }
+}
+
 type EmbeddedServerGlobal = {
   server: ServerHandle | null;
   wss: WebSocketServer | null;
@@ -669,8 +769,9 @@ type EmbeddedServerGlobal = {
   getLatestCtx: (() => ExtensionContext | null) | null;
   // Cached process-scoped references that don't change across sessions.
   //
-  // `ModelRegistry` (and its `AuthStorage`) are owned by the pi process,
-  // not by any one session: `~/.pi/agent/auth.json` is shared across every
+  // `ModelRegistry` (and the process `CredentialStore` behind
+  // `registry.runtime.credentials`) are owned by the pi process, not by any
+  // one session: `~/.pi/agent/auth.json` is shared across every
   // `new_session` / `switch_session` / `fork` and every extension reload
   // pi-mono does. The auth Settings panel (`list_auth_status` /
   // `set_api_key` / `remove_api_key`) only needs the registry — gating it
@@ -884,7 +985,7 @@ export async function buildModelCatalog(
 }
 
 async function runModelHealthCheck(
-  registry: CatalogRegistry & { authStorage?: unknown },
+  registry: CatalogRegistry & { authStorage?: unknown; runtime?: unknown },
   model: CatalogModel,
   preferences: ModelPreferencesStore,
 ): Promise<{ provider: string; modelId: string } & ModelHealth> {
@@ -893,13 +994,17 @@ async function runModelHealthCheck(
   const startedAt = Date.now();
   let sawAssistantText = false;
   try {
+    // pi-coding-agent ≥0.80.8: createAgentSession takes `modelRuntime`, not
+    // the removed `authStorage` / `modelRegistry` options. Prefer the
+    // process runtime when the registry exposes it; otherwise let the SDK
+    // create a default runtime from ~/.pi/agent.
+    const modelRuntime = (registry as RegistryAuthAccess).runtime;
     const { session } = await createAgentSession({
       model,
       thinkingLevel: "off",
       tools: [],
       sessionManager: SessionManager.inMemory(),
-      authStorage: registry.authStorage,
-      modelRegistry: registry,
+      ...(modelRuntime ? { modelRuntime } : {}),
     } as Parameters<typeof createAgentSession>[0]);
     try {
       const unsubscribe = session.subscribe((event: unknown) => {
@@ -1736,12 +1841,21 @@ export default function (pi: ExtensionAPI) {
             break;
           }
           try {
-            registry.authStorage.set(provider, {
-              type: "api_key",
-              key: apiKey,
-            });
-            // Refresh so getAvailable() picks up the new key without restart.
-            registry.refresh();
+            const store = resolveRegistryCredentialStore(registry);
+            if (!store) {
+              sendTo(
+                ws,
+                error(
+                  "set_api_key",
+                  "Credential store unavailable on this pi runtime (expected registry.runtime.credentials).",
+                ),
+              );
+              break;
+            }
+            // Persist via CredentialStore.modify — AuthStorage.set was removed in 0.80.8+.
+            await persistProviderApiKey(store, provider, apiKey);
+            // Await refresh so getAvailable() / list_auth_status see the new key.
+            await refreshRegistryAfterAuthChange(registry);
             sendTo(ws, success("set_api_key", { provider }));
           } catch (e: unknown) {
             sendTo(ws, error("set_api_key", errMessage(e)));
@@ -1764,8 +1878,19 @@ export default function (pi: ExtensionAPI) {
             break;
           }
           try {
-            registry.authStorage.remove(provider);
-            registry.refresh();
+            const store = resolveRegistryCredentialStore(registry);
+            if (!store) {
+              sendTo(
+                ws,
+                error(
+                  "remove_api_key",
+                  "Credential store unavailable on this pi runtime (expected registry.runtime.credentials).",
+                ),
+              );
+              break;
+            }
+            await removeProviderApiKey(store, provider);
+            await refreshRegistryAfterAuthChange(registry);
             sendTo(ws, success("remove_api_key", { provider }));
           } catch (e: unknown) {
             sendTo(ws, error("remove_api_key", errMessage(e)));
