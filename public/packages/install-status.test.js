@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { describe, expect, test } from "vitest";
 import { t } from "../i18n/index.js";
 import { renderPackageInstallFailure, summarizePackageError } from "./install-status.js";
