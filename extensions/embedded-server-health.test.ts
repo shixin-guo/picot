@@ -120,8 +120,29 @@ describe("health-check assistant text detection", () => {
     expect(ctx.context.systemPrompt).toBeUndefined();
     expect(ctx.context.tools).toEqual([]);
     expect(ctx.options.maxTokens).toBe(16);
-    // reasoning must be omitted (not "off") so anthropic streamSimple disables thinking
+    // "off" must be omitted because it is truthy to the Anthropic SDK.
     expect(ctx.options.reasoning).toBeUndefined();
+  });
+
+  it("runLightweightModelProbe preserves an active thinking intensity", async () => {
+    const runtime = {
+      completeSimple: async (_model: unknown, _context: unknown, options: unknown) => {
+        expect((options as { reasoning?: string }).reasoning).toBe("high");
+        return {
+          role: "assistant",
+          content: [{ type: "text", text: "pong" }],
+          stopReason: "stop",
+        };
+      },
+    };
+
+    const result = await runLightweightModelProbe(
+      runtime,
+      { provider: "aisz-mom", id: "claude-sonnet-4-6" },
+      "high",
+    );
+
+    expect(result.ok).toBe(true);
   });
 
   it("runLightweightModelProbe surfaces 403-style errors", async () => {

@@ -1255,6 +1255,7 @@ export async function runHttpModelHealthProbe(options: {
 export async function runLightweightModelProbe(
   runtime: HealthCheckModelRuntime | undefined,
   model: CatalogModel,
+  reasoning?: string,
 ): Promise<{ ok: boolean; text: string; error?: string }> {
   if (!runtime || typeof runtime.completeSimple !== "function") {
     return { ok: false, text: "", error: "Model runtime unavailable for health check" };
@@ -1271,8 +1272,9 @@ export async function runLightweightModelProbe(
       },
       {
         maxTokens: 16,
-        // Omit reasoning so anthropic streamSimple sets thinkingEnabled:false
-        // (passing "off" is truthy and can enable thinking on adaptive models).
+        // Preserve an active thinking intensity. Omit "off" because it is truthy
+        // and can enable thinking on adaptive models.
+        ...(reasoning && reasoning !== "off" ? { reasoning } : {}),
         signal: controller.signal,
       },
     );
@@ -1297,6 +1299,7 @@ async function runModelHealthCheck(
   registry: CatalogRegistry & { authStorage?: unknown; runtime?: unknown },
   model: CatalogModel,
   preferences: ModelPreferencesStore,
+  reasoning?: string,
 ): Promise<{ provider: string; modelId: string } & ModelHealth> {
   const provider = model.provider as string;
   const modelId = model.id as string;
@@ -1334,7 +1337,7 @@ async function runModelHealthCheck(
     // Secondary: completeSimple only when HTTP path cannot run (missing baseUrl/key/protocol).
     const modelRuntime = (registry as RegistryAuthAccess).runtime;
     if (modelRuntime && typeof modelRuntime.completeSimple === "function") {
-      const probe = await runLightweightModelProbe(modelRuntime, model);
+      const probe = await runLightweightModelProbe(modelRuntime, model, reasoning);
       const result: { provider: string; modelId: string } & ModelHealth = {
         provider,
         modelId,
@@ -2089,7 +2092,14 @@ export default function (pi: ExtensionAPI) {
           }
           const results = [];
           for (const model of models) {
-            results.push(await runModelHealthCheck(catalogRegistry, model, preferences));
+            results.push(
+              await runModelHealthCheck(
+                catalogRegistry,
+                model,
+                preferences,
+                api?.getThinkingLevel(),
+              ),
+            );
           }
           sendTo(ws, success("check_model_health", { results }));
           break;

@@ -1,6 +1,6 @@
 # Picot 升级与维护手册
 
-**手册版本：1.1.2**（2026-07-26）
+**手册版本：1.1.3**（2026-07-26）
 
 面向本机（Windows 为主）与源码工作区的运维说明：安装布局、官方升级、开发构建、**安装目录外科补丁**、嵌入式 pi 版本、自定义中转供应商、回滚与排障。
 
@@ -300,6 +300,7 @@ Copy-Item -Recurse -Force "$src\*" $dst
 | 自定义中转供应商识别/拉模型失败 | 安装树扩展未重建、URL/协议不匹配 | 见 §7.1；`bun run build:extensions` 后同步 dist；确认 Base URL 含中转前缀 |
 | 健康检查 `No assistant text returned` | 旧逻辑只认流式 `text_delta`；中转常只回最终消息 | ≥1.1.1：改走原生 HTTP 探测（与「测试连通」同路径）；重建并同步 `embedded-server.mjs` |
 | 健康检查 `403 Your request was blocked` | Anthropic SDK / `completeSimple` 请求特征被中转 WAF 拦截 | ≥1.1.1：`check_model_health` 用 `testProviderConnectivity`（Bun `fetch`）；勿再依赖 SDK 做健康检查 |
+| 刷新健康状态后思考强度变为关闭 | HTTP 条件不足时 SDK fallback 探测省略 `reasoning`，Anthropic 路径因此关闭 thinking | ≥1.1.3：从当前 ExtensionAPI 读取思考级别并传给 fallback；仅 `off` 继续省略，避免将其误解为启用 adaptive thinking |
 | 同步脚本报 Picot still running | 安装文件被占用 | 完全退出 `picot.exe`/`pi.exe`（含托盘）后再跑桌面同步 bat |
 | 保存供应商 `provider id is required` | 中文/空 ID 无法通过 `sanitizeProviderId` | 留空 ID；由 Base URL 主机名自动生成（`resolveProviderId`） |
 
@@ -365,7 +366,14 @@ UI 入口：`#settings-custom-provider`（身份验证区块内，API 密钥列�
 - 前端保存时发送选中模型的完整元数据；后端写入 `models.json` 的 `contextWindow` / `maxTokens` 优先使用这些上游数值。
 - 仅当中转 `/v1/models` 没有发布该元数据时，才回退到协议兼容默认值（Claude 类 200k/8k，其他 128k/16k）。这保证未知中转仍可用，但不把默认值误称为上游能力。
 
-### 7.1.3 安装版同步
+### 7.1.3 健康检查保留思考强度（1.1.3）
+
+- 原生 HTTP 是健康检查首选路径；但缺 Base URL、密钥或协议时会回退到 `runLightweightModelProbe` / `completeSimple`。
+- 回退路径必须从 `ExtensionAPI.getThinkingLevel()` 继承当前会话思考强度，并将非 `off` 值传为 `reasoning`；否则 Anthropic SDK 会按未设置处理并关闭 thinking。
+- `off` 仍须省略：SDK 对该非空字符串的处理可能反而开启 adaptive thinking。
+- 验收：将思考强度设为最高 → 刷新模型健康状态 → 强度保持不变；并运行 `extensions/embedded-server-health.test.ts`。
+
+### 7.1.4 安装版同步
 
 **外科同步（安装版生效）：**
 
@@ -395,7 +403,8 @@ bunx vitest run extensions/custom-provider-probe.test.ts extensions/embedded-ser
 
 | 日期 | 版本 | 说明 |
 |------|------|------|
-| 2026-07-26 | **1.1.2** | 自定义供应商模型窗口/输出上限优先跟随中转 `/v1/models` 元数据；仅缺失时回退兼容默认值，不再统一写死 128k |
+| 2026-07-26 | **1.1.3** | 模型健康刷新在 SDK fallback 路径继承当前思考强度；避免刷新后将已选最高 thinking 关闭，同时保持 `off` 的安全省略规则 |
+| 2026-07-26 | 1.1.2 | 自定义供应商模型窗口/输出上限优先跟随中转 `/v1/models` 元数据；仅缺失时回退兼容默认值，不再统一写死 128k |
 | 2026-07-26 | 1.1.1 | 健康检查改原生 HTTP（修 `No assistant text` / SDK `403 blocked`）；Provider ID 可选自动派生；models.json 默认字段；桌面同步脚本与故障表 |
 | 2026-07-26 | 1.1.0 | 自定义中转供应商：Authentication 表单、协议识别、拉模型、延迟测试、`/api/custom-provider/*`、手册版本字段；保留密钥 Set/Update |
 | 2026-07-25 | 1.0.0 | 初版：安装布局、static_dir、官方升级、外科同步、pi 边界、故障与清单；吸收 Packet 1–4 安装踩坑 |
