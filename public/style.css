@@ -2190,6 +2190,124 @@ body {
   padding: var(--space-2) 0;
 }
 
+.settings-custom-provider {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.settings-subsection-title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.custom-provider-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.custom-provider-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+}
+
+.custom-provider-field input,
+.custom-provider-field select {
+  width: 100%;
+  padding: var(--space-1-5) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-glass);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.custom-provider-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+  margin-top: var(--space-1);
+}
+
+.custom-provider-status {
+  font-size: var(--font-size-sm);
+  min-height: 1.25em;
+}
+
+.custom-provider-status:not(.hidden) {
+  display: block;
+}
+
+.custom-provider-status.is-error {
+  color: #e53935;
+}
+
+.custom-provider-status.is-ok {
+  color: var(--accent, #4caf50);
+}
+
+.custom-provider-models {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-glass);
+  overflow: hidden;
+}
+
+.custom-provider-models.hidden {
+  display: none;
+}
+
+.custom-provider-models-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.custom-provider-models-list {
+  max-height: 220px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.custom-provider-model-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.custom-provider-model-row:last-child {
+  border-bottom: 0;
+}
+
+.custom-provider-model-row input {
+  margin: 0;
+}
+
+.custom-provider-model-id {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .api-key-row {
   overflow: hidden;
   background: var(--bg-glass);

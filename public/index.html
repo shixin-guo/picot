@@ -1270,6 +1270,142 @@
                                     Loading providers…
                                 </div>
                             </div>
+
+                            <div
+                                class="settings-custom-provider"
+                                id="settings-custom-provider"
+                            >
+                                <div
+                                    class="settings-subsection-title"
+                                    data-i18n="settings.config.customProviderTitle"
+                                >
+                                    Custom provider (relay)
+                                </div>
+                                <p
+                                    class="settings-help"
+                                    data-i18n="settings.config.customProviderHelp"
+                                >
+                                    Add an OpenAI-compatible or Claude/Anthropic
+                                    relay by base URL and API key. Picot auto-detects
+                                    the protocol, lists models, and can test latency.
+                                    Keys still use Set/Update on each provider row.
+                                </p>
+                                <div class="custom-provider-form">
+                                    <label class="custom-provider-field">
+                                        <span data-i18n="settings.config.customProviderId"
+                                            >Provider id</span
+                                        >
+                                        <input
+                                            type="text"
+                                            id="custom-provider-id"
+                                            autocomplete="off"
+                                            spellcheck="false"
+                                            placeholder="my-relay"
+                                        />
+                                    </label>
+                                    <label class="custom-provider-field">
+                                        <span data-i18n="settings.config.customProviderBaseUrl"
+                                            >Base URL</span
+                                        >
+                                        <input
+                                            type="url"
+                                            id="custom-provider-base-url"
+                                            autocomplete="off"
+                                            spellcheck="false"
+                                            placeholder="https://relay.example.com/v1"
+                                        />
+                                    </label>
+                                    <label class="custom-provider-field">
+                                        <span data-i18n="settings.config.customProviderApiKey"
+                                            >API key</span
+                                        >
+                                        <input
+                                            type="password"
+                                            id="custom-provider-api-key"
+                                            autocomplete="off"
+                                            spellcheck="false"
+                                            data-i18n-placeholder="settings.config.pasteApiKey"
+                                            placeholder="Paste API key…"
+                                        />
+                                    </label>
+                                    <label class="custom-provider-field">
+                                        <span data-i18n="settings.config.customProviderProtocol"
+                                            >Protocol</span
+                                        >
+                                        <select id="custom-provider-protocol">
+                                            <option
+                                                value="auto"
+                                                data-i18n="settings.config.protocolAuto"
+                                            >
+                                                Auto-detect
+                                            </option>
+                                            <option value="openai-completions">
+                                                OpenAI-compatible
+                                            </option>
+                                            <option value="anthropic-messages">
+                                                Claude / Anthropic
+                                            </option>
+                                        </select>
+                                    </label>
+                                    <div class="custom-provider-actions">
+                                        <button
+                                            type="button"
+                                            class="ui-button ui-button--secondary"
+                                            id="custom-provider-detect"
+                                            data-i18n="settings.config.detectProtocol"
+                                        >
+                                            Detect &amp; list models
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="ui-button ui-button--secondary"
+                                            id="custom-provider-test"
+                                            data-i18n="settings.config.testConnectivity"
+                                        >
+                                            Test connectivity
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="ui-button ui-button--primary"
+                                            id="custom-provider-save"
+                                            data-i18n="settings.config.saveCustomProvider"
+                                        >
+                                            Save provider
+                                        </button>
+                                    </div>
+                                    <div
+                                        class="custom-provider-status settings-save-status hidden"
+                                        id="custom-provider-status"
+                                        aria-live="polite"
+                                        role="status"
+                                    ></div>
+                                    <div
+                                        class="custom-provider-models hidden"
+                                        id="custom-provider-models"
+                                    >
+                                        <div
+                                            class="custom-provider-models-header"
+                                        >
+                                            <span
+                                                data-i18n="settings.config.customProviderModels"
+                                                >Upstream models</span
+                                            >
+                                            <button
+                                                type="button"
+                                                class="ui-button ui-button--secondary"
+                                                id="custom-provider-select-all"
+                                                data-i18n="settings.config.selectAllModels"
+                                            >
+                                                Select all
+                                            </button>
+                                        </div>
+                                        <div
+                                            class="custom-provider-models-list"
+                                            id="custom-provider-models-list"
+                                        ></div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div
                             class="settings-section"

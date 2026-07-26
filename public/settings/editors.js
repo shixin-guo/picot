@@ -663,6 +663,273 @@ export function setupSettingsEditors({
   const inlineModelsInsertExample = document.getElementById("inline-models-insert-example");
   const modelsConfigDocsLink = document.getElementById("models-config-docs-link");
 
+  // ─── Custom / relay provider form (Authentication section) ───
+  const customProviderId = document.getElementById("custom-provider-id");
+  const customProviderBaseUrl = document.getElementById("custom-provider-base-url");
+  const customProviderApiKey = document.getElementById("custom-provider-api-key");
+  const customProviderProtocol = document.getElementById("custom-provider-protocol");
+  const customProviderDetect = document.getElementById("custom-provider-detect");
+  const customProviderTest = document.getElementById("custom-provider-test");
+  const customProviderSave = document.getElementById("custom-provider-save");
+  const customProviderStatus = document.getElementById("custom-provider-status");
+  const customProviderModels = document.getElementById("custom-provider-models");
+  const customProviderModelsList = document.getElementById("custom-provider-models-list");
+  const customProviderSelectAll = document.getElementById("custom-provider-select-all");
+
+  /** @type {{ id: string, name?: string }[]} */
+  let customProviderDetectedModels = [];
+  /** @type {string | null} */
+  let customProviderDetectedProtocol = null;
+
+  function setCustomProviderStatus(message, kind = "") {
+    if (!customProviderStatus) return;
+    if (!message) {
+      customProviderStatus.textContent = "";
+      customProviderStatus.classList.add("hidden");
+      customProviderStatus.classList.remove("is-error", "is-ok");
+      return;
+    }
+    customProviderStatus.textContent = message;
+    customProviderStatus.classList.remove("hidden", "is-error", "is-ok");
+    if (kind === "error") customProviderStatus.classList.add("is-error");
+    if (kind === "ok") customProviderStatus.classList.add("is-ok");
+  }
+
+  function readCustomProviderForm() {
+    return {
+      providerId: customProviderId?.value?.trim() || "",
+      baseUrl: customProviderBaseUrl?.value?.trim() || "",
+      apiKey: customProviderApiKey?.value?.trim() || "",
+      protocol: customProviderProtocol?.value || "auto",
+    };
+  }
+
+  function validateCustomProviderBasics({ requireKey = true } = {}) {
+    const form = readCustomProviderForm();
+    if (!form.providerId) {
+      setCustomProviderStatus(t("settings.config.customProviderIdRequired"), "error");
+      return null;
+    }
+    if (!form.baseUrl) {
+      setCustomProviderStatus(t("settings.config.customProviderBaseUrlRequired"), "error");
+      return null;
+    }
+    if (requireKey && !form.apiKey) {
+      setCustomProviderStatus(t("settings.config.customProviderKeyRequired"), "error");
+      return null;
+    }
+    return form;
+  }
+
+  function renderCustomProviderModels(models) {
+    customProviderDetectedModels = Array.isArray(models) ? models : [];
+    if (!customProviderModelsList || !customProviderModels) return;
+    customProviderModelsList.innerHTML = "";
+    if (customProviderDetectedModels.length === 0) {
+      customProviderModels.classList.add("hidden");
+      return;
+    }
+    customProviderModels.classList.remove("hidden");
+    for (const model of customProviderDetectedModels) {
+      const row = document.createElement("label");
+      row.className = "custom-provider-model-row";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.className = "custom-provider-model-toggle";
+      checkbox.value = model.id;
+      checkbox.checked = true;
+      const label = document.createElement("span");
+      label.className = "custom-provider-model-id";
+      label.textContent = model.name ? `${model.id} · ${model.name}` : model.id;
+      row.appendChild(checkbox);
+      row.appendChild(label);
+      customProviderModelsList.appendChild(row);
+    }
+    if (customProviderSelectAll) {
+      customProviderSelectAll.textContent = t("settings.config.deselectAllModels");
+    }
+  }
+
+  function getSelectedCustomModelIds() {
+    if (!customProviderModelsList) return [];
+    return [...customProviderModelsList.querySelectorAll(".custom-provider-model-toggle:checked")].map(
+      (el) => el.value,
+    );
+  }
+
+  function resolveCustomProtocol(form) {
+    if (form.protocol === "openai-completions" || form.protocol === "anthropic-messages") {
+      return form.protocol;
+    }
+    return customProviderDetectedProtocol;
+  }
+
+  customProviderSelectAll?.addEventListener("click", () => {
+    if (!customProviderModelsList) return;
+    const toggles = [...customProviderModelsList.querySelectorAll(".custom-provider-model-toggle")];
+    if (toggles.length === 0) return;
+    const allChecked = toggles.every((el) => el.checked);
+    for (const el of toggles) el.checked = !allChecked;
+    customProviderSelectAll.textContent = allChecked
+      ? t("settings.config.selectAllModels")
+      : t("settings.config.deselectAllModels");
+  });
+
+  customProviderDetect?.addEventListener("click", async () => {
+    const form = validateCustomProviderBasics();
+    if (!form) return;
+    customProviderDetect.disabled = true;
+    setCustomProviderStatus(t("settings.config.customProviderDetecting"));
+    try {
+      const resp = await fetch("/api/custom-provider/detect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: form.baseUrl,
+          apiKey: form.apiKey,
+          preferred: form.protocol,
+        }),
+      });
+      const data = await resp.json();
+      if (!data.success || !data.data?.protocol || data.data.protocol === "unknown") {
+        throw new Error(data.error || data.data?.error || t("settings.config.customProviderFailed", { error: "detect" }));
+      }
+      customProviderDetectedProtocol = data.data.protocol;
+      if (customProviderProtocol && form.protocol === "auto") {
+        customProviderProtocol.value = data.data.protocol;
+      }
+      renderCustomProviderModels(data.data.models || []);
+      setCustomProviderStatus(
+        t("settings.config.customProviderDetected", {
+          protocol: data.data.protocol,
+          confidence: data.data.confidence || "—",
+          count: (data.data.models || []).length,
+          ms: data.data.latencyMs ?? "—",
+        }),
+        "ok",
+      );
+    } catch (e) {
+      customProviderDetectedProtocol = null;
+      renderCustomProviderModels([]);
+      setCustomProviderStatus(
+        t("settings.config.customProviderFailed", { error: e.message || String(e) }),
+        "error",
+      );
+    } finally {
+      customProviderDetect.disabled = false;
+    }
+  });
+
+  customProviderTest?.addEventListener("click", async () => {
+    const form = validateCustomProviderBasics();
+    if (!form) return;
+    const protocol = resolveCustomProtocol(form);
+    if (!protocol) {
+      setCustomProviderStatus(
+        t("settings.config.customProviderFailed", {
+          error: "Detect protocol first or choose OpenAI/Claude",
+        }),
+        "error",
+      );
+      return;
+    }
+    const selected = getSelectedCustomModelIds();
+    customProviderTest.disabled = true;
+    setCustomProviderStatus(t("settings.config.customProviderTesting"));
+    try {
+      const resp = await fetch("/api/custom-provider/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: form.baseUrl,
+          apiKey: form.apiKey,
+          protocol,
+          modelId: selected[0],
+        }),
+      });
+      const data = await resp.json();
+      if (!data.success) {
+        throw new Error(data.error || data.data?.error || "test failed");
+      }
+      setCustomProviderStatus(
+        t("settings.config.customProviderTestOk", { ms: data.data?.latencyMs ?? "—" }),
+        "ok",
+      );
+    } catch (e) {
+      setCustomProviderStatus(
+        t("settings.config.customProviderTestFail", { error: e.message || String(e) }),
+        "error",
+      );
+    } finally {
+      customProviderTest.disabled = false;
+    }
+  });
+
+  customProviderSave?.addEventListener("click", async () => {
+    const form = validateCustomProviderBasics();
+    if (!form) return;
+    const protocol = resolveCustomProtocol(form);
+    if (!protocol) {
+      setCustomProviderStatus(
+        t("settings.config.customProviderFailed", {
+          error: "Detect protocol first or choose OpenAI/Claude",
+        }),
+        "error",
+      );
+      return;
+    }
+    let modelIds = getSelectedCustomModelIds();
+    if (modelIds.length === 0 && customProviderDetectedModels.length === 0) {
+      // Allow manual save path: detect first if empty.
+      setCustomProviderStatus(t("settings.config.customProviderModelsRequired"), "error");
+      return;
+    }
+    if (modelIds.length === 0) {
+      setCustomProviderStatus(t("settings.config.customProviderModelsRequired"), "error");
+      return;
+    }
+    customProviderSave.disabled = true;
+    setCustomProviderStatus(t("settings.config.customProviderSaving"));
+    try {
+      const resp = await fetch("/api/custom-provider/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          providerId: form.providerId,
+          baseUrl: form.baseUrl,
+          apiKey: form.apiKey,
+          protocol,
+          modelIds,
+          storeKey: true,
+          includeApiKeyInFile: false,
+        }),
+      });
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || "save failed");
+      const keyNote = data.data?.keyStored
+        ? t("settings.config.customProviderKeyStored")
+        : t("settings.config.customProviderKeyNotStored");
+      setCustomProviderStatus(
+        t("settings.config.customProviderSaved", {
+          id: data.data?.providerId || form.providerId,
+          count: data.data?.modelCount ?? modelIds.length,
+          keyNote,
+        }),
+        "ok",
+      );
+      await onModelConfigurationChanged?.();
+      await loadApiKeysPanel();
+      await loadInlineModelsEditor();
+    } catch (e) {
+      setCustomProviderStatus(
+        t("settings.config.customProviderFailed", { error: e.message || String(e) }),
+        "error",
+      );
+    } finally {
+      customProviderSave.disabled = false;
+    }
+  });
+
   const MODELS_JSON_EXAMPLE = `{
   "providers": {
     "ollama": {

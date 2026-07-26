@@ -1,6 +1,8 @@
 # Picot 升级与维护手册
 
-面向本机（Windows 为主）与源码工作区的运维说明：安装布局、官方升级、开发构建、**安装目录外科补丁**、嵌入式 pi 版本、回滚与排障。
+**手册版本：1.1.0**（2026-07-26）
+
+面向本机（Windows 为主）与源码工作区的运维说明：安装布局、官方升级、开发构建、**安装目录外科补丁**、嵌入式 pi 版本、自定义中转供应商、回滚与排障。
 
 相关文档：
 
@@ -294,6 +296,8 @@ Copy-Item -Recurse -Force "$src\*" $dst
 | `pi update` 对系统 CLI 失败 | pi-node 布局不支持 self-update | 更新 `%LOCALAPPDATA%\pi-node\current`，与 Picot 捆绑 pi 分开 |
 | WebView 仍像旧资源 | 未杀尽进程 / 强缓存 | 完全退出后启动；必要时清 WebView 缓存（少见） |
 | bun / npm 混用锁文件 | 违反 AGENTS | 只用 bun；删掉误生成的 `package-lock.json` |
+| Settings 保存 API 密钥失败 | 旧 `authStorage.set` 路径 | 确保 `embedded-server` 走 `CredentialStore.modify`；重建并同步 `extensions/embedded-server.mjs` |
+| 自定义中转供应商识别/拉模型失败 | 安装树扩展未重建、URL/协议不匹配 | 见 §7.1；`bun run build:extensions` 后同步 dist；确认 Base URL 含中转前缀 |
 
 ---
 
@@ -315,15 +319,50 @@ Copy-Item -Recurse -Force "$src\*" $dst
 |----|-----|
 | 源码根 | `D:/Program_and_website_development/PI-AGENT/PICOT/src/picot` |
 | 安装根 | `C:\Users\Administrator\AppData\Local\Picot` |
-| 当前 i18n 分支（示例） | `feature/i18n-bilingual` |
+| 当前功能分支（示例） | `feature/custom-provider-settings` |
 | i18n 手册 | `docs/i18n-handbook.md` |
 | 包管理 | Bun only |
 | 嵌入 pi 钉 | `scripts/pi-version.json` |
+| 自定义供应商探测模块 | `extensions/custom-provider-probe.ts` |
+| 自定义供应商 API | `/api/custom-provider/{detect,models,test,save}` |
+
+---
+
+## 7.1 自定义中转供应商（Settings → Configuration → Authentication）
+
+**版本：1.1.0 起**
+
+UI 入口：`#settings-custom-provider`（身份验证区块内，API 密钥列表下方）。保留各供应商行的 **Set/Update/Remove key**（`set_api_key` / `remove_api_key` → `CredentialStore`）。
+
+| 能力 | 说明 |
+|------|------|
+| 协议自动识别 | 并行/顺序探测 OpenAI `/v1/models` 与 Claude/Anthropic `/v1/models` 或 `/v1/messages` |
+| 拉取模型列表 | 识别成功后勾选写入 `~/.pi/agent/models.json` |
+| 连通性 / 延迟 | `POST /api/custom-provider/test` 轻量 chat/messages 探测，返回 `latencyMs` |
+| 保存 | 合并 `models.json` + 默认 `storeKey:true` 写入 `auth.json`（不把密钥写进 models.json） |
+
+**外科同步（安装版生效）：**
+
+1. 退出 Picot  
+2. `bun run build:extensions`  
+3. 备份并复制：
+   - `extensions/dist/embedded-server.mjs` → `%LOCALAPPDATA%\Picot\extensions\embedded-server.mjs`
+   - `public/index.html`、`public/style.css`、`public/settings/editors.js`、`public/i18n/{en,zh}.js` → 安装 `public\` 对应路径  
+4. 完整重启 Picot  
+
+**验收（源码）：**
+
+```bash
+bunx vitest run extensions/custom-provider-probe.test.ts extensions/embedded-server-auth.test.ts public/settings/configuration-auth.test.js public/settings/editors.test.js
+```
+
+手工：打开 Settings → Configuration → Authentication → 填写中转 Base URL + Key → Detect → Test → Save → 列表出现供应商且 Update key 仍可用。
 
 ---
 
 ## 10. 变更记录
 
-| 日期 | 说明 |
-|------|------|
-| 2026-07-25 | 初版：安装布局、static_dir、官方升级、外科同步、pi 边界、故障与清单；吸收 Packet 1–4 安装踩坑 |
+| 日期 | 版本 | 说明 |
+|------|------|------|
+| 2026-07-26 | **1.1.0** | 自定义中转供应商：Authentication 表单、协议识别、拉模型、延迟测试、`/api/custom-provider/*`、手册版本字段；保留密钥 Set/Update |
+| 2026-07-25 | 1.0.0 | 初版：安装布局、static_dir、官方升级、外科同步、pi 边界、故障与清单；吸收 Packet 1–4 安装踩坑 |

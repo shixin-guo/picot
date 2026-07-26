@@ -12,7 +12,8 @@
  *   pi extension API (sendUserMessage, abort, set_model, etc.)
  * - Expose REST endpoints the frontend queries directly:
  *   `/api/sessions`, `/api/cost-dashboard`, `/api/files`, `/api/search`,
- *   `/api/open`, `/api/agent-config`, `/api/models-config`, `/api/instances`
+ *   `/api/open`, `/api/agent-config`, `/api/models-config`,
+ *   `/api/custom-provider/*`, `/api/instances`
  * - Forward all pi lifecycle events to connected browsers
  * - Generate session titles from user messages
  *
@@ -57,6 +58,16 @@ import {
   type TelegramBotIdentity,
 } from "./pi-chat-setup";
 import { buildProjectSearchMatch } from "./session-search";
+import {
+  buildModelsJsonProviderEntry,
+  detectProviderProtocol,
+  fetchUpstreamModels,
+  mergeProviderIntoModelsJson,
+  normalizeBaseUrl,
+  sanitizeProviderId,
+  testProviderConnectivity,
+  type ProviderProtocol,
+} from "./custom-provider-probe.ts";
 
 // `pi` is compiled with `bun build --compile`. Inside that runtime,
 // `http.createServer(...).on("upgrade", ...)` accepts the upgrade event
@@ -2686,6 +2697,192 @@ export default function (pi: ExtensionAPI) {
           res.end(JSON.stringify({ success: false, error: errMessage(e) }));
         }
       });
+      return;
+    }
+
+    // Custom / relay provider helpers (Settings → Authentication)
+    // Detect OpenAI vs Claude protocol, list upstream models, measure latency,
+    // and merge a provider into ~/.pi/agent/models.json while optionally
+    // persisting the key via CredentialStore (same path as set_api_key).
+    if (urlPath === "/api/custom-provider/detect" && req.method === "POST") {
+      try {
+        const body = await readJsonBody(req);
+        const baseUrl = getStringField(body, "baseUrl") || "";
+        const apiKey = getStringField(body, "apiKey") || "";
+        const preferredRaw = getStringField(body, "preferred") || "auto";
+        const preferred =
+          preferredRaw === "openai-completions" || preferredRaw === "anthropic-messages"
+            ? preferredRaw
+            : "auto";
+        const result = await detectProviderProtocol({ baseUrl, apiKey, preferred });
+        res.writeHead(result.protocol === "unknown" ? 200 : 200, {
+          "Content-Type": "application/json",
+        });
+        res.end(JSON.stringify({ success: result.protocol !== "unknown", data: result, error: result.error }));
+      } catch (e: unknown) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: errMessage(e) }));
+      }
+      return;
+    }
+
+    if (urlPath === "/api/custom-provider/models" && req.method === "POST") {
+      try {
+        const body = await readJsonBody(req);
+        const baseUrl = getStringField(body, "baseUrl") || "";
+        const apiKey = getStringField(body, "apiKey") || "";
+        const protocolRaw = getStringField(body, "protocol") || "";
+        if (protocolRaw !== "openai-completions" && protocolRaw !== "anthropic-messages") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "protocol must be openai-completions or anthropic-messages" }));
+          return;
+        }
+        const listed = await fetchUpstreamModels({
+          baseUrl,
+          apiKey,
+          protocol: protocolRaw as ProviderProtocol,
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, data: listed }));
+      } catch (e: unknown) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: errMessage(e) }));
+      }
+      return;
+    }
+
+    if (urlPath === "/api/custom-provider/test" && req.method === "POST") {
+      try {
+        const body = await readJsonBody(req);
+        const baseUrl = getStringField(body, "baseUrl") || "";
+        const apiKey = getStringField(body, "apiKey") || "";
+        const protocolRaw = getStringField(body, "protocol") || "";
+        const modelId = getStringField(body, "modelId");
+        if (protocolRaw !== "openai-completions" && protocolRaw !== "anthropic-messages") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "protocol must be openai-completions or anthropic-messages" }));
+          return;
+        }
+        const result = await testProviderConnectivity({
+          baseUrl,
+          apiKey,
+          protocol: protocolRaw as ProviderProtocol,
+          modelId,
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: result.ok, data: result, error: result.error }));
+      } catch (e: unknown) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: errMessage(e) }));
+      }
+      return;
+    }
+
+    if (urlPath === "/api/custom-provider/save" && req.method === "POST") {
+      try {
+        const body = await readJsonBody(req);
+        const providerIdRaw = getStringField(body, "providerId") || "";
+        const baseUrlRaw = getStringField(body, "baseUrl") || "";
+        const apiKey = getStringField(body, "apiKey") || "";
+        const protocolRaw = getStringField(body, "protocol") || "";
+        const includeApiKeyInFile = Boolean(
+          body && typeof body === "object" && (body as { includeApiKeyInFile?: unknown }).includeApiKeyInFile,
+        );
+        const storeKey = body && typeof body === "object"
+          ? (body as { storeKey?: unknown }).storeKey !== false
+          : true;
+        const modelIdsRaw =
+          body && typeof body === "object" ? (body as { modelIds?: unknown }).modelIds : undefined;
+        if (protocolRaw !== "openai-completions" && protocolRaw !== "anthropic-messages") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: "protocol must be openai-completions or anthropic-messages",
+            }),
+          );
+          return;
+        }
+        const providerId = sanitizeProviderId(providerIdRaw);
+        const baseUrl = normalizeBaseUrl(baseUrlRaw);
+        const modelIds = Array.isArray(modelIdsRaw)
+          ? modelIdsRaw
+              .map((m) => (typeof m === "string" ? m.trim() : ""))
+              .filter(Boolean)
+          : [];
+        if (modelIds.length === 0) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "modelIds must be a non-empty string array" }));
+          return;
+        }
+        if (storeKey && !apiKey.trim()) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "apiKey is required when storeKey is true" }));
+          return;
+        }
+
+        const entry = buildModelsJsonProviderEntry({
+          baseUrl,
+          protocol: protocolRaw as ProviderProtocol,
+          models: modelIds,
+          apiKey,
+          includeApiKeyInFile,
+        });
+
+        const configPath = path.join(PI_AGENT_ROOT, "models.json");
+        let existing: unknown = { providers: {} };
+        if (fs.existsSync(configPath)) {
+          try {
+            existing = JSON.parse(fs.readFileSync(configPath, "utf8"));
+          } catch {
+            existing = { providers: {} };
+          }
+        }
+        const merged = mergeProviderIntoModelsJson(existing, providerId, entry);
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        fs.writeFileSync(configPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+
+        let keyStored = false;
+        if (storeKey && apiKey.trim()) {
+          const registry = globalState.modelRegistry;
+          const store = resolveRegistryCredentialStore(registry);
+          if (store) {
+            await persistProviderApiKey(store, providerId, apiKey.trim());
+            await refreshRegistryAfterAuthChange(registry);
+            keyStored = true;
+          }
+        }
+
+        let refreshed = false;
+        try {
+          const registry = globalState.modelRegistry;
+          if (registry && typeof (registry as { refresh?: unknown }).refresh === "function") {
+            await (registry as { refresh: () => unknown }).refresh();
+            refreshed = true;
+          }
+        } catch {
+          // Non-fatal: file saved; user can restart if needed.
+        }
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: {
+              providerId,
+              baseUrl,
+              protocol: protocolRaw,
+              modelCount: modelIds.length,
+              keyStored,
+              refreshed,
+              path: configPath,
+            },
+          }),
+        );
+      } catch (e: unknown) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: errMessage(e) }));
+      }
       return;
     }
 

@@ -626,3 +626,104 @@ describe("settings API key model refresh", () => {
     expect(scrollContainer.scrollTop).toBe(320);
   });
 });
+
+describe("custom provider form", () => {
+  let dom;
+
+  beforeEach(() => {
+    dom = new JSDOM(`
+      <div id="settings-api-keys"></div>
+      <input id="custom-provider-id" />
+      <input id="custom-provider-base-url" />
+      <input id="custom-provider-api-key" />
+      <select id="custom-provider-protocol">
+        <option value="auto">auto</option>
+        <option value="openai-completions">openai</option>
+        <option value="anthropic-messages">claude</option>
+      </select>
+      <button id="custom-provider-detect"></button>
+      <button id="custom-provider-test"></button>
+      <button id="custom-provider-save"></button>
+      <div id="custom-provider-status" class="hidden"></div>
+      <div id="custom-provider-models" class="hidden">
+        <button id="custom-provider-select-all"></button>
+        <div id="custom-provider-models-list"></div>
+      </div>
+      <button id="config-editor-close"></button>
+      <button id="config-editor-cancel"></button>
+      <button id="config-editor-save"></button>
+      <div id="config-editor-overlay"></div>
+      <div id="config-editor-modal"></div>
+      <textarea id="config-editor-textarea"></textarea>
+      <div id="config-editor-error"></div>
+      <div id="config-editor-path"></div>
+    `);
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.confirm = vi.fn(() => true);
+    globalThis.requestAnimationFrame = (callback) => callback();
+    globalThis.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    dom.window.close();
+    delete globalThis.window;
+    delete globalThis.document;
+    delete globalThis.confirm;
+    delete globalThis.requestAnimationFrame;
+    delete globalThis.fetch;
+  });
+
+  test("detects protocol, lists models, and keeps set_api_key path untouched", async () => {
+    globalThis.fetch.mockImplementation(async (url, init) => {
+      if (String(url) === "/api/custom-provider/detect") {
+        return {
+          json: async () => ({
+            success: true,
+            data: {
+              protocol: "openai-completions",
+              confidence: "high",
+              latencyMs: 33,
+              models: [{ id: "gpt-4o-mini" }, { id: "deepseek-v3" }],
+            },
+          }),
+        };
+      }
+      throw new Error(`Unexpected fetch: ${url} ${init?.method}`);
+    });
+
+    const rpcCommand = vi.fn(async (command) => {
+      if (command.type === "list_model_catalog") {
+        return { success: true, data: { providers: [] } };
+      }
+      throw new Error(`Unexpected command: ${command.type}`);
+    });
+
+    setupSettingsEditors({
+      rpcCommand,
+      closeSettings: vi.fn(),
+      onModelConfigurationChanged: vi.fn(),
+      clearSettingsSaveMessage: vi.fn(),
+      setSettingsSaveButtonSaving: vi.fn(),
+      showSettingsSaveError: vi.fn(),
+      showSettingsSaveSuccess: vi.fn(),
+    });
+
+    document.getElementById("custom-provider-id").value = "my-relay";
+    document.getElementById("custom-provider-base-url").value = "https://relay.example.com/v1";
+    document.getElementById("custom-provider-api-key").value = "sk-test";
+    document.getElementById("custom-provider-detect").click();
+
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll(".custom-provider-model-toggle").length).toBe(2),
+    );
+    expect(document.getElementById("custom-provider-protocol").value).toBe("openai-completions");
+    expect(document.getElementById("custom-provider-status").textContent).toMatch(/openai-completions/);
+    // Existing API-key RPC surface must remain available for later Set/Update actions.
+    expect(rpcCommand).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "set_api_key" }),
+      expect.anything(),
+    );
+  });
+});
