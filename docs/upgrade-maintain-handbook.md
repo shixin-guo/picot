@@ -1,6 +1,6 @@
 # Picot 升级与维护手册
 
-**手册版本：1.1.0**（2026-07-26）
+**手册版本：1.1.2**（2026-07-26）
 
 面向本机（Windows 为主）与源码工作区的运维说明：安装布局、官方升级、开发构建、**安装目录外科补丁**、嵌入式 pi 版本、自定义中转供应商、回滚与排障。
 
@@ -298,6 +298,10 @@ Copy-Item -Recurse -Force "$src\*" $dst
 | bun / npm 混用锁文件 | 违反 AGENTS | 只用 bun；删掉误生成的 `package-lock.json` |
 | Settings 保存 API 密钥失败 | 旧 `authStorage.set` 路径 | 确保 `embedded-server` 走 `CredentialStore.modify`；重建并同步 `extensions/embedded-server.mjs` |
 | 自定义中转供应商识别/拉模型失败 | 安装树扩展未重建、URL/协议不匹配 | 见 §7.1；`bun run build:extensions` 后同步 dist；确认 Base URL 含中转前缀 |
+| 健康检查 `No assistant text returned` | 旧逻辑只认流式 `text_delta`；中转常只回最终消息 | ≥1.1.1：改走原生 HTTP 探测（与「测试连通」同路径）；重建并同步 `embedded-server.mjs` |
+| 健康检查 `403 Your request was blocked` | Anthropic SDK / `completeSimple` 请求特征被中转 WAF 拦截 | ≥1.1.1：`check_model_health` 用 `testProviderConnectivity`（Bun `fetch`）；勿再依赖 SDK 做健康检查 |
+| 同步脚本报 Picot still running | 安装文件被占用 | 完全退出 `picot.exe`/`pi.exe`（含托盘）后再跑桌面同步 bat |
+| 保存供应商 `provider id is required` | 中文/空 ID 无法通过 `sanitizeProviderId` | 留空 ID；由 Base URL 主机名自动生成（`resolveProviderId`） |
 
 ---
 
@@ -325,12 +329,14 @@ Copy-Item -Recurse -Force "$src\*" $dst
 | 嵌入 pi 钉 | `scripts/pi-version.json` |
 | 自定义供应商探测模块 | `extensions/custom-provider-probe.ts` |
 | 自定义供应商 API | `/api/custom-provider/{detect,models,test,save}` |
+| 模型健康检查 | `check_model_health` → `runHttpModelHealthProbe`（原生 HTTP） |
+| 桌面同步脚本 | `scripts/sync-custom-provider-to-install.ps1`；生成桌面 bat：`scripts/_write-desktop-sync.ps1` |
 
 ---
 
 ## 7.1 自定义中转供应商（Settings → Configuration → Authentication）
 
-**版本：1.1.0 起**
+**版本：1.1.0 起（健康检查与 ID 体验：1.1.1）**
 
 UI 入口：`#settings-custom-provider`（身份验证区块内，API 密钥列表下方）。保留各供应商行的 **Set/Update/Remove key**（`set_api_key` / `remove_api_key` → `CredentialStore`）。
 
@@ -340,23 +346,48 @@ UI 入口：`#settings-custom-provider`（身份验证区块内，API 密钥列�
 | 拉取模型列表 | 识别成功后勾选写入 `~/.pi/agent/models.json` |
 | 连通性 / 延迟 | `POST /api/custom-provider/test` 轻量 chat/messages 探测，返回 `latencyMs` |
 | 保存 | 合并 `models.json` + 默认 `storeKey:true` 写入 `auth.json`（不把密钥写进 models.json） |
+| Provider ID | 可选；空/中文时用 Base URL 主机名派生（`resolveProviderId` / `suggestProviderIdFromBaseUrl`） |
+| 模型字段 | 保存时优先保留上游 `/v1/models` 返回的 `context_window` / `context_length` 与 `max_output_tokens` 等窗口字段；上游未提供才使用兼容默认值；OpenAI 兼容默认 `authHeader` + `compat` |
+| 模型健康检查 | **1.1.1**：与 Test 相同的 Bun 原生 HTTP（`testProviderConnectivity`），避免 Anthropic SDK `403 blocked` 与「无 text_delta 假失败」 |
+
+### 7.1.1 健康检查实现要点（1.1.1）
+
+- **不要**用 `createAgentSession` 做健康检查：会注入大段 coding system prompt / 工具，中转易 403。
+- **不要**用 `ModelRuntime.completeSimple` 作为主路径：`@anthropic-ai/sdk` 的请求特征在部分中转（如 Cloudflare 1010 / WAF）会被拦；同机 Bun `fetch` 可 200。
+- **主路径**：`runHttpModelHealthProbe` → `testProviderConnectivity`（`max_tokens: 1`、`user: ping`、非流式）。
+- **密钥解析**：`ModelRegistry.getApiKeyForProvider` / `getApiKeyAndHeaders` → CredentialStore → `auth.json` / `models.json`。
+- 验收用例：`extensions/embedded-server-health.test.ts`。
+
+### 7.1.2 上游模型窗口元数据（1.1.2）
+
+- 不再将所有自定义供应商模型写死为 **128k** 上下文。
+- Detect / Models 解析并保留中转站返回的 `context_window`、`contextWindow`、`context_length`、`contextLength`、`max_context_tokens`，以及 `max_output_tokens`、`max_tokens` 等输出上限字段。
+- 前端保存时发送选中模型的完整元数据；后端写入 `models.json` 的 `contextWindow` / `maxTokens` 优先使用这些上游数值。
+- 仅当中转 `/v1/models` 没有发布该元数据时，才回退到协议兼容默认值（Claude 类 200k/8k，其他 128k/16k）。这保证未知中转仍可用，但不把默认值误称为上游能力。
+
+### 7.1.3 安装版同步
 
 **外科同步（安装版生效）：**
 
-1. 退出 Picot  
-2. `bun run build:extensions`  
-3. 备份并复制：
+1. **完全退出** Picot（含托盘；任务管理器确认无 `picot.exe` / `pi.exe`）
+2. 源码目录：`bun run build:extensions`
+3. 任选其一：
+   - 桌面双击 `Sync-Picot-Custom-Provider.bat`（或 `同步Picot自定义供应商.bat`；由 `scripts/_write-desktop-sync.ps1` 生成）
+   - 或 `powershell -File scripts/sync-custom-provider-to-install.ps1`
+4. 脚本复制：
    - `extensions/dist/embedded-server.mjs` → `%LOCALAPPDATA%\Picot\extensions\embedded-server.mjs`
    - `public/index.html`、`public/style.css`、`public/settings/editors.js`、`public/i18n/{en,zh}.js` → 安装 `public\` 对应路径  
-4. 完整重启 Picot  
+5. 完整重启 Picot
+
+**说明：** 进程占用时同步脚本会 **拒绝覆盖** 并提示退出；源码改动不会自动进入 release 安装树。
 
 **验收（源码）：**
 
 ```bash
-bunx vitest run extensions/custom-provider-probe.test.ts extensions/embedded-server-auth.test.ts public/settings/configuration-auth.test.js public/settings/editors.test.js
+bunx vitest run extensions/custom-provider-probe.test.ts extensions/embedded-server-health.test.ts extensions/embedded-server-auth.test.ts public/settings/configuration-auth.test.js public/settings/editors.test.js
 ```
 
-手工：打开 Settings → Configuration → Authentication → 填写中转 Base URL + Key → Detect → Test → Save → 列表出现供应商且 Update key 仍可用。
+手工：Settings → Configuration → Authentication → Base URL + Key（ID 可空）→ Detect → Test → Save → 列表出现供应商 → **检查健康状态** 应为 healthy（与 Test 一致）且 Update key 仍可用。
 
 ---
 
@@ -364,5 +395,7 @@ bunx vitest run extensions/custom-provider-probe.test.ts extensions/embedded-ser
 
 | 日期 | 版本 | 说明 |
 |------|------|------|
-| 2026-07-26 | **1.1.0** | 自定义中转供应商：Authentication 表单、协议识别、拉模型、延迟测试、`/api/custom-provider/*`、手册版本字段；保留密钥 Set/Update |
+| 2026-07-26 | **1.1.2** | 自定义供应商模型窗口/输出上限优先跟随中转 `/v1/models` 元数据；仅缺失时回退兼容默认值，不再统一写死 128k |
+| 2026-07-26 | 1.1.1 | 健康检查改原生 HTTP（修 `No assistant text` / SDK `403 blocked`）；Provider ID 可选自动派生；models.json 默认字段；桌面同步脚本与故障表 |
+| 2026-07-26 | 1.1.0 | 自定义中转供应商：Authentication 表单、协议识别、拉模型、延迟测试、`/api/custom-provider/*`、手册版本字段；保留密钥 Set/Update |
 | 2026-07-25 | 1.0.0 | 初版：安装布局、static_dir、官方升级、外科同步、pi 边界、故障与清单；吸收 Packet 1–4 安装踩坑 |

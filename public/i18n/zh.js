@@ -289,7 +289,7 @@ export default {
   "settings.config.customProviderTitle": "自定义供应商（中转站）",
   "settings.config.customProviderHelp":
     "通过 Base URL 与 API 密钥添加 OpenAI 兼容或 Claude/Anthropic 中转站。Picot 会自动识别协议、拉取模型列表并测试延迟。已有供应商仍可在各行使用「设置/更新密钥」。",
-  "settings.config.customProviderId": "供应商 ID",
+  "settings.config.customProviderId": "供应商 ID（可选）",
   "settings.config.customProviderBaseUrl": "Base URL",
   "settings.config.customProviderApiKey": "API 密钥",
   "settings.config.customProviderProtocol": "协议",
@@ -300,7 +300,8 @@ export default {
   "settings.config.customProviderModels": "上游模型",
   "settings.config.selectAllModels": "全选",
   "settings.config.deselectAllModels": "取消全选",
-  "settings.config.customProviderIdRequired": "请填写供应商 ID。",
+  "settings.config.customProviderIdRequired":
+    "请填写供应商 ID（仅英文/数字，如 my-relay）。可留空，将按 Base URL 自动生成。",
   "settings.config.customProviderBaseUrlRequired": "请填写 Base URL。",
   "settings.config.customProviderKeyRequired": "请填写 API 密钥。",
   "settings.config.customProviderModelsRequired": "请至少选择一个模型。",

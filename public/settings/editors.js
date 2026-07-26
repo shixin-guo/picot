@@ -704,12 +704,49 @@ export function setupSettingsEditors({
     };
   }
 
-  function validateCustomProviderBasics({ requireKey = true } = {}) {
-    const form = readCustomProviderForm();
-    if (!form.providerId) {
-      setCustomProviderStatus(t("settings.config.customProviderIdRequired"), "error");
+  function suggestProviderIdFromBaseUrl(baseUrl) {
+    try {
+      const host = new URL(baseUrl).hostname.replace(/^www\./i, "").toLowerCase();
+      const parts = host.split(".").filter(Boolean);
+      let slug =
+        parts.length >= 2 ? `${parts[parts.length - 2]}-${parts[parts.length - 1]}` : host;
+      slug = slug.replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+      return slug || "custom-relay";
+    } catch {
+      return "custom-relay";
+    }
+  }
+
+  function sanitizeProviderIdClient(raw) {
+    return String(raw || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  function ensureProviderId(form) {
+    const sanitized = sanitizeProviderIdClient(form.providerId);
+    if (sanitized) {
+      form.providerId = sanitized;
+      if (customProviderId && customProviderId.value.trim() !== sanitized) {
+        customProviderId.value = sanitized;
+      }
+      return form;
+    }
+    // Empty or Chinese-only: auto-fill from Base URL so save does not 400.
+    if (!form.baseUrl) {
+      setCustomProviderStatus(t("settings.config.customProviderBaseUrlRequired"), "error");
       return null;
     }
+    const suggested = suggestProviderIdFromBaseUrl(form.baseUrl);
+    form.providerId = suggested;
+    if (customProviderId) customProviderId.value = suggested;
+    return form;
+  }
+
+  function validateCustomProviderBasics({ requireKey = true, requireProviderId = false } = {}) {
+    let form = readCustomProviderForm();
     if (!form.baseUrl) {
       setCustomProviderStatus(t("settings.config.customProviderBaseUrlRequired"), "error");
       return null;
@@ -717,6 +754,17 @@ export function setupSettingsEditors({
     if (requireKey && !form.apiKey) {
       setCustomProviderStatus(t("settings.config.customProviderKeyRequired"), "error");
       return null;
+    }
+    // Detect / Test do not need a provider id; Save will auto-fill if blank.
+    if (requireProviderId) {
+      form = ensureProviderId(form);
+      if (!form) return null;
+    } else if (form.providerId) {
+      // Soft-normalize if user typed something invalid-looking.
+      const sanitized = sanitizeProviderIdClient(form.providerId);
+      if (sanitized && customProviderId && form.providerId !== sanitized) {
+        // Keep user's display unless fully invalid; only rewrite when empty after sanitize on save.
+      }
     }
     return form;
   }
@@ -750,11 +798,18 @@ export function setupSettingsEditors({
     }
   }
 
-  function getSelectedCustomModelIds() {
+  function getSelectedCustomModels() {
     if (!customProviderModelsList) return [];
-    return [...customProviderModelsList.querySelectorAll(".custom-provider-model-toggle:checked")].map(
-      (el) => el.value,
+    const selectedIds = new Set(
+      [...customProviderModelsList.querySelectorAll(".custom-provider-model-toggle:checked")].map((el) => el.value),
     );
+    // Keep relay-provided limits attached to the selected model, rather than
+    // reducing the upstream metadata to an id before saving.
+    return customProviderDetectedModels.filter((model) => selectedIds.has(model.id));
+  }
+
+  function getSelectedCustomModelIds() {
+    return getSelectedCustomModels().map((model) => model.id);
   }
 
   function resolveCustomProtocol(form) {
@@ -775,8 +830,16 @@ export function setupSettingsEditors({
       : t("settings.config.deselectAllModels");
   });
 
+  // Auto-suggest provider id when base URL blurs and id is empty.
+  customProviderBaseUrl?.addEventListener("blur", () => {
+    if (!customProviderId || customProviderId.value.trim()) return;
+    const base = customProviderBaseUrl.value.trim();
+    if (!base) return;
+    customProviderId.value = suggestProviderIdFromBaseUrl(base);
+  });
+
   customProviderDetect?.addEventListener("click", async () => {
-    const form = validateCustomProviderBasics();
+    const form = validateCustomProviderBasics({ requireKey: true, requireProviderId: false });
     if (!form) return;
     customProviderDetect.disabled = true;
     setCustomProviderStatus(t("settings.config.customProviderDetecting"));
@@ -821,7 +884,7 @@ export function setupSettingsEditors({
   });
 
   customProviderTest?.addEventListener("click", async () => {
-    const form = validateCustomProviderBasics();
+    const form = validateCustomProviderBasics({ requireKey: true, requireProviderId: false });
     if (!form) return;
     const protocol = resolveCustomProtocol(form);
     if (!protocol) {
@@ -866,7 +929,7 @@ export function setupSettingsEditors({
   });
 
   customProviderSave?.addEventListener("click", async () => {
-    const form = validateCustomProviderBasics();
+    const form = validateCustomProviderBasics({ requireKey: true, requireProviderId: true });
     if (!form) return;
     const protocol = resolveCustomProtocol(form);
     if (!protocol) {
@@ -899,6 +962,7 @@ export function setupSettingsEditors({
           baseUrl: form.baseUrl,
           apiKey: form.apiKey,
           protocol,
+          models: getSelectedCustomModels(),
           modelIds,
           storeKey: true,
           includeApiKeyInFile: false,

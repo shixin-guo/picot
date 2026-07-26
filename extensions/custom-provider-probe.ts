@@ -16,6 +16,10 @@ export type ProbeModel = {
   id: string;
   name?: string;
   ownedBy?: string;
+  /** Context-window tokens advertised by the upstream relay, when supplied. */
+  contextWindow?: number;
+  /** Maximum output tokens advertised by the upstream relay, when supplied. */
+  maxTokens?: number;
 };
 
 export type ProtocolProbeAttempt = {
@@ -51,7 +55,16 @@ export type ModelsJsonProvider = {
   baseUrl: string;
   api: ProviderProtocol;
   apiKey?: string;
-  models: Array<{ id: string; name?: string }>;
+  authHeader?: boolean;
+  models: Array<{
+    id: string;
+    name?: string;
+    reasoning?: boolean;
+    input?: string[];
+    contextWindow?: number;
+    maxTokens?: number;
+    cost?: Record<string, number>;
+  }>;
   compat?: Record<string, unknown>;
   [key: string]: unknown;
 };
@@ -101,15 +114,72 @@ export function normalizeBaseUrl(raw: string): string {
   return href;
 }
 
+/**
+ * Normalize a provider id for models.json / auth.json keys.
+ * Only [a-z0-9._-] are kept. Empty after sanitize is an error — callers that
+ * want auto-id should use resolveProviderId(raw, baseUrl).
+ */
 export function sanitizeProviderId(raw: string): string {
   const id = String(raw || "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/^-+|-+$/g, "")
+    .replace(/\.{2,}/g, ".")
+    .replace(/-{2,}/g, "-");
   if (!id) throw new Error("provider id is required");
   if (id.length > 64) throw new Error("provider id is too long (max 64)");
   return id;
+}
+
+/**
+ * Derive a stable provider id from a relay base URL host (e.g. api.xxx.com → api-xxx-com).
+ */
+export function suggestProviderIdFromBaseUrl(baseUrl: string): string {
+  let host = "";
+  try {
+    host = new URL(normalizeBaseUrl(baseUrl)).hostname || "";
+  } catch {
+    host = String(baseUrl || "")
+      .replace(/^https?:\/\//i, "")
+      .split("/")[0]
+      .split(":")[0];
+  }
+  host = host
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!host) return "custom-relay";
+  // Prefer last two DNS labels when long (api.foo.example.com → example-com)
+  const parts = host.split(".").filter(Boolean);
+  let slug =
+    parts.length >= 2 ? `${parts[parts.length - 2]}-${parts[parts.length - 1]}` : host;
+  slug = slug.replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!slug) slug = "custom-relay";
+  if (slug.length > 48) slug = slug.slice(0, 48).replace(/-+$/g, "");
+  return slug;
+}
+
+/**
+ * Resolve provider id: use raw when it sanitizes cleanly; otherwise fall back to baseUrl host.
+ * Chinese-only names are not valid models.json keys — auto-derive instead of failing opaquely.
+ */
+export function resolveProviderId(raw: string | undefined, baseUrl?: string): string {
+  const trimmed = String(raw || "").trim();
+  if (trimmed) {
+    try {
+      return sanitizeProviderId(trimmed);
+    } catch {
+      // fall through to baseUrl / default
+    }
+  }
+  if (baseUrl && String(baseUrl).trim()) {
+    return sanitizeProviderId(suggestProviderIdFromBaseUrl(baseUrl));
+  }
+  throw new Error(
+    "provider id is required (use English letters/numbers, or leave blank to auto-fill from Base URL)",
+  );
 }
 
 function joinUrl(baseUrl: string, pathPart: string): string {
@@ -137,6 +207,19 @@ function anthropicAuthHeaders(apiKey: string): Record<string, string> {
   };
 }
 
+function positiveTokenLimit(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined;
+}
+
+function modelTokenLimit(item: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = positiveTokenLimit(item[key]);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
 function parseOpenAiModels(payload: unknown): ProbeModel[] {
   if (!payload || typeof payload !== "object") return [];
   const data = (payload as { data?: unknown }).data;
@@ -144,17 +227,33 @@ function parseOpenAiModels(payload: unknown): ProbeModel[] {
   const models: ProbeModel[] = [];
   for (const item of data) {
     if (!item || typeof item !== "object") continue;
-    const id = (item as { id?: unknown }).id;
+    const record = item as Record<string, unknown>;
+    const id = record.id;
     if (typeof id !== "string" || !id.trim()) continue;
     const name =
-      typeof (item as { name?: unknown }).name === "string"
-        ? ((item as { name: string }).name as string)
-        : undefined;
-    const ownedBy =
-      typeof (item as { owned_by?: unknown }).owned_by === "string"
-        ? ((item as { owned_by: string }).owned_by as string)
-        : undefined;
-    models.push({ id: id.trim(), name, ownedBy });
+      typeof record.name === "string"
+        ? record.name
+        : typeof record.display_name === "string"
+          ? record.display_name
+          : undefined;
+    const ownedBy = typeof record.owned_by === "string" ? record.owned_by : undefined;
+    const contextWindow = modelTokenLimit(record, [
+      "context_window",
+      "contextWindow",
+      "context_length",
+      "contextLength",
+      "max_context_tokens",
+      "maxContextTokens",
+    ]);
+    const maxTokens = modelTokenLimit(record, [
+      "max_output_tokens",
+      "maxOutputTokens",
+      "max_tokens",
+      "maxTokens",
+      "output_token_limit",
+      "outputTokenLimit",
+    ]);
+    models.push({ id: id.trim(), name, ownedBy, ...(contextWindow ? { contextWindow } : {}), ...(maxTokens ? { maxTokens } : {}) });
   }
   return models;
 }
@@ -180,13 +279,16 @@ function parseAnthropicModels(payload: unknown): ProbeModel[] {
           ? (item as { name: string }).name
           : "";
     if (!id.trim()) continue;
+    const record = item as Record<string, unknown>;
     const name =
-      typeof (item as { display_name?: unknown }).display_name === "string"
-        ? (item as { display_name: string }).display_name
-        : typeof (item as { name?: unknown }).name === "string"
-          ? (item as { name: string }).name
+      typeof record.display_name === "string"
+        ? record.display_name
+        : typeof record.name === "string"
+          ? record.name
           : undefined;
-    out.push({ id: id.trim(), name });
+    const contextWindow = modelTokenLimit(record, ["context_window", "contextWindow", "context_length", "contextLength", "max_context_tokens"]);
+    const maxTokens = modelTokenLimit(record, ["max_output_tokens", "maxOutputTokens", "max_tokens", "maxTokens", "output_token_limit"]);
+    out.push({ id: id.trim(), name, ...(contextWindow ? { contextWindow } : {}), ...(maxTokens ? { maxTokens } : {}) });
   }
   return out;
 }
@@ -633,15 +735,31 @@ export function buildModelsJsonProviderEntry(options: {
   includeApiKeyInFile?: boolean;
 }): ModelsJsonProvider {
   const baseUrl = normalizeBaseUrl(options.baseUrl);
+  // Full model defaults improve relay reliability (context/maxTokens/cost).
+  // Minimal `{ id }` works for Ollama, but some Claude/OpenAI proxies behave
+  // better with explicit windows — match pi docs "Full Example".
   const models = options.models
     .map((m) => {
-      if (typeof m === "string") return { id: m.trim() };
+      const id = typeof m === "string" ? m.trim() : String(m.id || "").trim();
+      if (!id) return null;
+      const name =
+        typeof m === "string" ? undefined : m.name ? String(m.name) : undefined;
+      const looksClaude = /claude|opus|sonnet|haiku|anthropic/i.test(id);
       return {
-        id: String(m.id || "").trim(),
-        ...(m.name ? { name: m.name } : {}),
+        id,
+        ...(name ? { name } : {}),
+        reasoning: looksClaude || options.protocol === "anthropic-messages",
+        input: ["text"] as string[],
+        // Preserve upstream relay metadata whenever it advertises token limits.
+        // Defaults remain only for incomplete /v1/models responses.
+        contextWindow:
+          typeof m === "string" ? (looksClaude ? 200000 : 128000) : m.contextWindow || (looksClaude ? 200000 : 128000),
+        maxTokens:
+          typeof m === "string" ? (looksClaude ? 8192 : 16384) : m.maxTokens || (looksClaude ? 8192 : 16384),
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       };
     })
-    .filter((m) => m.id);
+    .filter((m): m is NonNullable<typeof m> => Boolean(m));
   if (models.length === 0) {
     throw new Error("At least one model id is required");
   }
@@ -651,10 +769,12 @@ export function buildModelsJsonProviderEntry(options: {
     models,
   };
   if (options.protocol === "openai-completions") {
+    // Common Chinese OpenAI-compatible relays reject developer role / reasoning_effort.
     entry.compat = {
       supportsDeveloperRole: false,
       supportsReasoningEffort: false,
     };
+    entry.authHeader = true;
   }
   if (options.includeApiKeyInFile && options.apiKey) {
     entry.apiKey = options.apiKey;

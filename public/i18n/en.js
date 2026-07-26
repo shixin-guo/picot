@@ -290,7 +290,7 @@ export default {
   "settings.config.customProviderTitle": "Custom provider (relay)",
   "settings.config.customProviderHelp":
     "Add an OpenAI-compatible or Claude/Anthropic relay by base URL and API key. Picot auto-detects the protocol, lists models, and can test latency. Existing providers still use Set/Update key on each row.",
-  "settings.config.customProviderId": "Provider id",
+  "settings.config.customProviderId": "Provider id (optional)",
   "settings.config.customProviderBaseUrl": "Base URL",
   "settings.config.customProviderApiKey": "API key",
   "settings.config.customProviderProtocol": "Protocol",
@@ -301,7 +301,8 @@ export default {
   "settings.config.customProviderModels": "Upstream models",
   "settings.config.selectAllModels": "Select all",
   "settings.config.deselectAllModels": "Deselect all",
-  "settings.config.customProviderIdRequired": "Provider id is required.",
+  "settings.config.customProviderIdRequired":
+    "Provider id is required (English letters/numbers, e.g. my-relay). Leave blank to auto-fill from Base URL.",
   "settings.config.customProviderBaseUrlRequired": "Base URL is required.",
   "settings.config.customProviderKeyRequired": "API key is required.",
   "settings.config.customProviderModelsRequired": "Select at least one model.",

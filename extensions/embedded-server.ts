@@ -36,11 +36,9 @@ import * as http from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
-  createAgentSession,
   type ExtensionAPI,
   type ExtensionContext,
   type ModelRegistry,
-  SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import QRCode from "qrcode";
 import { type WebSocket, WebSocketServer } from "ws";
@@ -64,7 +62,7 @@ import {
   fetchUpstreamModels,
   mergeProviderIntoModelsJson,
   normalizeBaseUrl,
-  sanitizeProviderId,
+  resolveProviderId,
   testProviderConnectivity,
   type ProviderProtocol,
 } from "./custom-provider-probe.ts";
@@ -680,6 +678,8 @@ export type ApiKeyCredentialStore = {
     fn: (current: unknown) => Promise<unknown>,
   ) => Promise<unknown>;
   delete: (provider: string) => Promise<void>;
+  /** Optional — present on real CredentialStore / RuntimeCredentials. */
+  read?: (provider: string) => Promise<unknown>;
 };
 
 type LegacyApiKeyStorage = {
@@ -687,11 +687,40 @@ type LegacyApiKeyStorage = {
   remove: (provider: string) => void;
 };
 
+/** Minimal assistant reply shape used by the lightweight health-check path. */
+type HealthCheckAssistantMessage = {
+  role?: string;
+  content?: unknown;
+  stopReason?: string;
+  errorMessage?: string;
+};
+
+/**
+ * ModelRuntime-like surface used for health checks / credential reads.
+ * Health checks prefer raw HTTP (testProviderConnectivity) over completeSimple:
+ * the Anthropic SDK path forces stream:true + browser-access headers that many
+ * Chinese relays reject with HTTP 403 even when a plain /v1/messages ping works.
+ */
+type HealthCheckModelRuntime = {
+  credentials?: ApiKeyCredentialStore;
+  refresh?: (options?: { allowNetwork?: boolean }) => Promise<unknown>;
+  completeSimple?: (
+    model: unknown,
+    context: {
+      systemPrompt?: string;
+      messages: Array<{ role: string; content: string; timestamp?: number }>;
+      tools?: unknown[];
+    },
+    options?: {
+      maxTokens?: number;
+      reasoning?: string;
+      signal?: AbortSignal;
+    },
+  ) => Promise<HealthCheckAssistantMessage>;
+};
+
 type RegistryAuthAccess = {
-  runtime?: {
-    credentials?: ApiKeyCredentialStore;
-    refresh?: (options?: { allowNetwork?: boolean }) => Promise<unknown>;
-  };
+  runtime?: HealthCheckModelRuntime;
   credentials?: ApiKeyCredentialStore;
   authStorage?: ApiKeyCredentialStore | LegacyApiKeyStorage;
   refresh?: () => Promise<void>;
@@ -821,6 +850,11 @@ type CatalogModel = {
   id?: string;
   name?: string;
   contextWindow?: number;
+  // Full Model fields (present on registry.getAll() entries):
+  api?: string;
+  baseUrl?: string;
+  maxTokens?: number;
+  [key: string]: unknown;
 };
 
 type ModelHealthStatus = "unknown" | "healthy" | "unhealthy";
@@ -995,6 +1029,270 @@ export async function buildModelCatalog(
   };
 }
 
+/** Extract plain assistant text from a pi AgentMessage-like object. */
+export function extractAssistantTextFromMessage(message: unknown): string {
+  if (!message || typeof message !== "object") return "";
+  const role = (message as { role?: unknown }).role;
+  if (role !== "assistant") return "";
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    const type = (block as { type?: unknown }).type;
+    // Prefer visible text; thinking-only is not enough for "healthy".
+    if (type === "text" && typeof (block as { text?: unknown }).text === "string") {
+      const t = (block as { text: string }).text.trim();
+      if (t) parts.push(t);
+    }
+  }
+  return parts.join("").trim();
+}
+
+function extractAssistantError(message: unknown): string | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  const err = (message as { errorMessage?: unknown }).errorMessage;
+  return typeof err === "string" && err.trim() ? err.trim() : undefined;
+}
+
+/**
+ * Whether a session event indicates the model produced assistant text.
+ *
+ * Many Chinese relays buffer the full completion and only emit message_end
+ * (or non-delta shapes). Relying solely on streaming text_delta caused false
+ * "No assistant text returned" for otherwise working custom providers.
+ */
+export function eventIndicatesAssistantText(event: unknown): boolean {
+  if (!event || typeof event !== "object") return false;
+  const evt = event as {
+    type?: string;
+    message?: unknown;
+    assistantMessageEvent?: {
+      type?: string;
+      delta?: string;
+      content?: unknown;
+    };
+  };
+
+  // Streamed text (preferred path for official providers).
+  const ame = evt.assistantMessageEvent;
+  if (ame) {
+    if (
+      (ame.type === "text_delta" || ame.type === "thinking_delta") &&
+      typeof ame.delta === "string" &&
+      ame.delta.length > 0
+    ) {
+      // thinking_delta alone is weak; still count as progress, final check uses messages.
+      if (ame.type === "text_delta") return true;
+    }
+    if (ame.type === "text_end" && typeof ame.content === "string" && ame.content.trim()) {
+      return true;
+    }
+  }
+
+  // Final / buffered message paths used by some proxies.
+  if (evt.type === "message_end" || evt.type === "message_update" || evt.type === "message_start") {
+    if (extractAssistantTextFromMessage(evt.message)) return true;
+  }
+  if (evt.type === "turn_end" || evt.type === "agent_end") {
+    // turn_end carries assistant message on some versions
+    if (extractAssistantTextFromMessage((evt as { message?: unknown }).message)) return true;
+  }
+  return false;
+}
+
+export function collectAssistantTextFromSession(session: {
+  messages?: unknown;
+}): { text: string; error?: string } {
+  const messages = Array.isArray(session.messages) ? session.messages : [];
+  let text = "";
+  let error: string | undefined;
+  for (const msg of messages) {
+    const err = extractAssistantError(msg);
+    if (err) error = err;
+    const t = extractAssistantTextFromMessage(msg);
+    if (t) text = t; // keep last assistant text
+  }
+  return { text, error };
+}
+
+/** Map registry model.api → probe protocol used by custom-provider-probe. */
+export function protocolFromModelApi(api: unknown): ProviderProtocol | null {
+  const value = String(api || "").trim();
+  if (value === "anthropic-messages") return "anthropic-messages";
+  if (
+    value === "openai-completions" ||
+    value === "openai-responses" ||
+    value === "azure-openai-responses" ||
+    value === "mistral-conversations"
+  ) {
+    return "openai-completions";
+  }
+  return null;
+}
+
+/** Read api_key for a provider from ModelRegistry helpers, credential store, or models.json. */
+export async function resolveProviderApiKeyForHealthCheck(
+  registry: unknown,
+  provider: string,
+  model?: CatalogModel,
+): Promise<string | undefined> {
+  const reg = registry as {
+    getApiKeyForProvider?: (provider: string) => Promise<string | undefined>;
+    getApiKeyAndHeaders?: (model: CatalogModel) => Promise<{
+      ok?: boolean;
+      apiKey?: string;
+      error?: string;
+    }>;
+    runtime?: HealthCheckModelRuntime;
+  } | null;
+
+  // Preferred: public ModelRegistry helpers (works even when runtime is private).
+  if (reg && typeof reg.getApiKeyForProvider === "function") {
+    try {
+      const key = await reg.getApiKeyForProvider(provider);
+      if (typeof key === "string" && key.trim()) return key.trim();
+    } catch {
+      // fall through
+    }
+  }
+  if (reg && model && typeof reg.getApiKeyAndHeaders === "function") {
+    try {
+      const auth = await reg.getApiKeyAndHeaders(model);
+      if (auth?.ok !== false && typeof auth?.apiKey === "string" && auth.apiKey.trim()) {
+        return auth.apiKey.trim();
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  const store = resolveRegistryCredentialStore(registry);
+  if (store && typeof store.read === "function") {
+    try {
+      const cred = await store.read(provider);
+      if (cred && typeof cred === "object") {
+        const c = cred as { type?: string; key?: unknown; access?: unknown };
+        if (c.type === "api_key" && typeof c.key === "string" && c.key.trim()) {
+          return c.key.trim();
+        }
+        if (c.type === "oauth" && typeof c.access === "string" && c.access.trim()) {
+          return c.access.trim();
+        }
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  const embedded = model && typeof model.apiKey === "string" ? model.apiKey.trim() : "";
+  if (embedded) return embedded;
+
+  // Last resort: auth.json then models.json on disk (GUI may have written keys already).
+  try {
+    const authPath = path.join(os.homedir(), ".pi", "agent", "auth.json");
+    if (fs.existsSync(authPath)) {
+      const raw = JSON.parse(fs.readFileSync(authPath, "utf8")) as Record<
+        string,
+        { type?: string; key?: string; access?: string } | undefined
+      >;
+      const entry = raw[provider];
+      if (entry?.type === "api_key" && typeof entry.key === "string" && entry.key.trim()) {
+        return entry.key.trim();
+      }
+      if (entry?.type === "oauth" && typeof entry.access === "string" && entry.access.trim()) {
+        return entry.access.trim();
+      }
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    const modelsPath = path.join(os.homedir(), ".pi", "agent", "models.json");
+    if (fs.existsSync(modelsPath)) {
+      const raw = JSON.parse(fs.readFileSync(modelsPath, "utf8")) as {
+        providers?: Record<string, { apiKey?: string }>;
+      };
+      const key = raw.providers?.[provider]?.apiKey;
+      if (typeof key === "string" && key.trim()) return key.trim();
+    }
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
+/**
+ * Raw HTTP health probe — same request shape as Authentication → "Test connectivity".
+ *
+ * Why not createAgentSession / completeSimple?
+ * - Agent session: huge coding system prompt → WAF 403 on many relays
+ * - completeSimple (Anthropic SDK): stream:true + anthropic-dangerous-direct-browser-access
+ *   headers → still 403 on aisz.mom etc., while a plain non-streaming /v1/messages ping works
+ */
+export async function runHttpModelHealthProbe(options: {
+  baseUrl: string;
+  apiKey: string;
+  protocol: ProviderProtocol;
+  modelId: string;
+}): Promise<{ ok: boolean; latencyMs: number; error?: string; status?: number }> {
+  const result = await testProviderConnectivity({
+    baseUrl: options.baseUrl,
+    apiKey: options.apiKey,
+    protocol: options.protocol,
+    modelId: options.modelId,
+  });
+  return {
+    ok: result.ok,
+    latencyMs: result.latencyMs,
+    error: result.error,
+    status: result.status,
+  };
+}
+
+/** Kept for unit tests / SDK fallback path. */
+export async function runLightweightModelProbe(
+  runtime: HealthCheckModelRuntime | undefined,
+  model: CatalogModel,
+): Promise<{ ok: boolean; text: string; error?: string }> {
+  if (!runtime || typeof runtime.completeSimple !== "function") {
+    return { ok: false, text: "", error: "Model runtime unavailable for health check" };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const reply = await runtime.completeSimple(
+      model,
+      {
+        systemPrompt: undefined,
+        messages: [{ role: "user", content: "ping", timestamp: Date.now() }],
+        tools: [],
+      },
+      {
+        maxTokens: 16,
+        // Omit reasoning so anthropic streamSimple sets thinkingEnabled:false
+        // (passing "off" is truthy and can enable thinking on adaptive models).
+        signal: controller.signal,
+      },
+    );
+    const text = extractAssistantTextFromMessage(reply);
+    const err = extractAssistantError(reply);
+    if (err && !text) return { ok: false, text: "", error: err };
+    if (!text && (reply?.stopReason === "error" || reply?.stopReason === "aborted")) {
+      return {
+        ok: false,
+        text: "",
+        error: err || `Model stopped with reason: ${reply.stopReason}`,
+      };
+    }
+    if (text) return { ok: true, text };
+    return { ok: false, text: "", error: err || "No assistant text returned" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function runModelHealthCheck(
   registry: CatalogRegistry & { authStorage?: unknown; runtime?: unknown },
   model: CatalogModel,
@@ -1003,52 +1301,65 @@ async function runModelHealthCheck(
   const provider = model.provider as string;
   const modelId = model.id as string;
   const startedAt = Date.now();
-  let sawAssistantText = false;
   try {
-    // pi-coding-agent ≥0.80.8: createAgentSession takes `modelRuntime`, not
-    // the removed `authStorage` / `modelRegistry` options. Prefer the
-    // process runtime when the registry exposes it; otherwise let the SDK
-    // create a default runtime from ~/.pi/agent.
-    const modelRuntime = (registry as RegistryAuthAccess).runtime;
-    const { session } = await createAgentSession({
-      model,
-      thinkingLevel: "off",
-      tools: [],
-      sessionManager: SessionManager.inMemory(),
-      ...(modelRuntime ? { modelRuntime } : {}),
-    } as Parameters<typeof createAgentSession>[0]);
-    try {
-      const unsubscribe = session.subscribe((event: unknown) => {
-        const evt = event as {
-          assistantMessageEvent?: {
-            type?: string;
-            delta?: string;
-            content?: unknown;
-          };
-        };
-        if (
-          evt.assistantMessageEvent?.type === "text_delta" &&
-          typeof evt.assistantMessageEvent.delta === "string" &&
-          evt.assistantMessageEvent.delta.length > 0
-        ) {
-          sawAssistantText = true;
-        }
+    const protocol = protocolFromModelApi(model.api);
+    const baseUrl = typeof model.baseUrl === "string" ? model.baseUrl.trim() : "";
+    const apiKey = await resolveProviderApiKeyForHealthCheck(registry, provider, model);
+
+    // Primary: raw HTTP ping identical to custom-provider "Test" button.
+    if (protocol && baseUrl && apiKey) {
+      const probe = await runHttpModelHealthProbe({
+        baseUrl,
+        apiKey,
+        protocol,
+        modelId,
       });
-      try {
-        await session.prompt("Reply exactly: OK");
-      } finally {
-        unsubscribe();
-      }
-    } finally {
-      session.dispose();
+      const result: { provider: string; modelId: string } & ModelHealth = {
+        provider,
+        modelId,
+        status: probe.ok ? "healthy" : "unhealthy",
+        checkedAt: new Date().toISOString(),
+        latencyMs: probe.latencyMs || Date.now() - startedAt,
+        error: probe.ok
+          ? undefined
+          : sanitizeHealthError(
+              probe.error ||
+                (probe.status ? `HTTP ${probe.status}` : "Health check failed"),
+            ),
+      };
+      preferences.setHealth(provider, modelId, result);
+      return result;
     }
+
+    // Secondary: completeSimple only when HTTP path cannot run (missing baseUrl/key/protocol).
+    const modelRuntime = (registry as RegistryAuthAccess).runtime;
+    if (modelRuntime && typeof modelRuntime.completeSimple === "function") {
+      const probe = await runLightweightModelProbe(modelRuntime, model);
+      const result: { provider: string; modelId: string } & ModelHealth = {
+        provider,
+        modelId,
+        status: probe.ok ? "healthy" : "unhealthy",
+        checkedAt: new Date().toISOString(),
+        latencyMs: Date.now() - startedAt,
+        error: probe.ok ? undefined : sanitizeHealthError(probe.error || "Health check failed"),
+      };
+      preferences.setHealth(provider, modelId, result);
+      return result;
+    }
+
+    const missing: string[] = [];
+    if (!protocol) missing.push("unsupported api");
+    if (!baseUrl) missing.push("baseUrl");
+    if (!apiKey) missing.push("api key");
     const result: { provider: string; modelId: string } & ModelHealth = {
       provider,
       modelId,
-      status: sawAssistantText ? "healthy" : "unhealthy",
+      status: "unhealthy",
       checkedAt: new Date().toISOString(),
       latencyMs: Date.now() - startedAt,
-      error: sawAssistantText ? undefined : "No assistant text returned",
+      error: sanitizeHealthError(
+        `Cannot health-check model (${missing.join(", ") || "runtime unavailable"})`,
+      ),
     };
     preferences.setHealth(provider, modelId, result);
     return result;
@@ -2793,6 +3104,8 @@ export default function (pi: ExtensionAPI) {
           : true;
         const modelIdsRaw =
           body && typeof body === "object" ? (body as { modelIds?: unknown }).modelIds : undefined;
+        const modelsRaw =
+          body && typeof body === "object" ? (body as { models?: unknown }).models : undefined;
         if (protocolRaw !== "openai-completions" && protocolRaw !== "anthropic-messages") {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(
@@ -2803,14 +3116,26 @@ export default function (pi: ExtensionAPI) {
           );
           return;
         }
-        const providerId = sanitizeProviderId(providerIdRaw);
         const baseUrl = normalizeBaseUrl(baseUrlRaw);
-        const modelIds = Array.isArray(modelIdsRaw)
-          ? modelIdsRaw
-              .map((m) => (typeof m === "string" ? m.trim() : ""))
-              .filter(Boolean)
-          : [];
-        if (modelIds.length === 0) {
+        // Auto-derive from Base URL when empty or Chinese-only (sanitize would fail).
+        const providerId = resolveProviderId(providerIdRaw, baseUrl);
+        const models = Array.isArray(modelsRaw)
+          ? modelsRaw
+              .filter((m): m is Record<string, unknown> => Boolean(m) && typeof m === "object")
+              .map((m) => ({
+                id: typeof m.id === "string" ? m.id.trim() : "",
+                ...(typeof m.name === "string" ? { name: m.name } : {}),
+                ...(typeof m.contextWindow === "number" ? { contextWindow: m.contextWindow } : {}),
+                ...(typeof m.maxTokens === "number" ? { maxTokens: m.maxTokens } : {}),
+              }))
+              .filter((m) => Boolean(m.id))
+          : Array.isArray(modelIdsRaw)
+            ? modelIdsRaw
+                .map((m) => (typeof m === "string" ? m.trim() : ""))
+                .filter(Boolean)
+                .map((id) => ({ id }))
+            : [];
+        if (models.length === 0) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: false, error: "modelIds must be a non-empty string array" }));
           return;
@@ -2824,7 +3149,7 @@ export default function (pi: ExtensionAPI) {
         const entry = buildModelsJsonProviderEntry({
           baseUrl,
           protocol: protocolRaw as ProviderProtocol,
-          models: modelIds,
+          models,
           apiKey,
           includeApiKeyInFile,
         });
@@ -2872,7 +3197,7 @@ export default function (pi: ExtensionAPI) {
               providerId,
               baseUrl,
               protocol: protocolRaw,
-              modelCount: modelIds.length,
+              modelCount: models.length,
               keyStored,
               refreshed,
               path: configPath,
