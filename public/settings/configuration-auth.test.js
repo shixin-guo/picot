@@ -18,6 +18,12 @@ describe("settings authentication placement", () => {
     expect(configurationPanel).not.toBeNull();
     expect(configurationPanel.querySelector("#settings-api-keys")).not.toBeNull();
     expect(configurationPanel.querySelector("#settings-auth-section")).not.toBeNull();
+    // Custom / relay provider entry lives under Authentication (not a separate tab).
+    expect(configurationPanel.querySelector("#settings-custom-provider")).not.toBeNull();
+    expect(configurationPanel.querySelector("#custom-provider-detect")).not.toBeNull();
+    expect(configurationPanel.querySelector("#custom-provider-test")).not.toBeNull();
+    expect(configurationPanel.querySelector("#custom-provider-save")).not.toBeNull();
+    expect(configurationPanel.querySelector("#custom-provider-base-url")).not.toBeNull();
   });
 
   test("opens API key setup through the Configuration settings tab", () => {

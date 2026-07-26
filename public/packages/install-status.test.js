@@ -1,4 +1,7 @@
+// @vitest-environment jsdom
+
 import { describe, expect, test } from "vitest";
+import { t } from "../i18n/index.js";
 import { renderPackageInstallFailure, summarizePackageError } from "./install-status.js";
 
 describe("package install failure status", () => {
@@ -10,8 +13,8 @@ describe("package install failure status", () => {
 
     expect(status.hidden).toBe(false);
     expect(status.classList.contains("is-error")).toBe(true);
-    expect(status.textContent).toContain("Install failed");
-    expect(status.textContent).toContain("This extension requires npm");
+    expect(status.textContent).toContain(t("packages.installFailed"));
+    expect(status.textContent).toContain(t("packages.installFailedNote"));
     expect(status.textContent).toContain("spawn npm ENOENT");
     expect(status.textContent).toContain("npm executable was not found");
   });
@@ -22,15 +25,15 @@ describe("package install failure status", () => {
 
     renderPackageInstallFailure(status, error, "uninstall");
 
-    expect(status.textContent).toContain("Uninstall failed");
-    expect(status.textContent).not.toContain("Install failed");
-    expect(status.textContent).not.toContain("This extension requires npm");
+    expect(status.textContent).toContain(t("packages.uninstallFailed"));
+    expect(status.textContent).not.toContain(t("packages.installFailed"));
+    expect(status.textContent).not.toContain(t("packages.installFailedNote"));
     expect(status.textContent).toContain("remove failed");
   });
 
   test("keeps permission errors actionable", () => {
     expect(summarizePackageError("EACCES: permission denied, open ~/.pi/agent/npm")).toBe(
-      "Permission denied in ~/.pi/agent/npm (check owner/permissions).",
+      t("packages.permissionDenied"),
     );
   });
 

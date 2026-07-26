@@ -12,7 +12,8 @@
  *   pi extension API (sendUserMessage, abort, set_model, etc.)
  * - Expose REST endpoints the frontend queries directly:
  *   `/api/sessions`, `/api/cost-dashboard`, `/api/files`, `/api/search`,
- *   `/api/open`, `/api/agent-config`, `/api/models-config`, `/api/instances`
+ *   `/api/open`, `/api/agent-config`, `/api/models-config`,
+ *   `/api/custom-provider/*`, `/api/instances`
  * - Forward all pi lifecycle events to connected browsers
  * - Generate session titles from user messages
  *
@@ -35,11 +36,9 @@ import * as http from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
-  createAgentSession,
   type ExtensionAPI,
   type ExtensionContext,
   type ModelRegistry,
-  SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import QRCode from "qrcode";
 import { type WebSocket, WebSocketServer } from "ws";
@@ -57,6 +56,16 @@ import {
   type TelegramBotIdentity,
 } from "./pi-chat-setup";
 import { buildProjectSearchMatch } from "./session-search";
+import {
+  buildModelsJsonProviderEntry,
+  detectProviderProtocol,
+  fetchUpstreamModels,
+  mergeProviderIntoModelsJson,
+  normalizeBaseUrl,
+  resolveProviderId,
+  testProviderConnectivity,
+  type ProviderProtocol,
+} from "./custom-provider-probe.ts";
 
 // `pi` is compiled with `bun build --compile`. Inside that runtime,
 // `http.createServer(...).on("upgrade", ...)` accepts the upgrade event
@@ -655,6 +664,137 @@ type UnifiedWS = {
   isAlive?: boolean;
 };
 
+/**
+ * Minimal credential write surface used by Settings → Configuration API keys.
+ *
+ * pi-coding-agent ≥0.80.8 removed `AuthStorage.set` / `.remove` and no longer
+ * exposes `ModelRegistry.authStorage`. The process store is
+ * `ModelRegistry.runtime.credentials` (`CredentialStore.modify` / `delete`).
+ * We also accept a legacy `{ set, remove }` shape so older bundled pi still works.
+ */
+export type ApiKeyCredentialStore = {
+  modify: (
+    provider: string,
+    fn: (current: unknown) => Promise<unknown>,
+  ) => Promise<unknown>;
+  delete: (provider: string) => Promise<void>;
+  /** Optional — present on real CredentialStore / RuntimeCredentials. */
+  read?: (provider: string) => Promise<unknown>;
+};
+
+type LegacyApiKeyStorage = {
+  set: (provider: string, credential: unknown) => void;
+  remove: (provider: string) => void;
+};
+
+/** Minimal assistant reply shape used by the lightweight health-check path. */
+type HealthCheckAssistantMessage = {
+  role?: string;
+  content?: unknown;
+  stopReason?: string;
+  errorMessage?: string;
+};
+
+/**
+ * ModelRuntime-like surface used for health checks / credential reads.
+ * Health checks prefer raw HTTP (testProviderConnectivity) over completeSimple:
+ * the Anthropic SDK path forces stream:true + browser-access headers that many
+ * Chinese relays reject with HTTP 403 even when a plain /v1/messages ping works.
+ */
+type HealthCheckModelRuntime = {
+  credentials?: ApiKeyCredentialStore;
+  refresh?: (options?: { allowNetwork?: boolean }) => Promise<unknown>;
+  completeSimple?: (
+    model: unknown,
+    context: {
+      systemPrompt?: string;
+      messages: Array<{ role: string; content: string; timestamp?: number }>;
+      tools?: unknown[];
+    },
+    options?: {
+      maxTokens?: number;
+      reasoning?: string;
+      signal?: AbortSignal;
+    },
+  ) => Promise<HealthCheckAssistantMessage>;
+};
+
+type RegistryAuthAccess = {
+  runtime?: HealthCheckModelRuntime;
+  credentials?: ApiKeyCredentialStore;
+  authStorage?: ApiKeyCredentialStore | LegacyApiKeyStorage;
+  refresh?: () => Promise<void>;
+};
+
+function isCredentialStore(value: unknown): value is ApiKeyCredentialStore {
+  if (!value || typeof value !== "object") return false;
+  const store = value as Partial<ApiKeyCredentialStore>;
+  return typeof store.modify === "function" && typeof store.delete === "function";
+}
+
+function isLegacyApiKeyStorage(value: unknown): value is LegacyApiKeyStorage {
+  if (!value || typeof value !== "object") return false;
+  const store = value as Partial<LegacyApiKeyStorage>;
+  return typeof store.set === "function" && typeof store.remove === "function";
+}
+
+function adaptLegacyApiKeyStorage(storage: LegacyApiKeyStorage): ApiKeyCredentialStore {
+  return {
+    async modify(provider, fn) {
+      const next = await fn(undefined);
+      if (next !== undefined) storage.set(provider, next);
+      return next;
+    },
+    async delete(provider) {
+      storage.remove(provider);
+    },
+  };
+}
+
+/** Resolve the process credential store from a ModelRegistry-like object. */
+export function resolveRegistryCredentialStore(registry: unknown): ApiKeyCredentialStore | null {
+  const access = registry as RegistryAuthAccess | null | undefined;
+  if (!access) return null;
+  const candidates: unknown[] = [
+    access.runtime?.credentials,
+    access.credentials,
+    access.authStorage,
+  ];
+  for (const candidate of candidates) {
+    if (isCredentialStore(candidate)) return candidate;
+    if (isLegacyApiKeyStorage(candidate)) return adaptLegacyApiKeyStorage(candidate);
+  }
+  return null;
+}
+
+export async function persistProviderApiKey(
+  store: ApiKeyCredentialStore,
+  provider: string,
+  apiKey: string,
+): Promise<void> {
+  await store.modify(provider, async () => ({ type: "api_key", key: apiKey }));
+}
+
+export async function removeProviderApiKey(
+  store: ApiKeyCredentialStore,
+  provider: string,
+): Promise<void> {
+  await store.delete(provider);
+}
+
+/** Reload auth availability after a credential mutation (awaited). */
+export async function refreshRegistryAfterAuthChange(registry: unknown): Promise<void> {
+  const access = registry as RegistryAuthAccess | null | undefined;
+  if (!access) return;
+  if (typeof access.runtime?.refresh === "function") {
+    await access.runtime.refresh({ allowNetwork: false });
+    return;
+  }
+  if (typeof access.refresh === "function") {
+    await access.refresh();
+  }
+}
+
 type EmbeddedServerGlobal = {
   server: ServerHandle | null;
   wss: WebSocketServer | null;
@@ -669,8 +809,9 @@ type EmbeddedServerGlobal = {
   getLatestCtx: (() => ExtensionContext | null) | null;
   // Cached process-scoped references that don't change across sessions.
   //
-  // `ModelRegistry` (and its `AuthStorage`) are owned by the pi process,
-  // not by any one session: `~/.pi/agent/auth.json` is shared across every
+  // `ModelRegistry` (and the process `CredentialStore` behind
+  // `registry.runtime.credentials`) are owned by the pi process, not by any
+  // one session: `~/.pi/agent/auth.json` is shared across every
   // `new_session` / `switch_session` / `fork` and every extension reload
   // pi-mono does. The auth Settings panel (`list_auth_status` /
   // `set_api_key` / `remove_api_key`) only needs the registry — gating it
@@ -709,6 +850,11 @@ type CatalogModel = {
   id?: string;
   name?: string;
   contextWindow?: number;
+  // Full Model fields (present on registry.getAll() entries):
+  api?: string;
+  baseUrl?: string;
+  maxTokens?: number;
+  [key: string]: unknown;
 };
 
 type ModelHealthStatus = "unknown" | "healthy" | "unhealthy";
@@ -883,56 +1029,340 @@ export async function buildModelCatalog(
   };
 }
 
+/** Extract plain assistant text from a pi AgentMessage-like object. */
+export function extractAssistantTextFromMessage(message: unknown): string {
+  if (!message || typeof message !== "object") return "";
+  const role = (message as { role?: unknown }).role;
+  if (role !== "assistant") return "";
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    const type = (block as { type?: unknown }).type;
+    // Prefer visible text; thinking-only is not enough for "healthy".
+    if (type === "text" && typeof (block as { text?: unknown }).text === "string") {
+      const t = (block as { text: string }).text.trim();
+      if (t) parts.push(t);
+    }
+  }
+  return parts.join("").trim();
+}
+
+function extractAssistantError(message: unknown): string | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  const err = (message as { errorMessage?: unknown }).errorMessage;
+  return typeof err === "string" && err.trim() ? err.trim() : undefined;
+}
+
+/**
+ * Whether a session event indicates the model produced assistant text.
+ *
+ * Many Chinese relays buffer the full completion and only emit message_end
+ * (or non-delta shapes). Relying solely on streaming text_delta caused false
+ * "No assistant text returned" for otherwise working custom providers.
+ */
+export function eventIndicatesAssistantText(event: unknown): boolean {
+  if (!event || typeof event !== "object") return false;
+  const evt = event as {
+    type?: string;
+    message?: unknown;
+    assistantMessageEvent?: {
+      type?: string;
+      delta?: string;
+      content?: unknown;
+    };
+  };
+
+  // Streamed text (preferred path for official providers).
+  const ame = evt.assistantMessageEvent;
+  if (ame) {
+    if (
+      (ame.type === "text_delta" || ame.type === "thinking_delta") &&
+      typeof ame.delta === "string" &&
+      ame.delta.length > 0
+    ) {
+      // thinking_delta alone is weak; still count as progress, final check uses messages.
+      if (ame.type === "text_delta") return true;
+    }
+    if (ame.type === "text_end" && typeof ame.content === "string" && ame.content.trim()) {
+      return true;
+    }
+  }
+
+  // Final / buffered message paths used by some proxies.
+  if (evt.type === "message_end" || evt.type === "message_update" || evt.type === "message_start") {
+    if (extractAssistantTextFromMessage(evt.message)) return true;
+  }
+  if (evt.type === "turn_end" || evt.type === "agent_end") {
+    // turn_end carries assistant message on some versions
+    if (extractAssistantTextFromMessage((evt as { message?: unknown }).message)) return true;
+  }
+  return false;
+}
+
+export function collectAssistantTextFromSession(session: {
+  messages?: unknown;
+}): { text: string; error?: string } {
+  const messages = Array.isArray(session.messages) ? session.messages : [];
+  let text = "";
+  let error: string | undefined;
+  for (const msg of messages) {
+    const err = extractAssistantError(msg);
+    if (err) error = err;
+    const t = extractAssistantTextFromMessage(msg);
+    if (t) text = t; // keep last assistant text
+  }
+  return { text, error };
+}
+
+/** Map registry model.api → probe protocol used by custom-provider-probe. */
+export function protocolFromModelApi(api: unknown): ProviderProtocol | null {
+  const value = String(api || "").trim();
+  if (value === "anthropic-messages") return "anthropic-messages";
+  if (
+    value === "openai-completions" ||
+    value === "openai-responses" ||
+    value === "azure-openai-responses" ||
+    value === "mistral-conversations"
+  ) {
+    return "openai-completions";
+  }
+  return null;
+}
+
+/** Read api_key for a provider from ModelRegistry helpers, credential store, or models.json. */
+export async function resolveProviderApiKeyForHealthCheck(
+  registry: unknown,
+  provider: string,
+  model?: CatalogModel,
+): Promise<string | undefined> {
+  const reg = registry as {
+    getApiKeyForProvider?: (provider: string) => Promise<string | undefined>;
+    getApiKeyAndHeaders?: (model: CatalogModel) => Promise<{
+      ok?: boolean;
+      apiKey?: string;
+      error?: string;
+    }>;
+    runtime?: HealthCheckModelRuntime;
+  } | null;
+
+  // Preferred: public ModelRegistry helpers (works even when runtime is private).
+  if (reg && typeof reg.getApiKeyForProvider === "function") {
+    try {
+      const key = await reg.getApiKeyForProvider(provider);
+      if (typeof key === "string" && key.trim()) return key.trim();
+    } catch {
+      // fall through
+    }
+  }
+  if (reg && model && typeof reg.getApiKeyAndHeaders === "function") {
+    try {
+      const auth = await reg.getApiKeyAndHeaders(model);
+      if (auth?.ok !== false && typeof auth?.apiKey === "string" && auth.apiKey.trim()) {
+        return auth.apiKey.trim();
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  const store = resolveRegistryCredentialStore(registry);
+  if (store && typeof store.read === "function") {
+    try {
+      const cred = await store.read(provider);
+      if (cred && typeof cred === "object") {
+        const c = cred as { type?: string; key?: unknown; access?: unknown };
+        if (c.type === "api_key" && typeof c.key === "string" && c.key.trim()) {
+          return c.key.trim();
+        }
+        if (c.type === "oauth" && typeof c.access === "string" && c.access.trim()) {
+          return c.access.trim();
+        }
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  const embedded = model && typeof model.apiKey === "string" ? model.apiKey.trim() : "";
+  if (embedded) return embedded;
+
+  // Last resort: auth.json then models.json on disk (GUI may have written keys already).
+  try {
+    const authPath = path.join(os.homedir(), ".pi", "agent", "auth.json");
+    if (fs.existsSync(authPath)) {
+      const raw = JSON.parse(fs.readFileSync(authPath, "utf8")) as Record<
+        string,
+        { type?: string; key?: string; access?: string } | undefined
+      >;
+      const entry = raw[provider];
+      if (entry?.type === "api_key" && typeof entry.key === "string" && entry.key.trim()) {
+        return entry.key.trim();
+      }
+      if (entry?.type === "oauth" && typeof entry.access === "string" && entry.access.trim()) {
+        return entry.access.trim();
+      }
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    const modelsPath = path.join(os.homedir(), ".pi", "agent", "models.json");
+    if (fs.existsSync(modelsPath)) {
+      const raw = JSON.parse(fs.readFileSync(modelsPath, "utf8")) as {
+        providers?: Record<string, { apiKey?: string }>;
+      };
+      const key = raw.providers?.[provider]?.apiKey;
+      if (typeof key === "string" && key.trim()) return key.trim();
+    }
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
+/**
+ * Raw HTTP health probe — same request shape as Authentication → "Test connectivity".
+ *
+ * Why not createAgentSession / completeSimple?
+ * - Agent session: huge coding system prompt → WAF 403 on many relays
+ * - completeSimple (Anthropic SDK): stream:true + anthropic-dangerous-direct-browser-access
+ *   headers → still 403 on aisz.mom etc., while a plain non-streaming /v1/messages ping works
+ */
+export async function runHttpModelHealthProbe(options: {
+  baseUrl: string;
+  apiKey: string;
+  protocol: ProviderProtocol;
+  modelId: string;
+}): Promise<{ ok: boolean; latencyMs: number; error?: string; status?: number }> {
+  const result = await testProviderConnectivity({
+    baseUrl: options.baseUrl,
+    apiKey: options.apiKey,
+    protocol: options.protocol,
+    modelId: options.modelId,
+  });
+  return {
+    ok: result.ok,
+    latencyMs: result.latencyMs,
+    error: result.error,
+    status: result.status,
+  };
+}
+
+/** Kept for unit tests / SDK fallback path. */
+export async function runLightweightModelProbe(
+  runtime: HealthCheckModelRuntime | undefined,
+  model: CatalogModel,
+  reasoning?: string,
+): Promise<{ ok: boolean; text: string; error?: string }> {
+  if (!runtime || typeof runtime.completeSimple !== "function") {
+    return { ok: false, text: "", error: "Model runtime unavailable for health check" };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const reply = await runtime.completeSimple(
+      model,
+      {
+        systemPrompt: undefined,
+        messages: [{ role: "user", content: "ping", timestamp: Date.now() }],
+        tools: [],
+      },
+      {
+        maxTokens: 16,
+        // Preserve an active thinking intensity. Omit "off" because it is truthy
+        // and can enable thinking on adaptive models.
+        ...(reasoning && reasoning !== "off" ? { reasoning } : {}),
+        signal: controller.signal,
+      },
+    );
+    const text = extractAssistantTextFromMessage(reply);
+    const err = extractAssistantError(reply);
+    if (err && !text) return { ok: false, text: "", error: err };
+    if (!text && (reply?.stopReason === "error" || reply?.stopReason === "aborted")) {
+      return {
+        ok: false,
+        text: "",
+        error: err || `Model stopped with reason: ${reply.stopReason}`,
+      };
+    }
+    if (text) return { ok: true, text };
+    return { ok: false, text: "", error: err || "No assistant text returned" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function runModelHealthCheck(
-  registry: CatalogRegistry & { authStorage?: unknown },
+  registry: CatalogRegistry & { authStorage?: unknown; runtime?: unknown },
   model: CatalogModel,
   preferences: ModelPreferencesStore,
+  reasoning?: string,
 ): Promise<{ provider: string; modelId: string } & ModelHealth> {
   const provider = model.provider as string;
   const modelId = model.id as string;
   const startedAt = Date.now();
-  let sawAssistantText = false;
   try {
-    const { session } = await createAgentSession({
-      model,
-      thinkingLevel: "off",
-      tools: [],
-      sessionManager: SessionManager.inMemory(),
-      authStorage: registry.authStorage,
-      modelRegistry: registry,
-    } as Parameters<typeof createAgentSession>[0]);
-    try {
-      const unsubscribe = session.subscribe((event: unknown) => {
-        const evt = event as {
-          assistantMessageEvent?: {
-            type?: string;
-            delta?: string;
-            content?: unknown;
-          };
-        };
-        if (
-          evt.assistantMessageEvent?.type === "text_delta" &&
-          typeof evt.assistantMessageEvent.delta === "string" &&
-          evt.assistantMessageEvent.delta.length > 0
-        ) {
-          sawAssistantText = true;
-        }
+    const protocol = protocolFromModelApi(model.api);
+    const baseUrl = typeof model.baseUrl === "string" ? model.baseUrl.trim() : "";
+    const apiKey = await resolveProviderApiKeyForHealthCheck(registry, provider, model);
+
+    // Primary: raw HTTP ping identical to custom-provider "Test" button.
+    if (protocol && baseUrl && apiKey) {
+      const probe = await runHttpModelHealthProbe({
+        baseUrl,
+        apiKey,
+        protocol,
+        modelId,
       });
-      try {
-        await session.prompt("Reply exactly: OK");
-      } finally {
-        unsubscribe();
-      }
-    } finally {
-      session.dispose();
+      const result: { provider: string; modelId: string } & ModelHealth = {
+        provider,
+        modelId,
+        status: probe.ok ? "healthy" : "unhealthy",
+        checkedAt: new Date().toISOString(),
+        latencyMs: probe.latencyMs || Date.now() - startedAt,
+        error: probe.ok
+          ? undefined
+          : sanitizeHealthError(
+              probe.error ||
+                (probe.status ? `HTTP ${probe.status}` : "Health check failed"),
+            ),
+      };
+      preferences.setHealth(provider, modelId, result);
+      return result;
     }
+
+    // Secondary: completeSimple only when HTTP path cannot run (missing baseUrl/key/protocol).
+    const modelRuntime = (registry as RegistryAuthAccess).runtime;
+    if (modelRuntime && typeof modelRuntime.completeSimple === "function") {
+      const probe = await runLightweightModelProbe(modelRuntime, model, reasoning);
+      const result: { provider: string; modelId: string } & ModelHealth = {
+        provider,
+        modelId,
+        status: probe.ok ? "healthy" : "unhealthy",
+        checkedAt: new Date().toISOString(),
+        latencyMs: Date.now() - startedAt,
+        error: probe.ok ? undefined : sanitizeHealthError(probe.error || "Health check failed"),
+      };
+      preferences.setHealth(provider, modelId, result);
+      return result;
+    }
+
+    const missing: string[] = [];
+    if (!protocol) missing.push("unsupported api");
+    if (!baseUrl) missing.push("baseUrl");
+    if (!apiKey) missing.push("api key");
     const result: { provider: string; modelId: string } & ModelHealth = {
       provider,
       modelId,
-      status: sawAssistantText ? "healthy" : "unhealthy",
+      status: "unhealthy",
       checkedAt: new Date().toISOString(),
       latencyMs: Date.now() - startedAt,
-      error: sawAssistantText ? undefined : "No assistant text returned",
+      error: sanitizeHealthError(
+        `Cannot health-check model (${missing.join(", ") || "runtime unavailable"})`,
+      ),
     };
     preferences.setHealth(provider, modelId, result);
     return result;
@@ -1662,7 +2092,14 @@ export default function (pi: ExtensionAPI) {
           }
           const results = [];
           for (const model of models) {
-            results.push(await runModelHealthCheck(catalogRegistry, model, preferences));
+            results.push(
+              await runModelHealthCheck(
+                catalogRegistry,
+                model,
+                preferences,
+                api?.getThinkingLevel(),
+              ),
+            );
           }
           sendTo(ws, success("check_model_health", { results }));
           break;
@@ -1736,12 +2173,21 @@ export default function (pi: ExtensionAPI) {
             break;
           }
           try {
-            registry.authStorage.set(provider, {
-              type: "api_key",
-              key: apiKey,
-            });
-            // Refresh so getAvailable() picks up the new key without restart.
-            registry.refresh();
+            const store = resolveRegistryCredentialStore(registry);
+            if (!store) {
+              sendTo(
+                ws,
+                error(
+                  "set_api_key",
+                  "Credential store unavailable on this pi runtime (expected registry.runtime.credentials).",
+                ),
+              );
+              break;
+            }
+            // Persist via CredentialStore.modify — AuthStorage.set was removed in 0.80.8+.
+            await persistProviderApiKey(store, provider, apiKey);
+            // Await refresh so getAvailable() / list_auth_status see the new key.
+            await refreshRegistryAfterAuthChange(registry);
             sendTo(ws, success("set_api_key", { provider }));
           } catch (e: unknown) {
             sendTo(ws, error("set_api_key", errMessage(e)));
@@ -1764,8 +2210,19 @@ export default function (pi: ExtensionAPI) {
             break;
           }
           try {
-            registry.authStorage.remove(provider);
-            registry.refresh();
+            const store = resolveRegistryCredentialStore(registry);
+            if (!store) {
+              sendTo(
+                ws,
+                error(
+                  "remove_api_key",
+                  "Credential store unavailable on this pi runtime (expected registry.runtime.credentials).",
+                ),
+              );
+              break;
+            }
+            await removeProviderApiKey(store, provider);
+            await refreshRegistryAfterAuthChange(registry);
             sendTo(ws, success("remove_api_key", { provider }));
           } catch (e: unknown) {
             sendTo(ws, error("remove_api_key", errMessage(e)));
@@ -2561,6 +3018,206 @@ export default function (pi: ExtensionAPI) {
           res.end(JSON.stringify({ success: false, error: errMessage(e) }));
         }
       });
+      return;
+    }
+
+    // Custom / relay provider helpers (Settings → Authentication)
+    // Detect OpenAI vs Claude protocol, list upstream models, measure latency,
+    // and merge a provider into ~/.pi/agent/models.json while optionally
+    // persisting the key via CredentialStore (same path as set_api_key).
+    if (urlPath === "/api/custom-provider/detect" && req.method === "POST") {
+      try {
+        const body = await readJsonBody(req);
+        const baseUrl = getStringField(body, "baseUrl") || "";
+        const apiKey = getStringField(body, "apiKey") || "";
+        const preferredRaw = getStringField(body, "preferred") || "auto";
+        const preferred =
+          preferredRaw === "openai-completions" || preferredRaw === "anthropic-messages"
+            ? preferredRaw
+            : "auto";
+        const result = await detectProviderProtocol({ baseUrl, apiKey, preferred });
+        res.writeHead(result.protocol === "unknown" ? 200 : 200, {
+          "Content-Type": "application/json",
+        });
+        res.end(JSON.stringify({ success: result.protocol !== "unknown", data: result, error: result.error }));
+      } catch (e: unknown) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: errMessage(e) }));
+      }
+      return;
+    }
+
+    if (urlPath === "/api/custom-provider/models" && req.method === "POST") {
+      try {
+        const body = await readJsonBody(req);
+        const baseUrl = getStringField(body, "baseUrl") || "";
+        const apiKey = getStringField(body, "apiKey") || "";
+        const protocolRaw = getStringField(body, "protocol") || "";
+        if (protocolRaw !== "openai-completions" && protocolRaw !== "anthropic-messages") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "protocol must be openai-completions or anthropic-messages" }));
+          return;
+        }
+        const listed = await fetchUpstreamModels({
+          baseUrl,
+          apiKey,
+          protocol: protocolRaw as ProviderProtocol,
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, data: listed }));
+      } catch (e: unknown) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: errMessage(e) }));
+      }
+      return;
+    }
+
+    if (urlPath === "/api/custom-provider/test" && req.method === "POST") {
+      try {
+        const body = await readJsonBody(req);
+        const baseUrl = getStringField(body, "baseUrl") || "";
+        const apiKey = getStringField(body, "apiKey") || "";
+        const protocolRaw = getStringField(body, "protocol") || "";
+        const modelId = getStringField(body, "modelId");
+        if (protocolRaw !== "openai-completions" && protocolRaw !== "anthropic-messages") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "protocol must be openai-completions or anthropic-messages" }));
+          return;
+        }
+        const result = await testProviderConnectivity({
+          baseUrl,
+          apiKey,
+          protocol: protocolRaw as ProviderProtocol,
+          modelId,
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: result.ok, data: result, error: result.error }));
+      } catch (e: unknown) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: errMessage(e) }));
+      }
+      return;
+    }
+
+    if (urlPath === "/api/custom-provider/save" && req.method === "POST") {
+      try {
+        const body = await readJsonBody(req);
+        const providerIdRaw = getStringField(body, "providerId") || "";
+        const baseUrlRaw = getStringField(body, "baseUrl") || "";
+        const apiKey = getStringField(body, "apiKey") || "";
+        const protocolRaw = getStringField(body, "protocol") || "";
+        const includeApiKeyInFile = Boolean(
+          body && typeof body === "object" && (body as { includeApiKeyInFile?: unknown }).includeApiKeyInFile,
+        );
+        const storeKey = body && typeof body === "object"
+          ? (body as { storeKey?: unknown }).storeKey !== false
+          : true;
+        const modelIdsRaw =
+          body && typeof body === "object" ? (body as { modelIds?: unknown }).modelIds : undefined;
+        const modelsRaw =
+          body && typeof body === "object" ? (body as { models?: unknown }).models : undefined;
+        if (protocolRaw !== "openai-completions" && protocolRaw !== "anthropic-messages") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: "protocol must be openai-completions or anthropic-messages",
+            }),
+          );
+          return;
+        }
+        const baseUrl = normalizeBaseUrl(baseUrlRaw);
+        // Auto-derive from Base URL when empty or Chinese-only (sanitize would fail).
+        const providerId = resolveProviderId(providerIdRaw, baseUrl);
+        const models = Array.isArray(modelsRaw)
+          ? modelsRaw
+              .filter((m): m is Record<string, unknown> => Boolean(m) && typeof m === "object")
+              .map((m) => ({
+                id: typeof m.id === "string" ? m.id.trim() : "",
+                ...(typeof m.name === "string" ? { name: m.name } : {}),
+                ...(typeof m.contextWindow === "number" ? { contextWindow: m.contextWindow } : {}),
+                ...(typeof m.maxTokens === "number" ? { maxTokens: m.maxTokens } : {}),
+              }))
+              .filter((m) => Boolean(m.id))
+          : Array.isArray(modelIdsRaw)
+            ? modelIdsRaw
+                .map((m) => (typeof m === "string" ? m.trim() : ""))
+                .filter(Boolean)
+                .map((id) => ({ id }))
+            : [];
+        if (models.length === 0) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "modelIds must be a non-empty string array" }));
+          return;
+        }
+        if (storeKey && !apiKey.trim()) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "apiKey is required when storeKey is true" }));
+          return;
+        }
+
+        const entry = buildModelsJsonProviderEntry({
+          baseUrl,
+          protocol: protocolRaw as ProviderProtocol,
+          models,
+          apiKey,
+          includeApiKeyInFile,
+        });
+
+        const configPath = path.join(PI_AGENT_ROOT, "models.json");
+        let existing: unknown = { providers: {} };
+        if (fs.existsSync(configPath)) {
+          try {
+            existing = JSON.parse(fs.readFileSync(configPath, "utf8"));
+          } catch {
+            existing = { providers: {} };
+          }
+        }
+        const merged = mergeProviderIntoModelsJson(existing, providerId, entry);
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        fs.writeFileSync(configPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+
+        let keyStored = false;
+        if (storeKey && apiKey.trim()) {
+          const registry = globalState.modelRegistry;
+          const store = resolveRegistryCredentialStore(registry);
+          if (store) {
+            await persistProviderApiKey(store, providerId, apiKey.trim());
+            await refreshRegistryAfterAuthChange(registry);
+            keyStored = true;
+          }
+        }
+
+        let refreshed = false;
+        try {
+          const registry = globalState.modelRegistry;
+          if (registry && typeof (registry as { refresh?: unknown }).refresh === "function") {
+            await (registry as { refresh: () => unknown }).refresh();
+            refreshed = true;
+          }
+        } catch {
+          // Non-fatal: file saved; user can restart if needed.
+        }
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: {
+              providerId,
+              baseUrl,
+              protocol: protocolRaw,
+              modelCount: models.length,
+              keyStored,
+              refreshed,
+              path: configPath,
+            },
+          }),
+        );
+      } catch (e: unknown) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: errMessage(e) }));
+      }
       return;
     }
 

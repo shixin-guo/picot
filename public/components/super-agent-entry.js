@@ -7,23 +7,35 @@
  * rendered by SessionSidebar.
  */
 
+import { onLocaleChange, t } from "../i18n/index.js";
+
 class SuperAgentEntry extends HTMLElement {
   connectedCallback() {
+    this._renderShell();
+    this._unsubLocale = onLocaleChange(() => this._renderShell());
+    this.addEventListener("click", () => this._open());
+  }
+
+  disconnectedCallback() {
+    this._unsubLocale?.();
+  }
+
+  _renderShell() {
+    const badgeCount = this.querySelector("[data-badge]")?.textContent || "0";
+    const badgeHidden = this.querySelector("[data-badge]")?.classList.contains("hidden") ?? true;
     this.innerHTML = `
       <div class="super-agent-entry-inner">
         <div class="super-agent-entry-icon">⚡</div>
         <div class="super-agent-entry-info">
-          <div class="super-agent-entry-name">AGENT INBOX</div>
+          <div class="super-agent-entry-name">${t("superAgent.entryName")}</div>
           <div class="super-agent-entry-status">
             <span class="super-agent-status-dot"></span>
-            <span class="super-agent-status-text">Incoming work · Telegram</span>
+            <span class="super-agent-status-text">${t("superAgent.entryStatusIncoming")}</span>
           </div>
         </div>
-        <div class="super-agent-entry-badge hidden" data-badge>0</div>
+        <div class="super-agent-entry-badge${badgeHidden ? " hidden" : ""}" data-badge>${badgeCount}</div>
       </div>
     `;
-
-    this.addEventListener("click", () => this._open());
   }
 
   // Called by <super-agent-runtime> when pending/running count changes

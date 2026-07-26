@@ -16,3 +16,10 @@ src-tauri/resources/pi/
 
 # Pi session exports
 pi-session-*.html
+
+/.crew/
+/.crew
+!.crew/artifacts/
+!.crew/graphs/
+!.crew/artifacts/.gitkeep
+!.crew/graphs/.gitkeep
