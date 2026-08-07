@@ -150,13 +150,20 @@ mod tests {
     use super::{SettingScope, SettingSource, SettingsStore};
     use serde_json::json;
     use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    // SystemTime::now() on macOS only has microsecond resolution, so parallel
+    // tests can observe identical nonces and collide on the same temp dir.
+    // A monotonic counter guarantees every `paths()` call yields a unique root.
+    static TEST_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
 
     fn paths() -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_nanos();
+            .as_nanos()
+            .saturating_add(u128::from(TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed)));
         let root = std::env::temp_dir().join(format!("picot-settings-{nonce}"));
         let global = root.join("global/settings.json");
         let project = root.join("workspace/.pi/settings.json");

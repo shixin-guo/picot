@@ -732,7 +732,8 @@
         "thinkingEffortOffClickToCycleReasoning": "思考の深さ：オフ。クリックして推論の深度を切り替え。",
         "receiveBetaUpdates": "ベータアップデートを受け取る",
         "searchTasks": "タスクを検索",
-        "searchResults": "検索結果"
+        "searchResults": "検索結果",
+        "openFilesPanel": "ファイルパネルを開く — {path}"
       },
       "placeholder": {
         "typeAMessageOrUseToCall": "メッセージ… / でコマンド、@ でファイルを入力",

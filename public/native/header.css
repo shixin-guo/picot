@@ -140,6 +140,12 @@
   color: var(--header-pill-text, var(--text-dim));
 }
 
+/* Added by setupProjectHeader() when a click handler is attached, so the
+ * workspace-path pill gets the same pointer affordance as the git-branch pill. */
+.clickable-pill {
+  cursor: pointer;
+}
+
 /* Git branch toggle button (merged diff-sidebar-toggle + branch pill) */
 .git-branch-toggle {
   /* Override the fixed square width from .ui-icon-button--sm */

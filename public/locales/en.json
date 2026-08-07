@@ -732,7 +732,8 @@
         "thinkingEffortOffClickToCycleReasoning": "Thinking effort: off. Click to cycle reasoning depth.",
         "receiveBetaUpdates": "Receive beta updates",
         "searchTasks": "Search tasks",
-        "searchResults": "Search results"
+        "searchResults": "Search results",
+        "openFilesPanel": "Open Files panel — {path}"
       },
       "placeholder": {
         "typeAMessageOrUseToCall": "Message… Type / for commands, @ for files",

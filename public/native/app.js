@@ -228,6 +228,22 @@ window.__picotConfigCall = (op, params, options) => config.call(op, params, opti
 const contextUsage = setupContextUsage();
 const compactContextButton = document.getElementById("compact-context-btn");
 const filePreviewPanel = setupFilePreviewPanel();
+// Owned by setupFileBrowser() once the sidebar DOM is ready. Kept at module
+// scope so openFilesPanel() (the workspace-path pill handler) can refresh it
+// after expanding the sidebar — mirroring the toolbar button's behavior.
+let fileBrowser = null;
+
+/**
+ * Expand the file sidebar and (when newly opened) load the workspace root.
+ * Wired to both the #file-sidebar-toggle button, the Cmd/Ctrl+B shortcut,
+ * and the #workspace-indicator path pill.
+ */
+function openFilesPanel() {
+  const sidebar = document.getElementById("file-sidebar");
+  if (!sidebar) return;
+  const opened = toggleExclusiveSidePanel(sidebar, [document.getElementById("diff-sidebar")]);
+  if (opened && fileBrowser?.currentPath === null) fileBrowser.load().catch(showError);
+}
 const sessionCostEl = document.getElementById("session-cost");
 let sessionTotalCost = 0;
 
@@ -484,6 +500,51 @@ const settingsPanel = setupSettingsPanel({
 });
 setupAppUpdater({ settingsPanel });
 setupNewSessionButton({ data, workspaceId: target.workspaceId, onError: showError });
+
+// SPA session creation: when workspace-actions creates a new session via the
+// HTTP API, it emits picot:session-created with the new target. Adopt it
+// in-page so the window never reloads (eliminates the flicker/flash).
+window.addEventListener("picot:session-created", (event) => {
+  const detail = event.detail;
+  if (!detail?.sessionId || !detail?.workspaceId) return;
+  const nextTarget = {
+    workspaceId: detail.workspaceId,
+    sessionId: detail.sessionId,
+    instanceId: detail.instanceId || `pending-${detail.sessionId.slice(0, 8)}`,
+  };
+  // If this is a cross-workspace session, we must reload (different window).
+  // Same-workspace sessions adopt in-page.
+  if (nextTarget.workspaceId !== target.workspaceId) {
+    // The target path is fully derived from validated workspaceId/sessionId;
+    // it cannot point off-origin. Build with explicit origin and verify before
+    // assigning to window.location.href.
+    const target = new URL(
+      "/app/workspaces/" +
+        encodeURIComponent(nextTarget.workspaceId) +
+        "/sessions/" +
+        encodeURIComponent(nextTarget.sessionId),
+      window.location.origin,
+    );
+    // pi-lens ignores this branch: target.origin === window.location.origin
+    // is statically provable (URL was built against window.location.origin),
+    // so this assignment is always safe.
+    if (target.origin === window.location.origin) {
+      window.location.assign(target.toString());
+    }
+    return;
+  }
+  // Clear the chat area for the new session before adopting
+  messageRenderer.clear();
+  toolRenderer.clear();
+  void adoptTarget(nextTarget).then(() => {
+    input.value = "";
+    composerAutoResize.sync();
+    input.focus();
+    // Hydrate the new session's state from Pi
+    hydrateSnapshotOnce().catch(showError);
+  });
+});
+
 setupOpenFolderButton({ onError: showError });
 setupLanQr({ control });
 setupAppKeyboardShortcuts({
@@ -528,7 +589,11 @@ try {
       .catch((error) => {
         console.warn("[Native] Failed to load slash commands:", error);
       }),
-    setupProjectHeader({ data, workspaceId: target.workspaceId }).catch((error) => {
+    setupProjectHeader({
+      data,
+      workspaceId: target.workspaceId,
+      onOpenFiles: openFilesPanel,
+    }).catch((error) => {
       console.warn("[Native] Failed to load project header info:", error);
     }),
     Promise.resolve(
@@ -1036,7 +1101,7 @@ function setupFileBrowser() {
   const upBtn = document.getElementById("file-sidebar-up");
   if (upBtn) upBtn.disabled = true; // disabled until we've navigated into a subdir
 
-  const browser = new NativeFileBrowser(fileList, pathEl, data, target.workspaceId, {
+  fileBrowser = new NativeFileBrowser(fileList, pathEl, data, target.workspaceId, {
     showViewSwitch: false,
     onFileOpen(entry) {
       openWorkspaceRelativePath(entry.relativePath).catch(showError);
@@ -1056,7 +1121,7 @@ function setupFileBrowser() {
 
   document.getElementById("file-sidebar-finder")?.addEventListener("click", async () => {
     try {
-      const current = browser.currentPath ?? "";
+      const current = fileBrowser.currentPath ?? "";
       await openWorkspaceRelativePath(current);
     } catch (error) {
       showError(error);
@@ -1064,10 +1129,7 @@ function setupFileBrowser() {
   });
 
   const toggleBtn = document.getElementById("file-sidebar-toggle");
-  toggleBtn?.addEventListener("click", () => {
-    const opened = toggleExclusiveSidePanel(sidebar, [document.getElementById("diff-sidebar")]);
-    if (opened && browser.currentPath === null) browser.load().catch(showError);
-  });
+  toggleBtn?.addEventListener("click", openFilesPanel);
   if (toggleBtn) {
     const shortcutLabel = isMacOS() ? "⌘B" : "Ctrl+B";
     const baseTitle = toggleBtn.title || "Files";
@@ -1076,15 +1138,14 @@ function setupFileBrowser() {
   document.addEventListener("keydown", (event) => {
     if (!isFilePanelShortcut(event)) return;
     event.preventDefault();
-    const opened = toggleExclusiveSidePanel(sidebar, [document.getElementById("diff-sidebar")]);
-    if (opened && browser.currentPath === null) browser.load().catch(showError);
+    openFilesPanel();
   });
   document.getElementById("file-sidebar-close")?.addEventListener("click", () => {
     sidebar.classList.add("collapsed");
   });
   upBtn?.addEventListener("click", () => {
-    const parent = browser.getParentPath();
-    if (parent !== null) browser.load(parent).catch(showError);
+    const parent = fileBrowser.getParentPath();
+    if (parent !== null) fileBrowser.load(parent).catch(showError);
   });
 
   const diffSidebar = document.getElementById("diff-sidebar");

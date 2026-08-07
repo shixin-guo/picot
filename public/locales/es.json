@@ -732,7 +732,8 @@
         "thinkingEffortOffClickToCycleReasoning": "Esfuerzo de razonamiento: apagado. Haz clic para cambiar la profundidad de razonamiento.",
         "receiveBetaUpdates": "Recibir actualizaciones beta",
         "searchTasks": "Buscar tareas",
-        "searchResults": "Resultados de búsqueda"
+        "searchResults": "Resultados de búsqueda",
+        "openFilesPanel": "Abrir panel de archivos — {path}"
       },
       "placeholder": {
         "typeAMessageOrUseToCall": "Mensaje… Escribe / para comandos, @ para archivos",

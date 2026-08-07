@@ -461,6 +461,7 @@
   backdrop-filter: blur(40px) saturate(180%);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
   border: 0.5px solid var(--border-hover);
+  /* design-token-ignore: context-menu uses native-OS-style bespoke radius */
   border-radius: 8px;
   box-shadow:
     var(--shadow-lg),
@@ -470,7 +471,9 @@
 
 .context-menu-item {
   display: block;
+  /* design-token-ignore: native context-menu item padding, bespoke to mimic the OS menu */
   padding: 5px 14px;
+  /* design-token-ignore: native context-menu item font size */
   font-size: 13px;
   font-family: -apple-system, BlinkMacSystemFont, "San Francisco", system-ui, sans-serif;
   font-weight: 400;

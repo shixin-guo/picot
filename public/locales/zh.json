@@ -732,7 +732,8 @@
         "thinkingEffortOffClickToCycleReasoning": "思考深度：关闭。点击切换推理深度。",
         "receiveBetaUpdates": "Receive beta updates",
         "searchTasks": "Search tasks",
-        "searchResults": "Search results"
+        "searchResults": "Search results",
+        "openFilesPanel": "打开文件面板 — {path}"
       },
       "placeholder": {
         "typeAMessageOrUseToCall": "消息…输入 / 使用命令，输入 @ 查找文件",
