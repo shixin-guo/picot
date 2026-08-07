@@ -1,5 +1,5 @@
-// ABOUTME: Verifies the compact outlined controls used for the terminal and file panels.
-// ABOUTME: Keeps the supplied toolbar visual contract separate from Side Chat's existing button.
+// ABOUTME: Verifies the file-sidebar toggle uses the shared icon-button
+// ABOUTME: design system (the new-arch replacement for the v3 panel-toggle-btn).
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -8,16 +8,14 @@ import { expect, test } from "vitest";
 
 const publicDir = join(process.cwd(), "public");
 const indexHtml = readFileSync(join(publicDir, "index.html"), "utf8");
-const styleCss = readFileSync(join(publicDir, "style.css"), "utf8");
+const designSystemCss = readFileSync(join(publicDir, "design-system.css"), "utf8");
 const document = new JSDOM(indexHtml).window.document;
 
-test("file sidebar uses the outlined panel toolbar control", () => {
+test("file sidebar uses the shared icon-button control", () => {
   const button = document.querySelector("#file-sidebar-toggle");
 
-  expect(button?.classList.contains("panel-toggle-btn")).toBe(true);
+  expect(button?.classList.contains("ui-icon-button")).toBe(true);
   expect(button?.getAttribute("aria-label")).toBe("Toggle file browser");
-  expect(button?.querySelector('rect[x="3.5"]')).not.toBeNull();
-  expect(button?.querySelector('path[d="M17 5v14"]')).not.toBeNull();
 });
 
 test("Side Chat keeps its existing icon button styling", () => {
@@ -27,14 +25,8 @@ test("Side Chat keeps its existing icon button styling", () => {
   expect(button?.classList.contains("panel-toggle-btn")).toBe(false);
 });
 
-test("panel controls use the compact borderless visual contract", () => {
-  expect(styleCss).toContain(".panel-toggle-btn,");
-  expect(styleCss).toContain("width: 32px;");
-  expect(styleCss).toContain("height: 28px;");
-  expect(styleCss).toContain("border: 0;");
-  expect(styleCss).toContain('.panel-toggle-btn[aria-pressed="true"]');
-  expect(styleCss).not.toContain(
-    "border: 1.5px solid color-mix(in srgb, var(--text-primary) 48%, transparent);",
-  );
-  expect(styleCss).not.toContain("terminal-toggle[data-terminal-count]");
+test("icon-button design system defines the shared control contract", () => {
+  expect(designSystemCss).toContain(".ui-icon-button");
+  expect(designSystemCss).toContain("border-radius: var(--radius-md);");
+  expect(designSystemCss).toContain("width: var(--control-height-md);");
 });

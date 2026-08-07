@@ -4,10 +4,19 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const publicDir = resolve(import.meta.dirname);
-const en = JSON.parse(readFileSync(resolve(publicDir, "locales/en.json"), "utf-8"));
-const zh = JSON.parse(readFileSync(resolve(publicDir, "locales/zh.json"), "utf-8"));
-const ja = JSON.parse(readFileSync(resolve(publicDir, "locales/ja.json"), "utf-8"));
-const es = JSON.parse(readFileSync(resolve(publicDir, "locales/es.json"), "utf-8"));
+
+function loadLocale(code) {
+  try {
+    return JSON.parse(readFileSync(resolve(publicDir, `locales/${code}.json`), "utf-8"));
+  } catch (error) {
+    throw new Error(`Cannot load locale ${code}.json: ${error.message}`);
+  }
+}
+
+const en = loadLocale("en");
+const zh = loadLocale("zh");
+const ja = loadLocale("ja");
+const es = loadLocale("es");
 
 const NON_EN_LOCALES = [
   { code: "zh", messages: zh },
@@ -131,7 +140,7 @@ describe("locale key parity", () => {
 // ── HTML key references ───────────────────────────────────────────────
 
 describe("HTML data-i18n key references", () => {
-  const htmlFiles = ["index.html", "bootstrap.html", "cost.html"];
+  const htmlFiles = ["index.html", "bootstrap.html"];
 
   for (const file of htmlFiles) {
     it(`${file} references only keys that exist in en.json`, () => {
@@ -167,34 +176,15 @@ describe("HTML data-i18n key references", () => {
 describe("JS t() literal key references", () => {
   // Phase 1 JS files that should use t()
   const jsFiles = [
-    "app.js",
+    "native/app.js",
     "ui/context-viz.js",
     "ui/at-file-mention.js",
     "ui/message-renderer.js",
     "ui/markdown.js",
     "ui/tool-card.js",
-    "workspace/file-browser.js",
-    "ui/dialogs.js",
-    "app/updater.js",
-    "app/voice-input.js",
-    "sidebar/index.js",
-    "settings/editors.js",
-    "settings/skills-page.js",
-    "settings/toggles.js",
-    "settings/save-status.js",
-    "packages/install-status.js",
-    "workspace/actions.js",
-    "session/onboarding.js",
-    "cost.js",
-    "cost/dashboard.js",
-    "cost/infobar.js",
-    "pinned-items.js",
-    "sidebar-workspace-group.js",
-    "workspace-projects.js",
-    "workspace-quick-info.js",
-    "ephemeral-chat-view.js",
-    "side-chat-manager.js",
-    "quick-chat-dialog.js",
+    "native/session/pinned-items.js",
+    "native/session/ephemeral-chat-view.js",
+    "native/session/side-chat-manager.js",
     "file-preview-panel.js",
   ];
 

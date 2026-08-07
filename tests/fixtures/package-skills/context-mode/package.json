@@ -1,0 +1,9 @@
+{
+  "name": "context-mode",
+  "version": "8.0.0",
+  "pi": {
+    "skills": [
+      "./skills"
+    ]
+  }
+}

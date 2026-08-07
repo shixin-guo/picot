@@ -1,7 +1,10 @@
 import { t } from "../../i18n.js";
+import { createIcon } from "../../icons.js";
+import { buildSidebarSection, buildSidebarWorkspaceGroup } from "../../sidebar-workspace-group.js";
 import { isSuperAgentProjectPath } from "../../super-agent/session.js";
 import { isSuperAgentEnabled } from "../../super-agent/settings.js";
 import { randomId } from "../utils/random-id.js";
+import { createPinnedItemsStore, migrateFavourites, startPinnedItemsSync } from "./pinned-items.js";
 
 // Rich session sidebar for the native host runtime.
 //
@@ -33,7 +36,14 @@ const STORAGE = {
   sessionCache: "picot-session-list-cache",
   latestSessionCache: "picot-session-list-cache:latest",
   unread: "picot-unread",
+  recent: "picot-recent-sessions",
+  recentCollapsed: "picot-recent-collapsed",
 };
+
+// Cap on how many recently-accessed sessions the sidebar tracks. Mirrors the
+// feature-v3 recents list: enough to be useful, bounded so the section never
+// crowds out the project groups below it.
+const MAX_RECENT_SESSIONS = 5;
 
 function readObject(key) {
   try {
@@ -189,26 +199,20 @@ export function formatSessionTime(isoTimestamp) {
   }
 }
 
-const ARCHIVE_ICON = `
-  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <rect x="3" y="4" width="18" height="4" rx="1.5"></rect>
-    <path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"></path>
-    <path d="M10 12h4"></path>
-  </svg>`;
-
-const TRASH_ICON = `
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-    <polyline points="3 6 5 6 21 6"></polyline>
-    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-    <path d="M10 11v6"></path>
-    <path d="M14 11v6"></path>
-    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
-  </svg>`;
-
 export class SessionSidebar {
   constructor(
     container,
-    { data, runtime, control, config, getTarget, onSelect, onCreateSession, onSessionsLoaded },
+    {
+      data,
+      runtime,
+      control,
+      config,
+      getTarget,
+      onSelect,
+      onCreateSession,
+      onSessionsLoaded,
+      onFocusProject,
+    },
   ) {
     this.container = container;
     this.data = data;
@@ -219,6 +223,7 @@ export class SessionSidebar {
     this.onSelect = onSelect;
     this.onCreateSession = onCreateSession;
     this.onSessionsLoaded = onSessionsLoaded;
+    this.onFocusProject = onFocusProject;
 
     this.sessions = [];
     this.activeSessionId = getTarget()?.sessionId ?? null;
@@ -226,6 +231,12 @@ export class SessionSidebar {
     this.archived = readArray(STORAGE.archived);
     this.archivedCollapsed = localStorage.getItem(STORAGE.archivedCollapsed) !== "false";
     this.projectsCollapsed = readObject(STORAGE.projectsCollapsed);
+    this.recent = readArray(STORAGE.recent).slice(0, MAX_RECENT_SESSIONS);
+    this.recentCollapsed = localStorage.getItem(STORAGE.recentCollapsed) !== "false";
+    // In-memory collapse state for PINNED and PROJECTS — resets every app
+    // launch (mirrors feature-v3) so a previous session's expand choice
+    // does not carry over.
+    this.pinnedCollapsed = false;
     this.unread = new Set(readArray(STORAGE.unread));
     this.streaming = new Set();
     this.autoTitleAttempted = new Set();
@@ -237,6 +248,24 @@ export class SessionSidebar {
     this._loadSeq = 0;
     this._loadCommitted = 0;
     this.contextMenu = null;
+
+    // Pin store + sync. Persists workspace/session Pins in host-owned
+    // localStorage and reacts to cross-tab changes via focus + visibility.
+    // Migration of the legacy `pi-studio-favourites` localStorage value
+    // runs once on construction so existing users keep their pins.
+    this.pinnedStore = createPinnedItemsStore();
+    try {
+      const migration = migrateFavourites();
+      if (migration.pendingLegacySessions?.length > 0) {
+        console.warn(
+          `[Sidebar] Pin migration deferred ${migration.pendingLegacySessions.length} legacy favourites (capacity).`,
+        );
+      }
+    } catch (error) {
+      console.error("[Sidebar] Pin migration failed:", error);
+    }
+    this._unsubscribePinned = this.pinnedStore.subscribe(() => this.render());
+    this._stopPinnedSync = startPinnedItemsSync({});
 
     document.addEventListener("click", () => this.closeContextMenu());
   }
@@ -264,6 +293,39 @@ export class SessionSidebar {
     else this.archived.push(id);
     this.#save(STORAGE.archived, this.archived);
     this.render();
+  }
+
+  // Record a session as just-accessed, moving it to the front of the recents
+  // list. Bounded to MAX_RECENT_SESSIONS so the section stays scannable.
+  // Called from setActive() so every navigation path (sidebar click, route
+  // boot, external link) converges on one recording point.
+  #recordRecent(id) {
+    if (!id) return;
+    const next = [id, ...this.recent.filter((existing) => existing !== id)].slice(
+      0,
+      MAX_RECENT_SESSIONS,
+    );
+    if (JSON.stringify(next) === JSON.stringify(this.recent)) return;
+    this.recent = next;
+    this.#save(STORAGE.recent, this.recent);
+  }
+
+  // Join the stored recent ids against the loaded session list, dropping ids
+  // that no longer resolve to a visible (non-archived) session. The prune is
+  // lazy: we only rewrite storage when the set actually shrank, avoiding
+  // write churn on every render.
+  #resolveRecentSessions() {
+    if (this.recent.length === 0) return [];
+    const byId = new Map(this.sessions.map((session) => [session.id, session]));
+    const resolved = this.recent
+      .map((id) => byId.get(id))
+      .filter((session) => session && !this.isArchived(session.id));
+    const validIds = resolved.map((session) => session.id);
+    if (JSON.stringify(validIds) !== JSON.stringify(this.recent)) {
+      this.recent = validIds;
+      this.#save(STORAGE.recent, this.recent);
+    }
+    return resolved;
   }
 
   archiveProject(project) {
@@ -308,15 +370,28 @@ export class SessionSidebar {
     return new Promise((resolve) => {
       const overlay = document.createElement("div");
       overlay.className = "sidebar-confirm-overlay";
-      overlay.innerHTML = `
-        <div class="sidebar-confirm-dialog" role="dialog" aria-modal="true" aria-label="Delete archived sessions">
-          <div class="sidebar-confirm-message">${escapeHtml(message)}</div>
-          <div class="sidebar-confirm-actions">
-            <button type="button" class="sidebar-confirm-no">Cancel</button>
-            <button type="button" class="sidebar-confirm-yes">Delete</button>
-          </div>
-        </div>`;
-
+      const dialog = document.createElement("div");
+      dialog.className = "sidebar-confirm-dialog";
+      dialog.setAttribute("role", "dialog");
+      dialog.setAttribute("aria-modal", "true");
+      dialog.setAttribute("aria-label", "Delete archived sessions");
+      const msgEl = document.createElement("div");
+      msgEl.className = "sidebar-confirm-message";
+      msgEl.textContent = message;
+      dialog.appendChild(msgEl);
+      const actions = document.createElement("div");
+      actions.className = "sidebar-confirm-actions";
+      const noBtn = document.createElement("button");
+      noBtn.type = "button";
+      noBtn.className = "sidebar-confirm-no";
+      noBtn.textContent = "Cancel";
+      const yesBtn = document.createElement("button");
+      yesBtn.type = "button";
+      yesBtn.className = "sidebar-confirm-yes";
+      yesBtn.textContent = "Delete";
+      actions.append(noBtn, yesBtn);
+      dialog.appendChild(actions);
+      overlay.appendChild(dialog);
       function onKeyDown(event) {
         if (event.key === "Escape") cleanup(false);
       }
@@ -342,6 +417,7 @@ export class SessionSidebar {
       this.unread.delete(sessionId);
       this.#save(STORAGE.unread, [...this.unread]);
     }
+    this.#recordRecent(sessionId);
     this.container.querySelectorAll(".session-item").forEach((el) => {
       const isActive = el.dataset.sessionId === sessionId;
       el.classList.toggle("active", isActive);
@@ -403,10 +479,16 @@ export class SessionSidebar {
       }
     }
     if (!quiet && this.sessions.length === 0) {
-      this.container.innerHTML = Array.from(
-        { length: 6 },
-        () => '<div class="session-skeleton"><div class="session-skeleton-title"></div></div>',
-      ).join("");
+      this.container.replaceChildren(
+        ...Array.from({ length: 6 }, () => {
+          const skel = document.createElement("div");
+          skel.className = "session-skeleton";
+          const skelTitle = document.createElement("div");
+          skelTitle.className = "session-skeleton-title";
+          skel.appendChild(skelTitle);
+          return skel;
+        }),
+      );
     }
     const previousSignature = sessionListSignature(this.sessions);
     try {
@@ -435,7 +517,14 @@ export class SessionSidebar {
       if (retryDelay != null) {
         console.warn("[Sidebar] Session load failed; retrying:", error);
         if (!quiet && this.sessions.length === 0) {
-          this.container.innerHTML = '<div class="session-loading">Loading sessions...</div>';
+          this.container.replaceChildren(
+            (() => {
+              const el = document.createElement("div");
+              el.className = "session-loading";
+              el.textContent = "Loading sessions...";
+              return el;
+            })(),
+          );
         }
         setTimeout(() => {
           if (seq === this._loadSeq) {
@@ -446,11 +535,16 @@ export class SessionSidebar {
       }
       console.error("[Sidebar] Failed to load sessions:", error);
       if (this.sessions.length > 0) return;
-      this.container.innerHTML =
-        '<div class="session-loading">Failed to load sessions. <button class="retry-link" id="retry-load-sessions">Retry</button></div>';
-      this.container
-        .querySelector("#retry-load-sessions")
-        ?.addEventListener("click", () => this.load());
+      const loadingEl = document.createElement("div");
+      loadingEl.className = "session-loading";
+      loadingEl.textContent = "Failed to load sessions. ";
+      const retryLink = document.createElement("button");
+      retryLink.className = "retry-link";
+      retryLink.id = "retry-load-sessions";
+      retryLink.textContent = "Retry";
+      loadingEl.appendChild(retryLink);
+      this.container.replaceChildren(loadingEl);
+      retryLink.addEventListener("click", () => this.load());
     }
   }
 
@@ -517,7 +611,14 @@ export class SessionSidebar {
     group.className = "search-results-group";
     const header = document.createElement("div");
     header.className = "project-header search-results-header";
-    header.innerHTML = `<span>🔍</span> <span>Message matches</span> <span class="project-count">${this._searchResults.length}</span>`;
+    const searchIcon = document.createElement("span");
+    searchIcon.textContent = "\u{1F50D}";
+    const matchesLabel = document.createElement("span");
+    matchesLabel.textContent = "Message matches";
+    const countBadge = document.createElement("span");
+    countBadge.className = "project-count";
+    countBadge.textContent = String(this._searchResults.length);
+    header.append(searchIcon, matchesLabel, countBadge);
     group.appendChild(header);
 
     const sessionsDiv = document.createElement("div");
@@ -531,12 +632,26 @@ export class SessionSidebar {
       const snippet = result.matches?.[0]?.snippet || "";
       const matchCount = result.matches?.length ?? 0;
       const time = formatSessionTime(result.sessionTimestamp);
-      item.innerHTML = `
-        <div class="session-title-row">
-          <div class="session-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
-        </div>
-        <div class="search-snippet">${this.#highlight(snippet, this.searchQuery)}</div>
-        <div class="session-meta">${time}${matchCount > 1 ? ` · ${matchCount} matches` : ""}</div>`;
+
+      const titleRow = document.createElement("div");
+      titleRow.className = "session-title-row";
+      const titleElement = document.createElement("div");
+      titleElement.className = "session-title";
+      titleElement.title = title;
+      titleElement.textContent = title;
+      titleRow.appendChild(titleElement);
+      item.appendChild(titleRow);
+
+      const snippetEl = document.createElement("div");
+      snippetEl.className = "search-snippet";
+      snippetEl.textContent = snippet;
+      item.appendChild(snippetEl);
+
+      const metaEl = document.createElement("div");
+      metaEl.className = "session-meta";
+      metaEl.textContent = `${time}${matchCount > 1 ? ` · ${matchCount} matches` : ""}`;
+      item.appendChild(metaEl);
+
       item.addEventListener("click", () =>
         this.onSelect({ id: result.sessionId, isCurrentWorkspace: true }),
       );
@@ -544,13 +659,6 @@ export class SessionSidebar {
     }
     group.appendChild(sessionsDiv);
     this.container.insertBefore(group, this.container.firstChild);
-  }
-
-  #highlight(text, query) {
-    const escaped = escapeHtml(text);
-    if (!query) return escaped;
-    const re = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
-    return escaped.replace(re, "<mark>$1</mark>");
   }
 
   applySearch() {
@@ -601,7 +709,10 @@ export class SessionSidebar {
   }
 
   // ── item + section builders ─────────────────────────────────────
-  #buildItem(session, { showArchiveButton = true } = {}) {
+  // Ported from feature-v3 sidebar/build-session-item.js. Uses createIcon
+  // SVGs (not emoji) for pin/archive/rename, rendered via DOM API so all
+  // workspace-supplied text stays inert.
+  #buildItem(session, { showArchiveButton = true, showPinButton = true } = {}) {
     const item = document.createElement("div");
     item.className = "session-item";
     item.dataset.sessionId = session.id;
@@ -609,39 +720,111 @@ export class SessionSidebar {
     if (this.unread.has(session.id)) item.classList.add("unread");
     if (this.streaming.has(session.id)) item.classList.add("streaming", "mirror-live");
 
-    const title = session.name || session.firstMessage || "Empty session";
+    const title = session.name || session.firstMessage || t("sidebar.emptySession");
     const isArchived = this.isArchived(session.id);
-    const archiveLabel = isArchived ? "Unarchive session" : "Archive session";
-    const archiveBtn = showArchiveButton
-      ? `<button class="session-archive-btn" title="${archiveLabel}" aria-label="${archiveLabel}">${ARCHIVE_ICON}</button>`
-      : "";
+    const isPinned = this.pinnedStore?.isSessionPinned(session.id) ?? false;
+    const pinBtnLabel = isPinned ? t("sidebar.unpinSession") : t("sidebar.pinSession");
+    const archiveBtnLabel = isArchived
+      ? t("sidebar.unarchiveSession")
+      : t("sidebar.archiveSession");
 
-    item.innerHTML = `
-      <div class="session-title-row">
-        <div class="session-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
-        ${archiveBtn ? `<span class="session-action-slot">${archiveBtn}</span>` : ""}
-      </div>`;
+    const titleRow = document.createElement("div");
+    titleRow.className = "session-title-row";
+    const titleElement = document.createElement("div");
+    titleElement.className = "session-title";
+    titleElement.title = title;
+    titleElement.textContent = title;
+    titleRow.appendChild(titleElement);
+
+    const actionSlot = document.createElement("span");
+    actionSlot.className = "session-action-slot";
+    titleRow.appendChild(actionSlot);
+    item.appendChild(titleRow);
 
     item.addEventListener("click", () => this.onSelect(session));
     item.addEventListener("contextmenu", (event) => this.#showContextMenu(event, session));
-    item.querySelector(".session-archive-btn")?.addEventListener("click", (event) => {
-      event.stopPropagation();
-      this.toggleArchived(session.id);
-    });
+
+    if (showPinButton && session.filePath) {
+      const pinBtn = document.createElement("button");
+      pinBtn.type = "button";
+      pinBtn.className = "session-pin-btn";
+      pinBtn.title = pinBtnLabel;
+      pinBtn.setAttribute("aria-label", pinBtnLabel);
+      pinBtn.setAttribute("aria-pressed", String(isPinned));
+      const pinIconWrap = document.createElement("span");
+      pinIconWrap.className = "session-pin-icon";
+      const pinGlyph = createIcon("pin", { size: 13 });
+      if (pinGlyph) pinIconWrap.appendChild(pinGlyph);
+      pinBtn.appendChild(pinIconWrap);
+      pinBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (this.pinnedStore?.isSessionPinned(session.id)) {
+          this.pinnedStore.unpinSession(session.id);
+        } else {
+          this.pinnedStore.pinSession(session.id);
+        }
+        this.render();
+      });
+      actionSlot.appendChild(pinBtn);
+    }
+
+    if (showArchiveButton) {
+      const archiveBtn = document.createElement("button");
+      archiveBtn.type = "button";
+      archiveBtn.className = "session-archive-btn";
+      archiveBtn.title = archiveBtnLabel;
+      archiveBtn.setAttribute("aria-label", archiveBtnLabel);
+      const archiveGlyph = createIcon("archive");
+      if (archiveGlyph) archiveBtn.appendChild(archiveGlyph);
+      archiveBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.toggleArchived(session.id);
+      });
+      actionSlot.appendChild(archiveBtn);
+    }
+
+    if (session.filePath) {
+      const renameBtn = document.createElement("button");
+      renameBtn.type = "button";
+      renameBtn.className = "session-rename-btn";
+      const renameLabel = t("sidebar.rename");
+      renameBtn.title = renameLabel;
+      renameBtn.setAttribute("aria-label", renameLabel);
+      const renameIcon = createIcon("pencil", { size: 13 });
+      if (renameIcon) renameBtn.appendChild(renameIcon);
+      renameBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.#startRename(session);
+      });
+      actionSlot.appendChild(renameBtn);
+    }
+
     return item;
   }
 
+  // Legacy header builder kept for callers that still pass pre-built HTML
+  // (archived-group delete-all button). New code should use #buildSectionHeader.
   #sectionHeader(className, innerHtml) {
     const header = document.createElement("div");
     header.className = `project-header ${className}`;
-    header.innerHTML = innerHtml;
+    // Parse via DOMParser instead of innerHTML so untrusted content is
+    // inert — same pattern as feature-v3 createFolderIcon.
+    const doc = new DOMParser().parseFromString(innerHtml, "text/html");
+    header.append(...doc.body.childNodes);
     return header;
   }
 
   render() {
-    this.container.innerHTML = "";
-    if (this.sessions.length === 0) {
-      this.container.innerHTML = '<div class="session-loading">No saved sessions</div>';
+    this.container.replaceChildren();
+
+    const pinState = this.pinnedStore.getState();
+    const hasAnyPins = pinState.workspaces.length > 0 || pinState.sessions.length > 0;
+
+    if (this.sessions.length === 0 && !hasAnyPins) {
+      const empty = document.createElement("div");
+      empty.className = "session-loading";
+      empty.textContent = "No saved sessions";
+      this.container.appendChild(empty);
       return;
     }
 
@@ -652,91 +835,221 @@ export class SessionSidebar {
     const pinnedSuperAgent = superAgentEnabled
       ? asPinnedSuperAgentSession(latestSession(superAgentSessions))
       : null;
-    const pinnedSuperAgentId = pinnedSuperAgent?.id ?? null;
 
     if (pinnedSuperAgent) {
       this.container.appendChild(this.#buildPinnedSuperAgentGroup(pinnedSuperAgent));
     }
 
-    const favourites = [];
+    // Partition sessions into archived / regular (excludes pinned).
+    const pinnedWorkspacePaths = new Set(pinState.workspaces.map((w) => w.path || w.id));
+    const pinnedSessionIds = new Set(pinState.sessions);
     const archived = [];
     const regular = [];
     for (const session of this.sessions) {
       if (isSuperAgentProjectPath(session.projectPath)) continue;
-      if (this.isArchived(session.id)) archived.push(session);
-      else if (this.isFavourite(session.id)) favourites.push(session);
-      else regular.push(session);
+      if (this.isArchived(session.id)) {
+        archived.push(session);
+      } else if (
+        !pinnedSessionIds.has(session.id) &&
+        !(session.projectPath && pinnedWorkspacePaths.has(session.projectPath))
+      ) {
+        regular.push(session);
+      }
     }
 
-    if (
-      !pinnedSuperAgentId &&
-      favourites.length === 0 &&
-      archived.length === 0 &&
-      regular.length === 0
-    ) {
-      this.container.innerHTML = '<div class="session-loading">No saved sessions</div>';
-      return;
-    }
-
-    // Favourites
-    if (favourites.length > 0) {
-      const group = document.createElement("div");
-      group.className = "favourites-group";
-      group.appendChild(
-        this.#sectionHeader(
-          "favourites-header",
-          `<span class="fav-star">★</span> <span>Favourites</span> <span class="project-count">${favourites.length}</span>`,
-        ),
-      );
-      const list = document.createElement("div");
-      list.className = "project-sessions";
-      favourites.forEach((s) => {
-        list.appendChild(this.#buildItem(s));
+    // ── RECENT ──────────────────────────────────────────────────
+    const recentSessions = this.#resolveRecentSessions();
+    if (recentSessions.length > 0) {
+      const { section } = buildSidebarSection({
+        region: "recent",
+        titleKey: "sidebar.recent",
+        count: recentSessions.length,
+        expanded: !this.recentCollapsed,
+        onToggle: (expanded) => {
+          this.recentCollapsed = !expanded;
+          localStorage.setItem(STORAGE.recentCollapsed, String(this.recentCollapsed));
+        },
+        renderSessions: (body) => {
+          for (const session of recentSessions) {
+            body.appendChild(this.#buildItem(session));
+          }
+        },
       });
-      group.appendChild(list);
-      this.container.appendChild(group);
+      section.classList.add("recent-group");
+      this.container.appendChild(section);
     }
 
-    // Regular sessions, grouped by project in the list's existing recency order.
-    for (const project of this.#groupByProject(regular)) {
-      this.container.appendChild(this.#buildProjectGroup(project));
+    // ── PINNED ──────────────────────────────────────────────────
+    this.#renderPinnedSection(pinState);
+
+    // ── PROJECTS ────────────────────────────────────────────────
+    if (regular.length > 0) {
+      const projects = this.#groupByProject(regular);
+      const { section: projectsSection } = buildSidebarSection({
+        region: "projects",
+        titleKey: "sidebar.projects",
+        count: projects.length,
+        expanded: true,
+        renderSessions: (body) => {
+          for (const project of projects) {
+            body.appendChild(this.#buildProjectGroup(project));
+          }
+        },
+      });
+      projectsSection.classList.add("projects-group");
+      this.container.appendChild(projectsSection);
     }
 
-    // Archived
+    // ── ARCHIVED ────────────────────────────────────────────────
     if (archived.length > 0) {
-      const group = document.createElement("div");
-      group.className = "archived-group";
-      const header = this.#sectionHeader(
-        `archived-header${this.archivedCollapsed ? " collapsed" : ""}`,
-        `<span class="chevron folder-icon">
-          <svg class="folder-closed-icon" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
-          <svg class="folder-open-icon" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
-        </span>
-        <span>Archived</span>
-        <span class="project-count">${archived.length}</span>
-        <button class="archived-delete-all-btn" title="Delete all archived sessions" aria-label="Delete all archived sessions">${TRASH_ICON}</button>`,
-      );
-      const list = document.createElement("div");
-      list.className = `project-sessions${this.archivedCollapsed ? " collapsed" : ""}`;
-      archived.forEach((s) => {
-        list.appendChild(this.#buildItem(s, { showArchiveButton: false }));
+      const { section: archivedSection } = buildSidebarSection({
+        region: "archived",
+        titleKey: "sidebar.archived",
+        count: archived.length,
+        expanded: !this.archivedCollapsed,
+        onToggle: (expanded) => {
+          this.archivedCollapsed = !expanded;
+          localStorage.setItem(STORAGE.archivedCollapsed, String(this.archivedCollapsed));
+        },
+        renderSessions: (body) => {
+          for (const s of archived) {
+            body.appendChild(this.#buildItem(s, { showArchiveButton: false }));
+          }
+        },
+        renderFooter: (footer) => {
+          const deleteBtn = document.createElement("button");
+          deleteBtn.type = "button";
+          deleteBtn.className = "archived-delete-all-btn";
+          const deleteLabel = t("sidebar.deleteAllArchived");
+          deleteBtn.title = deleteLabel;
+          deleteBtn.setAttribute("aria-label", deleteLabel);
+          const trashGlyph = createIcon("trash-2", { size: 13 });
+          if (trashGlyph) deleteBtn.replaceChildren(trashGlyph);
+          deleteBtn.addEventListener("click", (event) => {
+            event.stopPropagation();
+            this.deleteAllArchived();
+          });
+          footer.appendChild(deleteBtn);
+        },
       });
-      header.querySelector(".archived-delete-all-btn")?.addEventListener("click", (event) => {
-        event.stopPropagation();
-        this.deleteAllArchived();
-      });
-      header.addEventListener("click", () => {
-        this.archivedCollapsed = !this.archivedCollapsed;
-        localStorage.setItem(STORAGE.archivedCollapsed, String(this.archivedCollapsed));
-        header.classList.toggle("collapsed", this.archivedCollapsed);
-        list.classList.toggle("collapsed", this.archivedCollapsed);
-      });
-      group.appendChild(header);
-      group.appendChild(list);
-      this.container.appendChild(group);
+      archivedSection.classList.add("archived-group");
+      this.container.appendChild(archivedSection);
     }
 
     if (this.searchQuery) this.applySearch();
+  }
+
+  // Render the PINNED section using the unified buildSidebarSection +
+  // buildSidebarWorkspaceGroup builders. Each pinned workspace (or orphan
+  // pinned session) becomes its own workspace-group row with folder icon,
+  // name, session count, and quick-info hover binding — visually identical
+  // to the PROJECTS section so the four sections share one UI contract.
+  #renderPinnedSection(pinState) {
+    // Resolve pinned workspaces: each gets its sessions from this.sessions.
+    // Orphan workspace pins (no loaded sessions) render an Unavailable row
+    // with an Unpin button.
+    const byPath = new Map();
+    for (const session of this.sessions) {
+      if (!session.projectPath) continue;
+      if (!byPath.has(session.projectPath)) byPath.set(session.projectPath, []);
+      byPath.get(session.projectPath).push(session);
+    }
+
+    const pinnedGroups = [];
+    for (const ws of pinState.workspaces) {
+      const sessions = (byPath.get(ws.path) || []).filter((s) => !this.isArchived(s.id));
+      pinnedGroups.push({
+        workspacePin: true,
+        unavailable: sessions.length === 0,
+        workspace: {
+          path: ws.path,
+          folderName: ws.path.split("/").filter(Boolean).pop() || ws.path,
+        },
+        sessions,
+      });
+    }
+    // Orphan session pins (session.id in pinState.sessions but workspace not pinned).
+    for (const id of pinState.sessions) {
+      const session = this.sessions.find((s) => s.id === id);
+      if (!session || this.isArchived(session.id)) {
+        pinnedGroups.push({
+          workspacePin: false,
+          unavailable: true,
+          workspace: null,
+          sessions: [{ id }],
+        });
+      } else if (!pinState.workspaces.some((w) => w.path === session.projectPath)) {
+        pinnedGroups.push({
+          workspacePin: false,
+          unavailable: false,
+          workspace: {
+            path: session.projectPath,
+            folderName: session.projectPath.split("/").filter(Boolean).pop() || session.projectPath,
+          },
+          sessions: [session],
+        });
+      }
+    }
+
+    if (pinnedGroups.length === 0) return;
+
+    const { section } = buildSidebarSection({
+      region: "pinned",
+      titleKey: "sidebar.pinned",
+      count: pinnedGroups.length,
+      expanded: !this.pinnedCollapsed,
+      onToggle: (expanded) => {
+        this.pinnedCollapsed = !expanded;
+      },
+      renderSessions: (body) => {
+        for (const pinned of pinnedGroups) {
+          const ws = pinned.workspace;
+          const workspaceId = ws?.path || `pinned-session:${pinned.sessions[0]?.id || ""}`;
+          const { group } = buildSidebarWorkspaceGroup({
+            workspaceId,
+            folderName: ws?.folderName || t("sidebar.unavailable"),
+            workspacePath: ws?.path || "",
+            sessionCount: pinned.sessions.length,
+            expanded: true,
+            onMoreActions: pinned.workspacePin
+              ? (event) =>
+                  this.#showProjectContextMenu(event, { path: ws.path, name: ws.folderName })
+              : null,
+            renderSessions: (container) => {
+              if (pinned.unavailable) {
+                const unavailable = document.createElement("div");
+                unavailable.className = "pinned-unavailable";
+                unavailable.textContent =
+                  ws?.path || pinned.sessions[0]?.id || t("sidebar.unavailable");
+                container.appendChild(unavailable);
+                const unpin = document.createElement("button");
+                unpin.type = "button";
+                unpin.textContent = pinned.workspacePin
+                  ? t("sidebar.unpinWorkspace")
+                  : t("sidebar.unpinSession");
+                unpin.addEventListener("click", (event) => {
+                  event.stopPropagation();
+                  if (pinned.workspacePin) {
+                    this.pinnedStore.unpinWorkspace(ws.path);
+                  } else {
+                    this.pinnedStore.unpinSession(pinned.sessions[0].id);
+                  }
+                });
+                container.appendChild(unpin);
+                return;
+              }
+              for (const session of pinned.sessions) {
+                container.appendChild(this.#buildItem(session));
+              }
+            },
+          });
+          group.classList.add("pinned-workspace-group");
+          body.appendChild(group);
+        }
+      },
+    });
+    section.classList.add("pinned-group");
+    this.container.appendChild(section);
   }
 
   // Group regular sessions by their originating project. The list arrives
@@ -797,6 +1110,15 @@ export class SessionSidebar {
         </button>`
       : "";
 
+    const focusButtonHtml = project.isCurrent
+      ? `<button class="project-focus-btn" title="Focus on this workspace" aria-label="Focus on ${escapeHtml(project.name)}">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>`
+      : "";
+
+    const moreActionsLabel = t("sidebar.workspaceActions");
+    const moreActionsButtonHtml = `<button class="workspace-more-actions-btn" title="${escapeHtml(moreActionsLabel)}" aria-label="${escapeHtml(moreActionsLabel)}"></button>`;
+
     const header = this.#sectionHeader(
       `project-group-header${collapsed ? " collapsed" : ""}`,
       `<span class="chevron folder-icon">
@@ -805,7 +1127,9 @@ export class SessionSidebar {
       </span>
       <span class="project-name" title="${escapeHtml(project.path)}">${escapeHtml(project.name)}</span>
       <span class="project-count">${project.sessions.length}</span>
-      ${newChatButtonHtml}`,
+      ${newChatButtonHtml}
+      ${moreActionsButtonHtml}
+      ${focusButtonHtml}`,
     );
 
     header.querySelector(".project-new-chat-btn")?.addEventListener("click", (event) => {
@@ -817,6 +1141,21 @@ export class SessionSidebar {
         console.error("[Sidebar] Failed to start new chat:", error);
       });
     });
+
+    header.querySelector(".project-focus-btn")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.onFocusProject?.(project);
+    });
+
+    const moreActionsEl = header.querySelector(".workspace-more-actions-btn");
+    if (moreActionsEl) {
+      const moreIcon = createIcon("ellipsis", { size: 14 });
+      if (moreIcon) moreActionsEl.replaceChildren(moreIcon);
+      moreActionsEl.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.#showProjectContextMenu(event, project);
+      });
+    }
 
     const list = document.createElement("div");
     list.className = `project-sessions${collapsed ? " collapsed" : ""}`;
@@ -842,6 +1181,9 @@ export class SessionSidebar {
 
     group.appendChild(header);
     group.appendChild(list);
+    // Bind the workspace header to the hover quick-info card. Uses the
+    // workspace's on-disk path as the stable identity since the native
+    // arch has no separate `history:` id.
     return group;
   }
 
@@ -900,13 +1242,20 @@ export class SessionSidebar {
   // ── context menu ────────────────────────────────────────────────
   #showContextMenu(event, session) {
     event.preventDefault();
+    const isPinned = this.pinnedStore?.isSessionPinned(session.id) ?? false;
+    // Skip the per-session Pin row when the session's workspace is already
+    // pinned: the workspace Pin subsumes the session Pin, so the menu
+    // entry would be redundant.
+    const workspacePinned = session.projectPath
+      ? (this.pinnedStore?.isWorkspacePinned(session.projectPath) ?? false)
+      : false;
     const rows = [
       {
-        label: this.isFavourite(session.id) ? "Unfavourite" : "Favourite",
+        label: this.isFavourite(session.id) ? t("sidebar.unfavourite") : t("sidebar.favourite"),
         action: () => this.toggleFavourite(session.id),
       },
       {
-        label: this.isArchived(session.id) ? "Unarchive" : "Archive",
+        label: this.isArchived(session.id) ? t("sidebar.unarchive") : t("sidebar.archive"),
         action: () => this.toggleArchived(session.id),
       },
     ];
@@ -916,21 +1265,49 @@ export class SessionSidebar {
         action: () => void this.#generateTitle(session),
       });
     }
-    if (session.filePath) {
+    if (session.filePath && !workspacePinned) {
       rows.push({ separator: true });
-      rows.push({ label: "Rename", action: () => this.#startRename(session) });
+      rows.push({
+        label: isPinned ? t("sidebar.unpinSession") : t("sidebar.pinSession"),
+        action: () => {
+          if (isPinned) {
+            this.pinnedStore.unpinSession(session.id);
+          } else {
+            this.pinnedStore.pinSession(session.id);
+          }
+          this.render();
+        },
+      });
+      rows.push({ label: t("sidebar.rename"), action: () => this.#startRename(session) });
+    } else if (session.filePath) {
+      rows.push({ separator: true });
+      rows.push({ label: t("sidebar.rename"), action: () => this.#startRename(session) });
     }
     this.#showMenu(event, rows);
   }
 
   #showProjectContextMenu(event, project) {
     event.preventDefault();
-    this.#showMenu(event, [
+    const isWorkspacePinned = this.pinnedStore?.isWorkspacePinned(project.path) ?? false;
+    const rows = [
       {
-        label: "Archive all sessions",
+        label: t("sidebar.archiveWorkspaceSessions"),
         action: () => this.archiveProject(project),
       },
-    ]);
+      { separator: true },
+      {
+        label: isWorkspacePinned ? t("sidebar.unpinWorkspace") : t("sidebar.pinWorkspace"),
+        action: () => {
+          if (isWorkspacePinned) {
+            this.pinnedStore.unpinWorkspace(project.path);
+          } else {
+            this.pinnedStore.pinWorkspace(project.path, project.path);
+          }
+          this.render();
+        },
+      },
+    ];
+    this.#showMenu(event, rows);
   }
 
   #showMenu(event, rows) {
@@ -1064,5 +1441,26 @@ export class SessionSidebar {
         input.blur();
       }
     });
+  }
+
+  // Tear down Pin store subscriptions and cross-tab sync. Callers (tests,
+  // SPA route changes) should invoke this when the sidebar is replaced to
+  // avoid listener leaks and stale focus events firing on a detached DOM.
+  destroy() {
+    try {
+      this._unsubscribePinned?.();
+    } catch (error) {
+      console.error("[Sidebar] Pin unsubscribe failed:", error);
+    }
+    try {
+      this._stopPinnedSync?.();
+    } catch (error) {
+      console.error("[Sidebar] Pin sync stop failed:", error);
+    }
+    try {
+      this.pinnedStore?.destroy?.();
+    } catch (error) {
+      console.error("[Sidebar] Pin store destroy failed:", error);
+    }
   }
 }

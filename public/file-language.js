@@ -13,6 +13,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { markdown } from "@codemirror/lang-markdown";
 import { python } from "@codemirror/lang-python";
+import { rust } from "@codemirror/lang-rust";
 import { yaml } from "@codemirror/lang-yaml";
 import { StreamLanguage } from "@codemirror/language";
 import { r } from "@codemirror/legacy-modes/mode/r";
@@ -114,6 +115,8 @@ function getLanguageId(ext) {
       return "shell";
     case "r":
       return "r";
+    case "rs":
+      return "rust";
     default:
       return null;
   }
@@ -170,6 +173,8 @@ export function languageExtensionForPath(filePath) {
       return shellLanguage;
     case "r":
       return rLanguage;
+    case "rs":
+      return rust();
     default:
       return null;
   }

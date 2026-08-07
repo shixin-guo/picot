@@ -14,6 +14,11 @@ live in [`ARCHITECTURE.md`](ARCHITECTURE.md).
   and the temporary-chat architecture section.
 - Before changing a browser/server adapter, popup/overlay, or shared-state
   rerender behavior, read and apply [`docs/engineering-lessons.md`](docs/engineering-lessons.md).
+- **Before porting any feature-v3 feature**, read and follow
+  [`docs/feature-v3-migration-playbook.md`](docs/feature-v3-migration-playbook.md).
+  It documents the two-architecture identifier mapping, the verbatim-port
+  protocol, and the seven most common pitfalls (missing CSS, missing backend
+  routes, custom re-implementations that broke visual style, etc.).
 - Update `ARCHITECTURE.md` when an implementation materially changes its
   architecture, invariants, lifecycle, security boundary, or validation
   contract. Changes to LAN access, cross-platform paths, or static serving also
@@ -161,17 +166,19 @@ The frontend (`public/`) is vanilla JS with **no framework**. Keep it modular. S
 Picot is a Tauri v2 app. The three main layers:
 
 **1. Rust / Tauri (`src-tauri/`)** — process lifecycle, host protocol, and window management.
+
 - `src-tauri/src/native_pi_manager.rs` — spawns and supervises native `pi --mode rpc` processes.
 - `src-tauri/src/host_server.rs` — owns the HTTP/WebSocket host (`/v2/ws`, `/v2/bootstrap`) and dispatches protocol frames.
 - `src-tauri/src/pi_launch.rs` — resolves the bundled pi binary and bundled Picot bridge extension.
 
 **2. Frontend (`public/`)** — vanilla JS, no framework.
+
 - `bootstrap-entry.js` + `native/app.js` — native host protocol entry point, wires up all native modules
 
 `public/native/` is organized into domain subdirectories. Each directory owns its JS, CSS, and test files:
 
 | Subdir | Responsibility |
-|---|---|
+| --- | --- |
 | `transport/` | RPC adapters & gateways: `runtime-adapter`, `runtime-gateway`, `data-gateway`, `config-gateway`, `config-gateway-readiness`, `control-gateway` |
 | `session/` | Session state, sidebar, navigation, search: `session-store`, `session-tree`, `session-sidebar`, `session-navigation`, `session-search-dialog` |
 | `composer/` | Message input controls: `composer-images`, `composer-slash-menu`, `composer-submit`, `slash-commands`, `queued-messages` |
@@ -184,6 +191,7 @@ Picot is a Tauri v2 app. The three main layers:
 CSS-only files without a JS pair (`sidebar.css`, `header.css`, `messages.css`, `composer.css`, `instance-swap.css`) stay at the `native/` root and are imported from `public/style.css`.
 
 Cross-subdir import conventions:
+
 - Files within the same subdir use `./foo.js`.
 - Files importing from another subdir use `../other-dir/foo.js`.
 - Files in a subdir importing from sibling `public/` folders use `../../ui/foo.js`, `../../themes.js`, etc. (one extra `../` vs the root-level `native/` equivalent).
@@ -194,6 +202,7 @@ Cross-subdir import conventions:
 **Where to put a new `native/` module:** place it in the subdir whose responsibility best matches it. If a module is purely algorithmic/pure-function with no DOM, prefer `utils/`. If it spans two subdirs equally, prefer the subdir of its primary consumer.
 
 **3. Pi bridge extensions (`extensions/`)** — TypeScript compiled into `extensions/dist/`.
+
 - `picot-bridge.ts` runs inside Pi and exposes Picot-specific commands.
 - `pi-chat` remains an optional bundled extension for chat integrations.
 

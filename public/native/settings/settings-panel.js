@@ -3,9 +3,12 @@ import { applyTheme, getCurrentTheme, themes } from "../../themes.js";
 import { loadCostDashboard } from "./cost-dashboard.js";
 import { setupLanguageSelector } from "./language-selector.js";
 import { setupPackageBrowse } from "./package-browse.js";
+import { setupPackageSkillsTab } from "./package-skills-tab.js";
 import { setupSettingsConfig } from "./settings-config.js";
 import { setupSettingsToggles } from "./settings-toggles.js";
-import { setupSkillsPage } from "./skills-page.js";
+import { setupDiscoveredSkillsTab } from "./skills-discovered-tab.js";
+import { setupSkillsInstallTab } from "./skills-install-tab.js";
+import { setupSkillsTabShell } from "./skills-tab-shell.js";
 import { setupThinkingEffortControl } from "./thinking-effort-control.js";
 
 // Wires the settings overlay panel for the native runtime: open/close, tab
@@ -52,26 +55,68 @@ export function setupSettingsPanel({
     configGateway,
     onError,
   });
-  const skillsPage = setupSkillsPage({
+  const skillsRpc = async (command) => {
+    if (!configGateway) {
+      return { success: false, error: t("settings.skills.loadFailed") };
+    }
+    const { type, ...params } = command;
+    const result = await configGateway.call(type, params);
+    if (!result?.ok) {
+      return { success: false, error: result?.error || t("settings.skills.loadFailed") };
+    }
+    return { success: true, data: result.data };
+  };
+  const showSkillsSuccess = notify
+    ? (message) => notify({ type: "success", title: t("status.saved"), message })
+    : undefined;
+  const showSkillsError = notify
+    ? (message) => notify({ type: "error", title: t("settings.skills.saveFailed"), message })
+    : (message) => onError?.(message);
+
+  const discoveredTab = setupDiscoveredSkillsTab({
     container: document.getElementById("settings-skills"),
-    rpcCommand: async (command) => {
-      if (!configGateway) {
-        return { success: false, error: t("settings.skills.loadFailed") };
-      }
-      const { type, ...params } = command;
-      const result = await configGateway.call(type, params);
-      if (!result?.ok) {
-        return { success: false, error: result?.error || t("settings.skills.loadFailed") };
-      }
-      return { success: true, data: result.data };
-    },
-    showSuccess: notify
-      ? (message) => notify({ type: "success", title: t("status.saved"), message })
-      : undefined,
-    showError: notify
-      ? (message) => notify({ type: "error", title: t("settings.skills.saveFailed"), message })
-      : (message) => onError?.(message),
+    rpcCommand: skillsRpc,
+    showSuccess: showSkillsSuccess,
+    showError: showSkillsError,
   });
+  const installTab = control
+    ? setupSkillsInstallTab({
+        container: document.getElementById("settings-install-skills"),
+        transport: control,
+        getWorkspaceId,
+        isProjectTrusted: () => true,
+        showSuccess: showSkillsSuccess,
+        showError: showSkillsError,
+      })
+    : null;
+  const packageTab = setupPackageSkillsTab({
+    container: document.getElementById("settings-package-skills"),
+    rpcCommand: skillsRpc,
+  });
+
+  const skillsTabs = Array.from(document.querySelectorAll("[data-skills-page-tab]"));
+  const skillsPanels = {
+    discovered: document.getElementById("settings-skills"),
+    install: document.getElementById("settings-install-skills"),
+    packages: document.getElementById("settings-package-skills"),
+  };
+  const skillsShell = setupSkillsTabShell({
+    tabs: skillsTabs,
+    panels: skillsPanels,
+    activate: (name) => {
+      if (name === "discovered") discoveredTab.activate?.();
+      else if (name === "install") installTab?.activate?.();
+      else if (name === "packages") packageTab.activate?.();
+    },
+  });
+
+  // Backward-compatible alias: settings-panel calls skillsPage.activate() on tab switch
+  const skillsPage = {
+    activate: () => {
+      skillsShell.select(skillsTabs[0]);
+      discoveredTab.activate?.();
+    },
+  };
   setupLanguageSelector();
   setupSettingsToggles({ configGateway, onError });
   let usageLoaded = false;

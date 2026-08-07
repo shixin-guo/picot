@@ -1,0 +1,908 @@
+<!-- ABOUTME: Static visual prototype for the Settings > Skills installation workflow. -->
+<!-- ABOUTME: Demonstrates directory selection, nested skill selection, scope choice, and confirmation. -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Picot — Skills installation prototype</title>
+    <style>
+      :root {
+        --bg: #0f1117;
+        --surface: #151923;
+        --surface-raised: #1a1f2a;
+        --surface-hover: #202735;
+        --line: #2b3342;
+        --line-strong: #3c485d;
+        --text: #e8ecf3;
+        --muted: #9ba7bb;
+        --dim: #68758a;
+        --accent: #74a7ff;
+        --accent-ink: #071b3d;
+        --accent-soft: #172b51;
+        --success: #67d6ad;
+        --warning: #e8bd6b;
+        --danger: #ef8d91;
+        --radius: 10px;
+        font-family:
+          ui-sans-serif,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-width: 960px;
+        background: var(--bg);
+      }
+      button,
+      input {
+        font: inherit;
+      }
+      button {
+        color: inherit;
+      }
+      .app {
+        height: 100vh;
+        min-height: 700px;
+        display: grid;
+        grid-template-columns: 270px 1fr;
+      }
+      .sidebar {
+        padding: 18px 12px;
+        border-right: 1px solid var(--line);
+        background: #121620;
+        display: flex;
+        flex-direction: column;
+      }
+      .brand {
+        padding: 4px 12px 26px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        font-size: 17px;
+      }
+      .brand span {
+        color: var(--accent);
+      }
+      .nav-label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--dim);
+        padding: 0 12px 8px;
+      }
+      .nav-item {
+        border: 1px solid transparent;
+        background: transparent;
+        text-align: left;
+        padding: 10px 12px;
+        border-radius: 8px;
+        color: var(--muted);
+        cursor: default;
+        font-size: 14px;
+      }
+      .nav-item.active {
+        background: var(--accent-soft);
+        border-color: #29446e;
+        color: #c9dcff;
+      }
+      .nav-item + .nav-item {
+        margin-top: 2px;
+      }
+      .back {
+        margin-top: auto;
+        color: var(--muted);
+        font-size: 13px;
+        padding: 10px 12px;
+      }
+      .content {
+        overflow: auto;
+        padding: 42px clamp(36px, 6vw, 92px) 64px;
+      }
+      .page {
+        width: min(1050px, 100%);
+        margin: 0 auto;
+      }
+      .eyebrow {
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 7px 0 8px;
+        font-size: 30px;
+        letter-spacing: -0.035em;
+      }
+      .intro {
+        max-width: 680px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      .top-tabs {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        border-bottom: 1px solid var(--line);
+        margin-top: 34px;
+      }
+      .top-tab {
+        padding: 12px 14px 11px;
+        background: transparent;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 14px;
+      }
+      .top-tab.active {
+        color: var(--text);
+        border-color: var(--accent);
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 20px;
+        padding: 1px 6px;
+        border-radius: 999px;
+        background: var(--surface-hover);
+        color: var(--muted);
+        font-size: 11px;
+        margin-left: 5px;
+      }
+      .panel {
+        display: none;
+        padding-top: 25px;
+      }
+      .panel.active {
+        display: block;
+      }
+      .step {
+        display: grid;
+        grid-template-columns: 31px 1fr;
+        gap: 15px;
+        padding: 20px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .step-no {
+        width: 27px;
+        height: 27px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line-strong);
+        color: var(--muted);
+        border-radius: 50%;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .step h2 {
+        font-size: 16px;
+        margin: 3px 0 5px;
+        letter-spacing: -0.01em;
+      }
+      .step p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      .folder-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+        align-items: center;
+      }
+      .path {
+        flex: 1;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #11151e;
+        color: #c7d0df;
+        font:
+          12px ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .button {
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        background: var(--surface-raised);
+        padding: 9px 13px;
+        font-size: 13px;
+        cursor: pointer;
+        transition:
+          background 0.16s ease,
+          transform 0.16s ease;
+      }
+      .button:hover {
+        background: var(--surface-hover);
+      }
+      .button:active {
+        transform: translateY(1px);
+      }
+      .button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-ink);
+        font-weight: 700;
+      }
+      .button.primary:hover {
+        background: #8ab5ff;
+      }
+      .scan-meta {
+        margin-top: 13px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--dim);
+        font-size: 12px;
+      }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--success);
+      }
+      .selection-card {
+        margin-top: 16px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        overflow: hidden;
+        background: var(--surface);
+      }
+      .selection-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #171c26;
+      }
+      .selection-head strong {
+        font-size: 13px;
+      }
+      .selection-head span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .skill-row {
+        display: grid;
+        grid-template-columns: 18px 18px 1fr auto;
+        gap: 10px;
+        align-items: center;
+        min-height: 46px;
+        padding: 8px 14px;
+        border-bottom: 1px solid #252d3a;
+      }
+      .skill-row:last-child {
+        border-bottom: 0;
+      }
+      .skill-row.group {
+        background: #151b27;
+      }
+      .skill-row.child {
+        padding-left: 43px;
+      }
+      input[type="checkbox"] {
+        width: 15px;
+        height: 15px;
+        accent-color: var(--accent);
+        cursor: pointer;
+      }
+      .chevron {
+        color: var(--dim);
+        font-size: 14px;
+        text-align: center;
+      }
+      .skill-name {
+        font-size: 13px;
+        color: var(--text);
+      }
+      .skill-desc {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .kind {
+        color: var(--dim);
+        font:
+          11px ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+      }
+      .scope-toggle {
+        display: inline-flex;
+        margin-top: 15px;
+        padding: 3px;
+        gap: 3px;
+        border: 1px solid var(--line);
+        background: #11151e;
+        border-radius: 9px;
+      }
+      .scope-option {
+        padding: 8px 12px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .scope-option.active {
+        background: var(--surface-hover);
+        color: var(--text);
+        box-shadow: inset 0 0 0 1px var(--line-strong);
+      }
+      .scope-hint {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .scope-hint code,
+      .preview code {
+        font:
+          11px ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        color: #bfceeb;
+      }
+      .preview {
+        margin-top: 16px;
+        padding: 14px;
+        border: 1px solid #29446e;
+        border-radius: var(--radius);
+        background: #132039;
+      }
+      .preview-label {
+        display: flex;
+        justify-content: space-between;
+        color: #bed5ff;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .preview pre {
+        margin: 10px 0 0;
+        white-space: pre-wrap;
+        color: #c9d9f3;
+        font:
+          12px/1.65 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+      }
+      .install-row {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 13px;
+        padding-top: 20px;
+      }
+      .install-row span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .discovered {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--surface);
+        overflow: hidden;
+      }
+      .discover-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 15px;
+        border-bottom: 1px solid var(--line);
+      }
+      .discover-row:last-child {
+        border: 0;
+      }
+      .state {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--success);
+      }
+      .state.off {
+        background: var(--warning);
+      }
+      .discover-main {
+        flex: 1;
+      }
+      .discover-main b {
+        font-size: 13px;
+      }
+      .discover-main small {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .tag {
+        border: 1px solid var(--line-strong);
+        color: var(--muted);
+        padding: 3px 7px;
+        border-radius: 999px;
+        font-size: 11px;
+      }
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        display: none;
+        place-items: center;
+        background: rgba(4, 7, 12, 0.67);
+        backdrop-filter: blur(4px);
+      }
+      .modal-backdrop.show {
+        display: grid;
+      }
+      .modal {
+        width: min(565px, calc(100vw - 40px));
+        background: #171c27;
+        border: 1px solid #3b485e;
+        border-radius: 14px;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+        overflow: hidden;
+      }
+      .modal-header {
+        padding: 20px 22px 14px;
+      }
+      .modal-header h2 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: -0.02em;
+      }
+      .modal-header p {
+        margin: 7px 0 0;
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .change-list {
+        margin: 0 22px 20px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        overflow: hidden;
+      }
+      .change {
+        padding: 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      .change:last-child {
+        border-bottom: 0;
+      }
+      .change span {
+        display: block;
+        color: var(--dim);
+        font-size: 11px;
+        margin-bottom: 5px;
+      }
+      .change code {
+        color: #cddcf5;
+        font:
+          12px ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        word-break: break-all;
+        white-space: pre-line;
+      }
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 9px;
+        padding: 14px 22px;
+        background: #121722;
+        border-top: 1px solid var(--line);
+      }
+      @media (max-width: 800px) {
+        body {
+          min-width: 0;
+        }
+        .app {
+          grid-template-columns: 1fr;
+        }
+        .sidebar {
+          display: none;
+        }
+        .content {
+          padding: 28px 20px;
+        }
+        .folder-row {
+          flex-wrap: wrap;
+        }
+        .path {
+          min-width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <aside class="sidebar">
+        <div class="brand">PI<span>COT</span></div>
+        <div class="nav-label">Settings</div>
+        <button class="nav-item">General</button>
+        <button class="nav-item">Extensions</button>
+        <button class="nav-item active">Skills</button>
+        <button class="nav-item">Usage</button>
+        <button class="nav-item">Configuration</button>
+        <button class="nav-item">Agent Inbox</button>
+        <div class="back">‹&nbsp; Back to chat</div>
+      </aside>
+      <section class="content">
+        <div class="page">
+          <div class="eyebrow">Settings</div>
+          <h1>Skills</h1>
+          <p class="intro">
+            Discover skills available to Pi, or link a local skill directory to
+            this installation. Changes apply when you start a new session or
+            restart Pi.
+          </p>
+          <nav class="top-tabs" aria-label="Skills sections">
+            <button class="top-tab" data-tab="discovered">
+              Discovered <span class="pill">12</span>
+            </button>
+            <button class="top-tab active" data-tab="install">Install</button>
+          </nav>
+
+          <div class="panel" id="discovered">
+            <div class="discovered">
+              <div class="discover-row">
+                <i class="state"></i>
+                <div class="discover-main">
+                  <b>baoyu-diagram</b
+                  ><small>Generate diagrams from structured descriptions</small>
+                </div>
+                <span class="tag">Global</span><span class="tag">Enabled</span>
+              </div>
+              <div class="discover-row">
+                <i class="state"></i>
+                <div class="discover-main">
+                  <b>release-notes</b
+                  ><small
+                    >Prepare a Picot release and publish release notes</small
+                  >
+                </div>
+                <span class="tag">Project</span><span class="tag">Enabled</span>
+              </div>
+              <div class="discover-row">
+                <i class="state off"></i>
+                <div class="discover-main">
+                  <b>experimental-review</b
+                  ><small>Review a pull request using local conventions</small>
+                </div>
+                <span class="tag">Project</span
+                ><span class="tag">Disabled</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel active" id="install">
+            <section class="step">
+              <div class="step-no">1</div>
+              <div>
+                <h2>Choose a skill directory</h2>
+                <p>
+                  Select any local folder. A folder containing
+                  <code>SKILL.md</code> is one skill; otherwise Picot scans its
+                  groups and nested skills.
+                </p>
+                <div class="folder-row">
+                  <div class="path">~/Developer/agent-skills/baoyu-skills</div>
+                  <button class="button" id="browse">Choose directory…</button>
+                </div>
+                <div class="scan-meta">
+                  <i class="dot"></i
+                  ><span>Scan complete · 2 groups · 5 skills found</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="step">
+              <div class="step-no">2</div>
+              <div>
+                <h2>Select skills to link</h2>
+                <p>
+                  Select a whole group or only the skills you need. A complete
+                  group is stored as one path; a partial selection stores
+                  individual skill paths.
+                </p>
+                <div class="selection-card">
+                  <div class="selection-head">
+                    <strong>~/Developer/agent-skills/baoyu-skills</strong
+                    ><span id="selectedCount">4 of 5 selected</span>
+                  </div>
+                  <label class="skill-row group"
+                    ><input type="checkbox" class="group-check" checked /><span
+                      class="chevron"
+                      >⌄</span
+                    ><span
+                      ><span class="skill-name">visual-content</span
+                      ><span class="skill-desc">3 skills</span></span
+                    ><span class="kind">group</span></label
+                  >
+                  <label class="skill-row child"
+                    ><input
+                      type="checkbox"
+                      class="skill-check"
+                      checked
+                    /><span></span
+                    ><span
+                      ><span class="skill-name">baoyu-diagram</span
+                      ><span class="skill-desc"
+                        >Create diagrams from structured descriptions</span
+                      ></span
+                    ><span class="kind">SKILL.md</span></label
+                  >
+                  <label class="skill-row child"
+                    ><input
+                      type="checkbox"
+                      class="skill-check"
+                      checked
+                    /><span></span
+                    ><span
+                      ><span class="skill-name">baoyu-article-illustrator</span
+                      ><span class="skill-desc"
+                        >Create editorial illustrations for articles</span
+                      ></span
+                    ><span class="kind">SKILL.md</span></label
+                  >
+                  <label class="skill-row child"
+                    ><input
+                      type="checkbox"
+                      class="skill-check"
+                      checked
+                    /><span></span
+                    ><span
+                      ><span class="skill-name">baoyu-infographic</span
+                      ><span class="skill-desc"
+                        >Turn a topic into an infographic brief</span
+                      ></span
+                    ><span class="kind">SKILL.md</span></label
+                  >
+                  <label class="skill-row group"
+                    ><input
+                      type="checkbox"
+                      class="group-check"
+                      data-group="review"
+                    /><span class="chevron">⌄</span
+                    ><span
+                      ><span class="skill-name">engineering</span
+                      ><span class="skill-desc">2 skills</span></span
+                    ><span class="kind">group</span></label
+                  >
+                  <label class="skill-row child"
+                    ><input
+                      type="checkbox"
+                      class="skill-check"
+                      data-parent="review"
+                      checked
+                    /><span></span
+                    ><span
+                      ><span class="skill-name">code-review</span
+                      ><span class="skill-desc"
+                        >Review changes against repository conventions</span
+                      ></span
+                    ><span class="kind">SKILL.md</span></label
+                  >
+                  <label class="skill-row child"
+                    ><input
+                      type="checkbox"
+                      class="skill-check"
+                      data-parent="review"
+                    /><span></span
+                    ><span
+                      ><span class="skill-name">architecture-review</span
+                      ><span class="skill-desc"
+                        >Review boundaries, risks, and integration
+                        contracts</span
+                      ></span
+                    ><span class="kind">SKILL.md</span></label
+                  >
+                </div>
+              </div>
+            </section>
+
+            <section class="step">
+              <div class="step-no">3</div>
+              <div>
+                <h2>Choose where Pi loads them</h2>
+                <p>
+                  Linking never copies files. Pi reads the selected source paths
+                  from the matching settings file.
+                </p>
+                <div
+                  class="scope-toggle"
+                  role="group"
+                  aria-label="Installation scope"
+                >
+                  <button class="scope-option active" data-scope="global">
+                    Global install</button
+                  ><button class="scope-option" data-scope="project">
+                    Current project
+                  </button>
+                </div>
+                <div class="scope-hint" id="scopeHint">
+                  Writes to <code>~/.pi/agent/settings.json</code> for every
+                  trusted workspace.
+                </div>
+                <div class="preview">
+                  <div class="preview-label">
+                    <span>INSTALL PREVIEW</span
+                    ><span id="pathCount">2 paths</span>
+                  </div>
+                  <pre id="previewText">
+~/.pi/agent/settings.json
+skills += [
+  "../../Developer/agent-skills/baoyu-skills/visual-content",
+  "../../Developer/agent-skills/baoyu-skills/engineering/code-review"
+]</pre>
+                </div>
+                <div class="install-row">
+                  <span>Review the exact changes before installing.</span
+                  ><button class="button primary" id="installButton">
+                    Install 4 skills
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div
+      class="modal-backdrop"
+      id="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modalTitle"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="modalTitle">Confirm skill installation</h2>
+          <p>
+            Picot will add these source paths to Pi. No skill files will be
+            copied, moved, or changed.
+          </p>
+        </div>
+        <div class="change-list">
+          <div class="change">
+            <span>SETTINGS FILE</span
+            ><code id="modalSettings">~/.pi/agent/settings.json</code>
+          </div>
+          <div class="change">
+            <span>ADD TO skills ARRAY</span
+            ><code id="modalPaths"
+              >../../Developer/agent-skills/baoyu-skills/visual-content<br />../../Developer/agent-skills/baoyu-skills/engineering/code-review</code
+            >
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="button" id="cancel">Cancel</button
+          ><button class="button primary" id="confirm">Install skills</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const tabs = document.querySelectorAll(".top-tab");
+      tabs.forEach((tab) =>
+        tab.addEventListener("click", () => {
+          tabs.forEach((item) => item.classList.toggle("active", item === tab));
+          document
+            .querySelectorAll(".panel")
+            .forEach((panel) =>
+              panel.classList.toggle("active", panel.id === tab.dataset.tab),
+            );
+        }),
+      );
+
+      const skillChecks = [...document.querySelectorAll(".skill-check")];
+      const groupChecks = [...document.querySelectorAll(".group-check")];
+      const selectedCount = document.getElementById("selectedCount");
+      const installButton = document.getElementById("installButton");
+      function updateSelection() {
+        const selected = skillChecks.filter((item) => item.checked).length;
+        selectedCount.textContent = `${selected} of ${skillChecks.length} selected`;
+        installButton.textContent = `Install ${selected} skill${selected === 1 ? "" : "s"}`;
+        const visual = skillChecks.slice(0, 3);
+        groupChecks[0].checked = visual.every((item) => item.checked);
+        groupChecks[0].indeterminate =
+          !groupChecks[0].checked && visual.some((item) => item.checked);
+        const review = skillChecks.filter(
+          (item) => item.dataset.parent === "review",
+        );
+        groupChecks[1].checked = review.every((item) => item.checked);
+        groupChecks[1].indeterminate =
+          !groupChecks[1].checked && review.some((item) => item.checked);
+      }
+      skillChecks.forEach((item) =>
+        item.addEventListener("change", updateSelection),
+      );
+      groupChecks.forEach((group, index) =>
+        group.addEventListener("change", () => {
+          const targets =
+            index === 0
+              ? skillChecks.slice(0, 3)
+              : skillChecks.filter((item) => item.dataset.parent === "review");
+          targets.forEach((item) => (item.checked = group.checked));
+          updateSelection();
+        }),
+      );
+
+      let scope = "global";
+      const scopeHint = document.getElementById("scopeHint");
+      const previewText = document.getElementById("previewText");
+      const modalSettings = document.getElementById("modalSettings");
+      document.querySelectorAll(".scope-option").forEach((option) =>
+        option.addEventListener("click", () => {
+          scope = option.dataset.scope;
+          document
+            .querySelectorAll(".scope-option")
+            .forEach((item) =>
+              item.classList.toggle("active", item === option),
+            );
+          const global = scope === "global";
+          const settings = global
+            ? "~/.pi/agent/settings.json"
+            : "<cwd>/.pi/settings.json";
+          const first = global
+            ? "../../Developer/agent-skills/baoyu-skills/visual-content"
+            : "../agent-skills/baoyu-skills/visual-content";
+          const second = global
+            ? "../../Developer/agent-skills/baoyu-skills/engineering/code-review"
+            : "../agent-skills/baoyu-skills/engineering/code-review";
+          scopeHint.textContent = global
+            ? "Writes to ~/.pi/agent/settings.json for every trusted workspace."
+            : "Writes to <cwd>/.pi/settings.json for this trusted project.";
+          previewText.textContent = `${settings}\nskills += [\n  "${first}",\n  "${second}"\n]`;
+          modalSettings.textContent = settings;
+          document.getElementById("modalPaths").textContent =
+            `${first}\n${second}`;
+        }),
+      );
+
+      const modal = document.getElementById("modal");
+      document
+        .getElementById("installButton")
+        .addEventListener("click", () => modal.classList.add("show"));
+      document
+        .getElementById("cancel")
+        .addEventListener("click", () => modal.classList.remove("show"));
+      document.getElementById("confirm").addEventListener("click", () => {
+        modal.classList.remove("show");
+        installButton.textContent = "Installed — restart Pi to apply";
+        installButton.disabled = true;
+      });
+      document.getElementById("browse").addEventListener("click", () => {
+        document.querySelector(".path").textContent =
+          "~/Developer/agent-skills/design-tools";
+      });
+      updateSelection();
+    </script>
+  </body>
+</html>

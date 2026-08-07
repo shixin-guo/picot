@@ -19,7 +19,7 @@ async function importFreshWithI18n() {
   vi.resetModules();
   const i18n = await import("./i18n.js");
   await i18n.initI18n();
-  const mod = await import("./settings/save-status.js");
+  const mod = await import("./native/settings/settings-save-status.js");
   return { ...i18n, ...mod };
 }
 

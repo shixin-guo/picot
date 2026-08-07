@@ -25,13 +25,55 @@
   },
   "git": {
     "currentBranch": "現在のGitブランチ",
-    "branchName": "ブランチ：{name}"
+    "branchName": "ブランチ：{name}",
+    "panel": "Git",
+    "files": "ファイル",
+    "staged": "ステージ済み",
+    "changes": "変更",
+    "untracked": "未追跡",
+    "conflicted": "競合",
+    "refresh": "Git状態を更新",
+    "noStatus": "Gitステータスが読み込まれていません",
+    "discardWarning": "この操作は元に戻せません",
+    "writeUnavailable": "Git書き込み認証が利用できません",
+    "stage": "ステージ",
+    "unstage": "ステージ解除",
+    "discard": "変更を破棄",
+    "aiCommitMessage": "AIコミットメッセージを生成",
+    "commit": "コミット",
+    "stats": "+{additions} −{deletions} · ステージ済み {staged} · 変更 {changes} · 未追跡 {untracked}",
+    "summary": "{branch} · {upstream} · ↑{ahead} ↓{behind}",
+    "noUpstream": "アップストリームが設定されていません",
+    "confirmationRequired": "このファイルにはステージ済みと未ステージの変更があります。ファイル全体のコミットを確認しますか？",
+    "discardConfirm": "{count} 個のファイルの変更を破棄しますか？この操作は元に戻せません。",
+    "truncated": "さらに {count} 件の変更は表示されていません",
+    "commitMessageLabel": "コミットメッセージ",
+    "cancel": "キャンセル",
+    "committing": "コミット中...",
+    "hookChangedTree": "pre-commitフックがコミット内容を変更しました。コミットは作成されましたが、ステージされたスナップショットと異なる可能性があります。",
+    "aiFailed": "AIコミットメッセージの生成に失敗しました。手動でコミットメッセージを入力できます。",
+    "commitInProgress": "コミット進行中...",
+    "outcomeUnknown": "コミット結果を確定できませんでした。再試行前にリポジトリの状態を確認してください。",
+    "diffOriginal": "オリジナル",
+    "diffModified": "変更後",
+    "diffEmpty": "表示する変更はありません",
+    "comparison": {
+      "staged": "ステージ済み",
+      "changes": "変更",
+      "untracked": "未追跡"
+    }
   },
   "usage": {
     "contextTokens": "コンテキスト：{used}k / {limit}k トークン",
     "sessionCostTitle": "セッションコスト",
     "contextTitle": "コンテキスト使用量",
-    "costSub": "{amount}（サブスク）"
+    "costSub": "{amount}（サブスク）",
+    "input": "input",
+    "output": "output",
+    "cache": "cache",
+    "costTitle": "costTitle",
+    "summary": "In {in} · Out {out} · Cache {cache}",
+    "sessionUsageTitle": "Session tokens (input / output / cache)"
   },
   "sessionInfo": {
     "title": "セッション情報",
@@ -83,7 +125,8 @@
     "expandAllTools": "すべてのツールを展開",
     "expandAllToolsDesc": "すべてのツールカードを展開する",
     "collapseAllTools": "すべてのツールを折りたたむ",
-    "collapseAllToolsDesc": "すべてのツールカードを折りたたむ"
+    "collapseAllToolsDesc": "すべてのツールカードを折りたたむ",
+    "compacting": "コンパクト中…"
   },
   "messages": {
     "attachedImage": "添付画像",
@@ -91,11 +134,7 @@
     "thinking": "考え中",
     "copy": "コピー",
     "copied": "コピーしました！",
-    "processDetails": "処理の詳細",
-    "processStep": "{count} ステップ",
-    "processSteps": "{count} ステップ",
-    "processToolCall": "{count} 件のツール呼び出し",
-    "processToolCalls": "{count} 件のツール呼び出し"
+    "scrollToBottom": "Scroll to latest message"
   },
   "tools": {
     "copyOutput": "出力をコピー",
@@ -159,7 +198,8 @@
         "installWindows": "py -3 -m pip install \"markitdown[docx,pptx,xlsx,xls,outlook]\"",
         "remoteImageHidden": "リモート画像は非表示です"
       },
-      "conflictMessage": "{name}がディスク上で変更されました。再読み込みしますか、それともディスクバージョンを上書きしますか？"
+      "conflictMessage": "{name}がディスク上で変更されました。再読み込みしますか、それともディスクバージョンを上書きしますか？",
+      "tabpanelLabel": "ファイルプレビュー"
     },
     "unsaved": {
       "title": "未保存の変更",
@@ -296,7 +336,9 @@
     "abortedByUser": "ユーザーによって中止されました",
     "invalidJson": "無効なJSON：{detail}",
     "modelsMustBeObject": "models.jsonはJSONオブジェクトである必要があります。",
-    "providersMustBeObject": "'providers'はオブジェクトである必要があります。"
+    "providersMustBeObject": "'providers'はオブジェクトである必要があります。",
+    "compactionFailed": "Context compaction failed.",
+    "compactionFailedDetail": "Context compaction failed: {error}"
   },
   "onboarding": {
     "openProject": "チャットを始めるためにプロジェクトを開いてください。",
@@ -412,7 +454,15 @@
     "deleteSessionRunning": "実行中のセッションは削除できません",
     "archiveDisabledActive": "アクティブなセッションはアーカイブできません",
     "archiveDisabledStreaming": "ストリーミング中のセッションはアーカイブできません",
-    "archiveDisabledRunning": "実行中のセッションはアーカイブできません"
+    "archiveDisabledRunning": "実行中のセッションはアーカイブできません",
+    "favourite": "お気に入り",
+    "unfavourite": "お気に入り解除",
+    "archiveAll": "すべてのセッションをアーカイブ",
+    "pin": "ピン留め",
+    "unpin": "ピン留め解除",
+    "sessionActions": "セッション操作",
+    "renameErrorGeneric": "セッション名を変更できませんでした。",
+    "focus": "フォーカス"
   },
   "updater": {
     "update": "更新",
@@ -582,7 +632,57 @@
       "saveFailed": "スキル設定の保存に失敗しました。",
       "rescanFailed": "スキルの再スキャンに失敗しました。",
       "ambiguousRuleTarget": "このターゲットは複数のルートにマップされます。settings.jsonを手動で編集して変更してください。",
-      "scopeSummary": "{total}個のスキル · {groups}個のグループ"
+      "scopeSummary": "{total}個のスキル · {groups}個のグループ",
+      "discovered": "Discovered",
+      "install": "Install",
+      "packages": "Packages",
+      "addRoot": "Enable in Pi",
+      "addRootConfirmation": "Enable this Claude skills directory in Pi? The displayed settings entry applies after a new session or Pi restart.",
+      "addRootConfirm": "Enable",
+      "addRootCancel": "Cancel",
+      "addRootFailed": "Failed to enable this skills root.",
+      "rootAddedRestartRequired": "Enabled. Start a new session or restart Pi for the change to take effect.",
+      "sectionsAriaLabel": "Skills sections"
+    },
+    "installSkills": {
+      "title": "Install skills",
+      "description": "Link skills from a local folder. No files are copied or changed.",
+      "chooseFolder": "Choose folder",
+      "scanning": "Scanning skills…",
+      "scanFailed": "Failed to scan the selected folder.",
+      "global": "Global",
+      "project": "Current project",
+      "projectUntrusted": "This project is not trusted. Install to the current project is unavailable.",
+      "review": "Review installation",
+      "confirmation": "Install {count} selected skills to {scope}?",
+      "confirm": "Install selected skills",
+      "cancel": "Cancel",
+      "installing": "Installing…",
+      "installFailed": "Failed to install selected skills.",
+      "complete": "Installed {added} entries; {skipped} already configured.",
+      "restartRequired": "Saved. Start a new session or restart Pi for the change to take effect.",
+      "confirmationHeading": "Confirm skill installation",
+      "skill": "Skill",
+      "group": "Group"
+    },
+    "packageSkills": {
+      "title": "Packages skills",
+      "description": "Bundled skill candidates from configured Pi packages. These are read-only candidates; effective enable/disable state is computed by Pi and is not shown here.",
+      "bundledCandidates": "Bundled candidates",
+      "refresh": "Refresh",
+      "global": "Global",
+      "project": "Current project",
+      "loading": "Loading package skills…",
+      "retry": "Retry",
+      "empty": "No configured packages in this scope.",
+      "loadFailed": "Failed to load package skills.",
+      "projectUntrusted": "This project is not trusted. Project package paths are not shown.",
+      "notInstalled": "Not installed",
+      "package": "Package",
+      "canonicalPath": "Canonical path",
+      "candidateCount": "{count} candidates",
+      "scopeSummary": "{count} packages",
+      "enableAll": "Enable all"
     }
   },
   "lanQr": {
@@ -661,7 +761,8 @@
     "model": "モデル",
     "compact": "コンパクト",
     "compactTitle": "コンテキストが80%を超えています — トークンを節約するためコンパクトにしてください",
-    "qrUnavailable": "QRコードが利用できません"
+    "qrUnavailable": "QRコードが利用できません",
+    "toggleContextControls": "Toggle context controls"
   },
   "browse": {
     "openExternalPrompt": "このリンクを新しいタブで開きますか："
@@ -687,7 +788,8 @@
     "statusReady": "準備完了",
     "statusStreaming": "生成中",
     "statusError": "エラー",
-    "statusDisconnected": "切断済み"
+    "statusDisconnected": "切断済み",
+    "confirmCloseSideChat": "サイドチャットを破棄しますか？"
   },
   "fileMention": {
     "listLabel": "ファイル"
@@ -732,7 +834,8 @@
         "thinkingEffortOffClickToCycleReasoning": "思考の深さ：オフ。クリックして推論の深度を切り替え。",
         "receiveBetaUpdates": "ベータアップデートを受け取る",
         "searchTasks": "タスクを検索",
-        "searchResults": "検索結果"
+        "searchResults": "検索結果",
+        "openFilesPanel": "ファイルパネルを開く — {path}"
       },
       "placeholder": {
         "typeAMessageOrUseToCall": "メッセージ… / でコマンド、@ でファイルを入力",

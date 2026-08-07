@@ -75,6 +75,20 @@ export class HostControlGateway {
     };
   }
 
+  // Skills install flow: pick a local source directory, scan it for skill
+  // candidates, then link selected candidates into Pi's settings.json.
+  async pickSkillSource(workspaceId) {
+    return this.#request("pick_skill_source", { workspaceId });
+  }
+
+  async scanSkillInstallSource(sourceId, workspaceId) {
+    return this.#request("skill_scan_install_source", { sourceId, workspaceId });
+  }
+
+  async installSkillLinks(request) {
+    return this.#request("skill_install_links", request);
+  }
+
   #receive(frame) {
     const pending = this.#pending.get(frame?.requestId);
     if (!pending || pending.generation !== this.#generation) return;

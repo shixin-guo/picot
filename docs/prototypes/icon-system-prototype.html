@@ -1,0 +1,2618 @@
+<!doctype html>
+<!-- ABOUTME: Comprehensive visual inventory of every Picot button/icon with current vs proposed migration. -->
+<!-- ABOUTME: Read-only prototype for reviewing the icon-system direction before implementation. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Picot · Complete icon inventory</title>
+    <style>
+      :root {
+        --bg: #111217;
+        --panel: #181a21;
+        --panel2: #20232c;
+        --line: #303541;
+        --text: #e6e9f0;
+        --muted: #a0a8b8;
+        --dim: #6f7788;
+        --accent: #8fa9ff;
+        --accentBg: #222b47;
+        --focus: #b6c5ff;
+        --green: #91d4ad;
+        --red: #ed9a9a;
+        --radius: 9px;
+      }
+      [data-theme="light"] {
+        --bg: #f3f4f7;
+        --panel: #fff;
+        --panel2: #f7f8fb;
+        --line: #dce0e8;
+        --text: #1c2430;
+        --muted: #576276;
+        --dim: #778195;
+        --accent: #365dc6;
+        --accentBg: #e8eeff;
+        --focus: #254bab;
+        --green: #3a9c5e;
+        --red: #c85858;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          13px/1.45 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 28px;
+        border-bottom: 1px solid var(--line);
+        background: color-mix(in srgb, var(--bg) 92%, transparent);
+        backdrop-filter: blur(14px);
+      }
+      h1 {
+        margin: 0;
+        font-size: 15px;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 11px;
+        margin-top: 2px;
+      }
+      .theme {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        border-radius: 7px;
+        padding: 5px 10px;
+        cursor: pointer;
+      }
+      .theme:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      main {
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      .notice {
+        padding: 12px 14px;
+        border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+        background: var(--accentBg);
+        border-radius: var(--radius);
+        margin-bottom: 20px;
+      }
+      .notice b {
+        color: var(--accent);
+      }
+      .count {
+        display: inline-block;
+        background: var(--accentBg);
+        color: var(--accent);
+        font:
+          11px ui-monospace,
+          monospace;
+        padding: 2px 7px;
+        border-radius: 99px;
+        margin-left: 8px;
+      }
+      .card {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        border-radius: 10px;
+        overflow: hidden;
+        margin-bottom: 18px;
+      }
+      .card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--line);
+      }
+      .card h2 {
+        font-size: 13px;
+        margin: 0;
+      }
+      .card p {
+        margin: 3px 0 0;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .tag {
+        font:
+          10px ui-monospace,
+          monospace;
+        color: var(--accent);
+        border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+        border-radius: 99px;
+        padding: 2px 7px;
+        white-space: nowrap;
+      }
+      .compare {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+      .compare > section {
+        min-width: 0;
+        padding: 16px;
+      }
+      .compare > section + section {
+        border-left: 1px solid var(--line);
+      }
+      .kicker {
+        font-size: 10px;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
+      .bad {
+        color: var(--red);
+      }
+      .good {
+        color: var(--green);
+      }
+      .legend {
+        font-size: 10px;
+        color: var(--dim);
+        margin-top: 8px;
+      }
+      .legend code {
+        color: var(--muted);
+      }
+      .spec {
+        padding: 10px 18px;
+        color: var(--muted);
+        font-size: 11px;
+        border-top: 1px solid var(--line);
+      }
+      .spec b {
+        color: var(--text);
+      }
+      /* Button rendering */
+      .bar {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        flex-wrap: wrap;
+        padding: 8px;
+        background: var(--panel2);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        min-height: 44px;
+      }
+      .ib {
+        width: 28px;
+        height: 28px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--muted);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .ib:hover {
+        color: var(--text);
+        background: color-mix(in srgb, var(--text) 8%, transparent);
+      }
+      .ib:focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 2px;
+      }
+      .ib[disabled] {
+        opacity: 0.38;
+        cursor: not-allowed;
+      }
+      .ib svg {
+        width: 16px;
+        height: 16px;
+      }
+      .ib.current svg {
+        width: 14px;
+        height: 14px;
+        stroke-width: 1.7;
+      }
+      .toggle {
+        width: 32px;
+        height: 28px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        display: inline-grid;
+        place-items: center;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .toggle:hover {
+        color: var(--text);
+        background: color-mix(in srgb, var(--text) 8%, transparent);
+      }
+      .toggle.active {
+        background: var(--accentBg);
+        color: var(--accent);
+      }
+      .toggle svg {
+        width: 16px;
+        height: 16px;
+      }
+      .toggle.current svg {
+        stroke-width: 1.6;
+      }
+      .text-btn {
+        padding: 4px 8px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        color: var(--muted);
+        font-size: 11px;
+        background: transparent;
+        cursor: pointer;
+      }
+      .chk {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .chk input {
+        accent-color: var(--accent);
+      }
+      .sep {
+        width: 1px;
+        height: 20px;
+        background: var(--line);
+        margin: 0 3px;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 9px;
+        border-radius: 99px;
+        background: color-mix(in srgb, var(--text) 5%, transparent);
+        font:
+          11px ui-monospace,
+          monospace;
+        color: var(--muted);
+        border: 1px solid var(--line);
+      }
+      .tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 8px;
+        border-radius: 5px;
+        background: color-mix(in srgb, var(--text) 5%, transparent);
+        font:
+          11px ui-monospace,
+          monospace;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .tab.active {
+        background: var(--accentBg);
+        color: var(--accent);
+      }
+      .ib.small {
+        width: 20px;
+        height: 20px;
+      }
+      .ib.small svg {
+        width: 12px;
+        height: 12px;
+      }
+      .cmd-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 4px 8px;
+        border-radius: 5px;
+        font-size: 11px;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .cmd-icon {
+        font-size: 13px;
+      }
+      .spin {
+        animation: spin 0.7s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      /* File object icons */
+      .tree-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 6px;
+        border-radius: 4px;
+        font-size: 12px;
+      }
+      .tree-row:hover {
+        background: var(--accentBg);
+      }
+      .tree-row.sel {
+        background: var(--accentBg);
+      }
+      .obj {
+        width: 17px;
+        height: 17px;
+        display: inline-grid;
+        place-items: center;
+        flex-shrink: 0;
+      }
+      .obj svg {
+        width: 17px;
+        height: 17px;
+      }
+      .emoji {
+        width: 18px;
+        text-align: center;
+        font-size: 14px;
+        opacity: 0.75;
+      }
+      .st {
+        margin-left: auto;
+        font:
+          10px ui-monospace,
+          monospace;
+      }
+      .st.m {
+        color: #e5bd76;
+      }
+      .st.a {
+        color: var(--green);
+      }
+      .st.d {
+        color: var(--red);
+      }
+      .obj.ts {
+        color: #5796e4;
+      }
+      .obj.json {
+        color: #d5bd69;
+      }
+      .obj.md {
+        color: #86b8e8;
+      }
+      .obj.img {
+        color: #c18ed6;
+      }
+      .obj.folder {
+        color: #d8b66c;
+      }
+      .obj.git {
+        color: #dd936d;
+      }
+      .grid2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px;
+      }
+      @media (max-width: 800px) {
+        .compare {
+          grid-template-columns: 1fr;
+        }
+        .compare > section + section {
+          border-left: 0;
+          border-top: 1px solid var(--line);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>
+          Picot · Complete icon inventory
+          <span class="count" id="count">—</span>
+        </h1>
+        <div class="sub">
+          Every interactive button across all source files · current vs proposed
+        </div>
+      </div>
+      <button class="theme" id="theme-toggle">Toggle theme</button>
+    </header>
+    <main>
+      <div class="notice">
+        <b>Scope:</b> Scanned <code>public/index.html</code> (72 buttons) + all
+        <code>public/**/*.js</code> (77 dynamic buttons) = 149 total. Each
+        region below shows current rendering vs proposed unified migration.
+        <b>Source for SVG paths: <code>~/tmp/PI/pi-web</code></b> — its
+        monochrome file icons (<code>FileIcons.tsx</code>) and action SVGs are
+        directly portable, no third-party icon library needed.
+      </div>
+
+      <!-- ═══ 1. SIDEBAR TOP ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>1 · Sidebar header <span class="count">3 buttons</span></h2>
+            <p>#open-folder-btn · #quick-chat-btn · #refresh-sessions-btn</p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · disparate hand-drawn SVGs</div>
+            <div class="bar">
+              <button class="ib current" title="Open folder">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M3 6h7l2 2h9v10H3z" />
+                  <path d="M12 12v6m-3-3h6" />
+                </svg>
+              </button>
+              <button class="ib current" title="Quick Chat">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M4 5h16v11H9l-5 4z" />
+                  <path d="M8 10h8" />
+                </svg>
+              </button>
+              <button class="ib current spin" title="Refresh">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M20 11a8 8 0 1 0 1 5" />
+                  <path d="M20 4v7h-7" />
+                </svg>
+              </button>
+            </div>
+            <div class="legend">
+              Three separate SVG families with inconsistent path weight.
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">
+              Proposed · folder-plus · message-circle · refresh-cw
+            </div>
+            <div class="bar">
+              <button
+                class="ib"
+                data-a="folder-plus"
+                title="Open folder"
+              ></button>
+              <button
+                class="ib"
+                data-a="message-circle"
+                title="Quick Chat"
+              ></button>
+              <button
+                class="ib spin"
+                data-a="refresh-cw"
+                title="Refresh"
+              ></button>
+            </div>
+            <div class="legend">
+              Same registry, same stroke width, same 28px target.
+            </div>
+          </section>
+        </div>
+        <div class="spec">
+          <b>Keep:</b> IDs, <code>hidden</code> capability gate, Focus mode
+          visibility, refresh <code>.spinning</code> animation.
+        </div>
+      </div>
+
+      <!-- ═══ 2. SIDEBAR SEARCH ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>
+              2 · Sidebar search clear <span class="count">1 button</span>
+            </h2>
+            <p>#session-search-clear</p>
+          </div>
+          <span class="tag">action icon</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · hand-drawn X</div>
+            <div class="bar">
+              <button class="ib current" title="Clear">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">Proposed · x</div>
+            <div class="bar">
+              <button class="ib" data-a="x" title="Clear"></button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ═══ 3. MAIN HEADER ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>3 · Main header <span class="count">6 buttons</span></h2>
+            <p>
+              #sidebar-toggle · #settings-btn · #lan-qr-btn ·
+              #file-sidebar-toggle · #side-chat-btn · #header-open-app-toggle
+            </p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · 6 distinct SVG families</div>
+            <div class="bar">
+              <button class="ib current" title="Toggle sidebar">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                >
+                  <path d="M3 6h18M3 12h18M3 18h18" />
+                </svg>
+              </button>
+              <button class="ib current" title="Settings">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="12" cy="12" r="3" />
+                  <path
+                    d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"
+                  />
+                </svg>
+              </button>
+              <button class="ib current" title="LAN QR">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="5" y="2" width="14" height="20" rx="2" />
+                  <line x1="12" y1="18" x2="12.01" y2="18" />
+                </svg>
+              </button>
+              <button class="toggle current" title="File browser">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="3.5" y="3.5" width="18" height="18" rx="2" />
+                  <path d="M15 3.5v17" />
+                </svg>
+              </button>
+              <button class="ib current" title="Side Chat">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"
+                  />
+                </svg>
+              </button>
+              <button class="ib current" title="Open app">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">
+              Proposed · menu · settings · smartphone · panel-right ·
+              message-square · chevron-down
+            </div>
+            <div class="bar">
+              <button class="ib" data-a="menu" title="Toggle sidebar"></button>
+              <button class="ib" data-a="settings" title="Settings"></button>
+              <button class="ib" data-a="smartphone" title="LAN QR"></button>
+              <button
+                class="toggle active"
+                data-a="panel-right"
+                title="File browser"
+              ></button>
+              <button
+                class="ib"
+                data-a="message-square"
+                title="Side Chat"
+              ></button>
+              <button
+                class="ib"
+                data-a="chevron-down"
+                title="Open app"
+              ></button>
+            </div>
+          </section>
+        </div>
+        <div class="spec">
+          <b>Keep:</b> Settings text label, <code>aria-pressed</code> on file
+          toggle, all capability/hidden gates.
+        </div>
+      </div>
+
+      <!-- ═══ 4. CONVERSATION NAV ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>
+              4 · Conversation navigator <span class="count">2 buttons</span>
+            </h2>
+            <p>#scroll-bottom-btn (with badge) · #scroll-prev-btn</p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · duplicate arrow SVGs</div>
+            <div class="bar">
+              <button class="ib current" title="Scroll to bottom">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M12 5v14M5 12l7 7 7-7" />
+                </svg>
+              </button>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">Proposed · arrow-down</div>
+            <div class="bar">
+              <button
+                class="ib"
+                data-a="arrow-down"
+                title="Scroll to bottom"
+              ></button>
+            </div>
+          </section>
+        </div>
+        <div class="spec">
+          <b>Keep:</b> badge structure (<code>#scroll-bottom-badge</code>),
+          prev/next hidden logic.
+        </div>
+      </div>
+
+      <!-- ═══ 5. COMPOSER ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>5 · Main composer <span class="count">5 buttons</span></h2>
+            <p>
+              #attach-btn · #command-btn · #model-btn · #mic-btn · #send-btn /
+              #abort-btn
+            </p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · 5 separate SVGs</div>
+            <div class="bar">
+              <button class="ib current" title="Attach">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+              <button class="ib current" title="Commands">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"
+                  />
+                </svg>
+              </button>
+              <span class="pill"
+                >claude-sonnet
+                <svg
+                  viewBox="0 0 10 6"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <path d="M1 1L5 5L9 1" /></svg
+              ></span>
+              <button class="ib current" title="Mic">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="9" y="2" width="6" height="12" rx="3" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
+                </svg>
+              </button>
+              <button class="ib current" title="Send">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <line x1="12" y1="19" x2="12" y2="5" />
+                  <polyline points="5 12 12 5 19 12" />
+                </svg>
+              </button>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">
+              Proposed · plus · bot · (model pill) · mic · send / square
+            </div>
+            <div class="bar">
+              <button class="ib" data-a="plus" title="Attach"></button>
+              <button class="ib" data-a="bot" title="Commands"></button>
+              <span class="pill"
+                >claude-sonnet
+                <svg
+                  viewBox="0 0 10 6"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <path d="M1 1L5 5L9 1" /></svg
+              ></span>
+              <button class="ib" data-a="mic" title="Mic"></button>
+              <button class="ib" data-a="send" title="Send"></button>
+              <span class="sep"></span>
+              <span class="legend" style="margin: 0">streaming →</span>
+              <button
+                class="ib"
+                data-a="square"
+                title="Abort"
+                style="color: var(--red)"
+              ></button>
+            </div>
+          </section>
+        </div>
+        <div class="spec">
+          <b>Keep:</b> send/abort visibility swap, model dropdown structure,
+          voice input binding.
+        </div>
+      </div>
+
+      <!-- ═══ 6. COMMAND MENU ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>6 · Command menu items <span class="count">5 items</span></h2>
+            <p>
+              Compact · Export HTML · Session stats · Expand tools · Collapse
+              tools
+            </p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · emoji icons</div>
+            <div class="bar">
+              <span class="cmd-item"
+                ><span class="cmd-icon">🗜️</span> Compact</span
+              >
+              <span class="cmd-item"
+                ><span class="cmd-icon">📋</span> Export HTML</span
+              >
+              <span class="cmd-item"
+                ><span class="cmd-icon">📊</span> Stats</span
+              >
+              <span class="cmd-item"
+                ><span class="cmd-icon">⬇️</span> Expand</span
+              >
+              <span class="cmd-item"
+                ><span class="cmd-icon">⬆️</span> Collapse</span
+              >
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">
+              Proposed · minimize-2 · clipboard · bar-chart · chevrons-down ·
+              chevrons-up
+            </div>
+            <div class="bar">
+              <span class="cmd-item"
+                ><button class="ib small" data-a="minimize-2"></button>
+                Compact</span
+              >
+              <span class="cmd-item"
+                ><button class="ib small" data-a="clipboard"></button> Export
+                HTML</span
+              >
+              <span class="cmd-item"
+                ><button class="ib small" data-a="bar-chart"></button>
+                Stats</span
+              >
+              <span class="cmd-item"
+                ><button class="ib small" data-a="chevrons-down"></button>
+                Expand</span
+              >
+              <span class="cmd-item"
+                ><button class="ib small" data-a="chevrons-up"></button>
+                Collapse</span
+              >
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ═══ 7. MESSAGE CARDS ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>
+              7 · Message & thinking blocks
+              <span class="count">3 controls</span>
+            </h2>
+            <p>message-copy-btn · thinking-toggle (chevron + brain)</p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · inline-SVG in markup</div>
+            <div class="bar">
+              <button class="ib current" title="Copy message">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                  <path
+                    d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                  />
+                </svg>
+              </button>
+              <span class="cmd-item"
+                ><svg viewBox="0 0 8 8" fill="currentColor">
+                  <path d="M2 1l4 3-4 3z" />
+                </svg>
+                <svg
+                  viewBox="0 0 24 24"
+                  width="12"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    d="M12 5a3 3 0 1 0-5.997.142 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"
+                  />
+                  <path d="M12 5v13" />
+                </svg>
+                Thinking</span
+              >
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">
+              Proposed · copy · chevron-right · brain
+            </div>
+            <div class="bar">
+              <button class="ib" data-a="copy" title="Copy message"></button>
+              <span class="cmd-item"
+                ><button class="ib small" data-a="chevron-right"></button>
+                <button class="ib small" data-a="brain"></button> Thinking</span
+              >
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ═══ 8. TOOL CARDS ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>8 · Tool cards <span class="count">2 controls</span></h2>
+            <p>copy-output-btn · tool-card-chevron</p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · 13px hand-drawn SVGs</div>
+            <div class="bar">
+              <button class="ib current" title="Copy output">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="13"
+                  height="13"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="8" y="8" width="14" height="14" rx="2" />
+                  <path
+                    d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"
+                  />
+                </svg>
+              </button>
+              <span class="cmd-item"
+                ><svg viewBox="0 0 8 8" fill="currentColor">
+                  <path d="M2 1l4 3-4 3z" />
+                </svg>
+                bash</span
+              >
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">Proposed · copy · chevron-right</div>
+            <div class="bar">
+              <button class="ib" data-a="copy" title="Copy output"></button>
+              <span class="cmd-item"
+                ><button class="ib small" data-a="chevron-right"></button>
+                bash</span
+              >
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ═══ 9. FILE PREVIEW HEADER ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>
+              9 · File preview panel header <span class="count">4 buttons</span>
+            </h2>
+            <p>toggle toolbar · open desktop · enlarge · close</p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · mixed SVGs (toggle=sliders)</div>
+            <div class="bar">
+              <button class="ib current" title="Toggle toolbar">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                >
+                  <path d="M4 6h16M4 12h16M4 18h16" />
+                  <circle cx="9" cy="6" r="2" fill="currentColor" />
+                  <circle cx="15" cy="12" r="2" fill="currentColor" />
+                </svg>
+              </button>
+              <button class="ib current" title="Open desktop">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M14 4h6v6M10 14 20 4M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"
+                  />
+                </svg>
+              </button>
+              <button class="ib current" title="Enlarge">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"
+                  />
+                </svg>
+              </button>
+              <button class="ib current" title="Close">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">
+              Proposed · panel-bottom · external-link · maximize · x
+            </div>
+            <div class="bar">
+              <button
+                class="ib"
+                data-a="panel-bottom"
+                title="Toggle toolbar"
+              ></button>
+              <button
+                class="ib"
+                data-a="external-link"
+                title="Open desktop"
+              ></button>
+              <button class="ib" data-a="maximize" title="Enlarge"></button>
+              <button class="ib" data-a="x" title="Close"></button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ═══ 10. FILE EDITOR TOOLBAR ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>
+              10 · File editor toolbar
+              <span class="count">7 buttons + 2 checkboxes</span>
+            </h2>
+            <p>
+              Preview/Edit · Save · Reload · Find · Go to line · Copy · Wrap ·
+              Auto-save
+            </p>
+          </div>
+          <span class="tag">action icons + toggles</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · text buttons</div>
+            <div class="bar">
+              <span class="text-btn">Preview</span
+              ><span class="text-btn">Edit</span>
+              <span class="text-btn">Save</span
+              ><span class="text-btn">Reload</span>
+              <span class="text-btn">Find</span
+              ><span class="text-btn">Go to line</span
+              ><span class="text-btn">Copy</span>
+              <span class="sep"></span>
+              <label class="chk"><input type="checkbox" checked /> Wrap</label>
+              <label class="chk"><input type="checkbox" /> Auto-save</label>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">
+              Proposed · single toggle + icons + checkboxes
+            </div>
+            <div class="bar">
+              <button
+                class="ib"
+                data-a="eye"
+                title="Switch to Preview"
+              ></button>
+              <button class="ib" data-a="save" title="Save"></button>
+              <button class="ib" data-a="refresh-cw" title="Reload"></button>
+              <button class="ib" data-a="search" title="Find"></button>
+              <button class="ib" data-a="list" title="Go to line"></button>
+              <button class="ib" data-a="copy" title="Copy"></button>
+              <span class="sep"></span>
+              <label class="chk"><input type="checkbox" checked /> Wrap</label>
+              <label class="chk"><input type="checkbox" /> Auto-save</label>
+            </div>
+          </section>
+        </div>
+        <div class="spec">
+          <b>Keep:</b> Markdown defaults to Preview, source defaults to Edit.
+          Go-to-line inline input reveal. Wrap first-time
+          <code>true</code> default.
+        </div>
+      </div>
+
+      <!-- ═══ 11. FILE BROWSER ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>
+              11 · File browser toolbar <span class="count">3 buttons</span>
+            </h2>
+            <p>parent dir · reveal in finder · close sidebar</p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · hand-drawn SVGs</div>
+            <div class="bar">
+              <button class="ib current" title="Parent">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M12 19V5M5 12l7-7 7 7" />
+                </svg>
+              </button>
+              <button class="ib current" title="Reveal">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"
+                  />
+                </svg>
+              </button>
+              <button class="ib current" title="Close">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">Proposed · arrow-up · folder-open · x</div>
+            <div class="bar">
+              <button class="ib" data-a="arrow-up" title="Parent"></button>
+              <button class="ib" data-a="folder-open" title="Reveal"></button>
+              <button class="ib" data-a="x" title="Close"></button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ═══ 12. FILE TREE & GIT TREE OBJECTS ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>
+              12 · File tree & Git tree objects
+              <span class="count">~15 types</span>
+            </h2>
+            <p>
+              workspace/file-browser.js + git-panel.js → shared pi-web
+              monochrome resolver
+            </p>
+          </div>
+          <span class="tag">object icons · pi-web FileIcons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · emoji (OS-dependent)</div>
+            <div
+              class="bar"
+              style="flex-direction: column; align-items: stretch; gap: 2px"
+            >
+              <div class="tree-row"><span class="emoji">📁</span> src</div>
+              <div class="tree-row">
+                <span class="emoji">📄</span> app.ts <span class="st m">M</span>
+              </div>
+              <div class="tree-row sel">
+                <span class="emoji">📋</span> package.json
+                <span class="st a">A</span>
+              </div>
+              <div class="tree-row">
+                <span class="emoji">📝</span> README.md
+              </div>
+              <div class="tree-row"><span class="emoji">🖼️</span> hero.png</div>
+              <div class="tree-row">
+                <span class="emoji">🐍</span> parser.py
+              </div>
+              <div class="tree-row"><span class="emoji">🦀</span> main.rs</div>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">Proposed · curated Material SVG</div>
+            <div
+              class="bar"
+              style="flex-direction: column; align-items: stretch; gap: 2px"
+            >
+              <div class="tree-row">
+                <span class="obj folder" data-o="folder-open"></span> src
+              </div>
+              <div class="tree-row">
+                <span class="obj ts" data-o="typescript"></span> app.ts
+                <span class="st m">M</span>
+              </div>
+              <div class="tree-row sel">
+                <span class="obj json" data-o="json"></span> package.json
+                <span class="st a">A</span>
+              </div>
+              <div class="tree-row">
+                <span class="obj md" data-o="markdown"></span> README.md
+              </div>
+              <div class="tree-row">
+                <span class="obj img" data-o="image"></span> hero.png
+              </div>
+              <div class="tree-row">
+                <span class="obj" data-o="python" style="color: #4caf50"></span>
+                parser.py
+              </div>
+              <div class="tree-row">
+                <span class="obj" data-o="rust" style="color: #dea584"></span>
+                main.rs
+              </div>
+            </div>
+          </section>
+        </div>
+        <div class="spec">
+          <b>Source:</b> Port <code>components/FileIcons.tsx</code> from pi-web
+          — flat monochrome, <code>var(--text-dim)</code>, 14×14 viewBox, zero
+          runtime deps. File tree & Git tree share one resolver. No Material
+          Icon Theme needed.
+        </div>
+      </div>
+
+      <!-- ═══ 13. SIDEBAR SESSION ITEMS ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>
+              13 · Session row actions <span class="count">4 buttons</span>
+            </h2>
+            <p>pin · archive · rename · delete</p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">
+              Current · createIcon (archive/trash) + ✎ text
+            </div>
+            <div class="bar">
+              <button class="ib current" title="Pin">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1Z"
+                  />
+                </svg>
+              </button>
+              <button class="ib current" title="Archive">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="2" y="3" width="20" height="5" rx="1" />
+                  <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4" />
+                </svg>
+              </button>
+              <button class="ib current" title="Rename">✎</button>
+              <button class="ib current" title="Delete">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                  />
+                </svg>
+              </button>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">
+              Proposed · pin · archive · pencil · trash-2
+            </div>
+            <div class="bar">
+              <button class="ib" data-a="pin" title="Pin"></button>
+              <button class="ib" data-a="archive" title="Archive"></button>
+              <button class="ib" data-a="pencil" title="Rename"></button>
+              <button class="ib" data-a="trash-2" title="Delete"></button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ═══ 14. WORKSPACE GROUPS ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>
+              14 · Workspace group actions <span class="count">4 buttons</span>
+            </h2>
+            <p>new-chat · folder disclosure · more actions (…) · focus (→)</p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · SVG + Unicode</div>
+            <div class="bar">
+              <button class="ib current" title="New chat">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="12"
+                  height="12"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                >
+                  <path d="M12 5v14M5 12h19" />
+                </svg>
+              </button>
+              <button class="ib current" title="Disclosure">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                >
+                  <path d="M9 6l6 6-6 6" />
+                </svg>
+              </button>
+              <button class="ib current" title="More">…</button>
+              <button class="ib current" title="Focus">→</button>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">
+              Proposed · plus · chevron-right · ellipsis · arrow-right
+            </div>
+            <div class="bar">
+              <button class="ib" data-a="plus" title="New chat"></button>
+              <button
+                class="ib"
+                data-a="chevron-right"
+                title="Disclosure"
+              ></button>
+              <button class="ib" data-a="ellipsis" title="More"></button>
+              <button class="ib" data-a="arrow-right" title="Focus"></button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ═══ 15. TERMINAL ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>15 · Terminal panel <span class="count">6 buttons</span></h2>
+            <p>
+              toggle · new tab · enlarge · close panel · per-tab close · restart
+            </p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">
+              Current · sliders toggle + Unicode tabs
+            </div>
+            <div class="bar">
+              <button class="toggle current active" title="Toggle">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M4 6h16M4 12h16M4 18h16" />
+                  <circle cx="8" cy="6" r="2" />
+                  <circle cx="16" cy="12" r="2" />
+                  <circle cx="10" cy="18" r="2" />
+                </svg>
+              </button>
+              <button class="toggle current" title="New tab">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+              <button class="toggle current" title="Enlarge">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"
+                  />
+                </svg>
+              </button>
+              <button class="toggle current" title="Close">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+              <span class="tab"
+                >default
+                <span style="cursor: pointer; color: var(--dim)">×</span></span
+              >
+              <span class="tab"
+                >run <span style="cursor: pointer; color: var(--dim)">×</span>
+                <span style="cursor: pointer; color: var(--dim)">↻</span></span
+              >
+            </div>
+            <div class="legend">
+              Toggle uses <code>sliders</code> (misleading). Tab actions use raw
+              Unicode.
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">
+              Proposed · panel-bottom + unified registry
+            </div>
+            <div class="bar">
+              <button
+                class="toggle active"
+                data-a="panel-bottom"
+                title="Toggle"
+              ></button>
+              <button class="toggle" data-a="plus" title="New tab"></button>
+              <button class="toggle" data-a="maximize" title="Enlarge"></button>
+              <button class="toggle" data-a="x" title="Close panel"></button>
+              <span class="tab"
+                >default
+                <button class="ib small" data-a="x" title="Close tab"></button
+              ></span>
+              <span class="tab"
+                >run
+                <button class="ib small" data-a="x" title="Close tab"></button
+                ><button
+                  class="ib small"
+                  data-a="rotate-cw"
+                  title="Restart"
+                ></button
+              ></span>
+            </div>
+          </section>
+        </div>
+        <div class="spec">
+          <b>Restore first:</b> toggle glyph should be original terminal
+          outline, not generic sliders. Tab close stays sibling. PTY lifecycle
+          untouched.
+        </div>
+      </div>
+
+      <!-- ═══ 16. QUICK CHAT ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>
+              16 · Quick Chat title bar <span class="count">3 buttons</span>
+            </h2>
+            <p>new chat · minimize · close</p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · hand-drawn SVGs</div>
+            <div class="bar">
+              <button class="ib current" title="New">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+              <button class="ib current" title="Minimize">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <path d="M5 12h14" />
+                </svg>
+              </button>
+              <button class="ib current" title="Close">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">Proposed · plus · minus · x</div>
+            <div class="bar">
+              <button class="ib" data-a="plus" title="New"></button>
+              <button class="ib" data-a="minus" title="Minimize"></button>
+              <button class="ib" data-a="x" title="Close"></button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ═══ 17. EPHEMERAL CHAT (Side Chat) ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>
+              17 · Side Chat composer <span class="count">6 buttons</span>
+            </h2>
+            <p>attach · commands · model · thinking · mic · send</p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · ephemeral-chat-view.js SVGs</div>
+            <div class="bar">
+              <button class="ib current" title="Attach">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+              <button class="ib current" title="Commands">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"
+                  />
+                </svg>
+              </button>
+              <span class="pill"
+                >model
+                <svg
+                  viewBox="0 0 10 6"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <path d="M1 1L5 5L9 1" /></svg
+              ></span>
+              <span class="pill">Think: off</span>
+              <button class="ib current" title="Mic">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="9" y="2" width="6" height="12" rx="3" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
+                </svg>
+              </button>
+              <button class="ib current" title="Send">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <line x1="12" y1="19" x2="12" y2="5" />
+                  <polyline points="5 12 12 5 19 12" />
+                </svg>
+              </button>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">
+              Proposed · same registry as main composer
+            </div>
+            <div class="bar">
+              <button class="ib" data-a="plus" title="Attach"></button>
+              <button class="ib" data-a="bot" title="Commands"></button>
+              <span class="pill"
+                >model
+                <svg
+                  viewBox="0 0 10 6"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <path d="M1 1L5 5L9 1" /></svg
+              ></span>
+              <span class="pill">Think: off</span>
+              <button class="ib" data-a="mic" title="Mic"></button>
+              <button class="ib" data-a="send" title="Send"></button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ═══ 18. SUPER AGENT HEADER ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>
+              18 · Super Agent header <span class="count">4 buttons</span>
+            </h2>
+            <p>sidebar delegate · LAN QR · telegram pill · task board toggle</p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · sa-chat-header inline SVGs</div>
+            <div class="bar">
+              <button class="ib current" title="Sidebar">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M3 6h18M3 12h18M3 18h18" />
+                </svg>
+              </button>
+              <button class="ib current" title="QR">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <rect x="5" y="2" width="14" height="20" rx="2" />
+                  <line x1="12" y1="18" x2="12.01" y2="18" />
+                </svg>
+              </button>
+              <span class="pill"
+                ><span
+                  style="
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 50%;
+                    background: var(--dim);
+                    display: inline-block;
+                  "
+                ></span>
+                Telegram</span
+              >
+              <button class="ib current" title="Task board">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="3" y="4" width="18" height="16" rx="2" />
+                  <path d="M9 4v16M15 8h3M15 12h3M15 16h3" />
+                </svg>
+              </button>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">
+              Proposed · delegates to main header registry
+            </div>
+            <div class="bar">
+              <button class="ib" data-a="menu" title="Sidebar"></button>
+              <button class="ib" data-a="smartphone" title="QR"></button>
+              <span class="pill"
+                ><span
+                  style="
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 50%;
+                    background: var(--dim);
+                    display: inline-block;
+                  "
+                ></span>
+                Telegram</span
+              >
+              <button
+                class="ib"
+                data-a="panel-right"
+                title="Task board"
+              ></button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ═══ 19. SETTINGS ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>
+              19 · Settings navigation & toggles
+              <span class="count">~15 controls</span>
+            </h2>
+            <p>back (‹) · 6 nav items · 4 toggle switches · config editor</p>
+          </div>
+          <span class="tag">action icons + toggles</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · Unicode + toggle dots</div>
+            <div class="bar">
+              <button class="ib current" title="Back">‹</button>
+              <span class="pill active">General</span
+              ><span class="pill">Models</span
+              ><span class="pill">Extensions</span>
+              <span class="sep"></span>
+              <span style="font-size: 11px; color: var(--muted)"
+                >Auto-compact:</span
+              >
+              <button
+                class="ib current"
+                style="
+                  width: 36px;
+                  border-radius: 99px;
+                  background: var(--accentBg);
+                "
+              >
+                <span
+                  style="
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 50%;
+                    background: var(--accent);
+                    display: block;
+                    margin-left: 14px;
+                  "
+                ></span>
+              </button>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">
+              Proposed · chevron-left + consistent toggles
+            </div>
+            <div class="bar">
+              <button class="ib" data-a="chevron-left" title="Back"></button>
+              <span class="pill active">General</span
+              ><span class="pill">Models</span
+              ><span class="pill">Extensions</span>
+              <span class="sep"></span>
+              <span style="font-size: 11px; color: var(--muted)"
+                >Auto-compact:</span
+              >
+              <button
+                class="ib"
+                style="
+                  width: 36px;
+                  border-radius: 99px;
+                  background: var(--accentBg);
+                  border: 1px solid var(--accent);
+                "
+              >
+                <span
+                  style="
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 50%;
+                    background: var(--accent);
+                    display: block;
+                    margin-left: 14px;
+                  "
+                ></span>
+              </button>
+            </div>
+          </section>
+        </div>
+        <div class="spec">
+          <b>Keep:</b> Toggle switch visual (pill + dot). Back button text
+          label. Nav item active state.
+        </div>
+      </div>
+
+      <!-- ═══ 20. MODALS ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>
+              20 · Modal close & actions <span class="count">5 buttons</span>
+            </h2>
+            <p>config-editor close/cancel/save · LAN QR close/open-link</p>
+          </div>
+          <span class="tag">action icons</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · hand-drawn X + text</div>
+            <div class="bar">
+              <button class="ib current" title="Close">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                >
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+              <span class="text-btn">Cancel</span
+              ><span class="text-btn">Save</span>
+              <span class="text-btn">Open Link ↗</span>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">
+              Proposed · x + text actions with icon prefix
+            </div>
+            <div class="bar">
+              <button class="ib" data-a="x" title="Close"></button>
+              <span class="text-btn">Cancel</span>
+              <span class="text-btn"
+                ><button
+                  class="ib small"
+                  data-a="save"
+                  style="margin-right: 3px"
+                ></button
+                >Save</span
+              >
+              <button
+                class="ib small"
+                data-a="external-link"
+                title="Open link"
+              ></button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ═══ 21. MOBILE ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>21 · Mobile context bar <span class="count">1 button</span></h2>
+            <p>#mobile-context-toggle (expand/collapse model+context bar)</p>
+          </div>
+          <span class="tag">action icon</span>
+        </div>
+        <div class="compare">
+          <section>
+            <div class="kicker bad">Current · hand-drawn chevron-up</div>
+            <div class="bar">
+              <button class="ib current" title="Toggle">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="m18 15-6-6-6 6" />
+                </svg>
+              </button>
+            </div>
+          </section>
+          <section>
+            <div class="kicker good">Proposed · chevron-up (CSS flips)</div>
+            <div class="bar">
+              <button class="ib" data-a="chevron-up" title="Toggle"></button>
+            </div>
+          </section>
+        </div>
+        <div class="spec">
+          <b>Keep:</b> CSS <code>.flipped</code> rotation behavior, not icon
+          swap.
+        </div>
+      </div>
+
+      <!-- ═══ SUMMARY ═══ -->
+      <div class="card">
+        <div class="card-head">
+          <div><h2>Summary · migration rules</h2></div>
+          <span class="tag">disposition</span>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--line)">
+              <th style="padding: 8px; text-align: left">Class</th>
+              <th style="padding: 8px; text-align: left">Rule</th>
+              <th style="padding: 8px; text-align: left">Count</th>
+              <th style="padding: 8px; text-align: left">Disposition</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom: 1px solid var(--line)">
+              <td style="padding: 7px">Action controls</td>
+              <td style="padding: 7px">16px monocolor stroke, 28px target</td>
+              <td style="padding: 7px">~110</td>
+              <td style="padding: 7px"><code>Lucide registry</code></td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--line)">
+              <td style="padding: 7px">File/folder objects</td>
+              <td style="padding: 7px">17px local SVG, semantic color OK</td>
+              <td style="padding: 7px">~15 types</td>
+              <td style="padding: 7px"><code>Material whitelist</code></td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--line)">
+              <td style="padding: 7px">Boolean toggles</td>
+              <td style="padding: 7px">Keep checkbox/switch + label</td>
+              <td style="padding: 7px">~8</td>
+              <td style="padding: 7px"><code>Keep as toggles</code></td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--line)">
+              <td style="padding: 7px">Brand marks</td>
+              <td style="padding: 7px">Authentic identity assets</td>
+              <td style="padding: 7px">~3</td>
+              <td style="padding: 7px"><code>Do not normalize</code></td>
+            </tr>
+            <tr>
+              <td style="padding: 7px">State markers</td>
+              <td style="padding: 7px">Color/badge independent of icons</td>
+              <td style="padding: 7px">~8</td>
+              <td style="padding: 7px"><code>Do not replace</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+    <script>
+      const ns = "http://www.w3.org/2000/svg";
+      function svg(children, attrs = {}) {
+        const n = document.createElementNS(ns, "svg");
+        Object.entries({ viewBox: "0 0 24 24", ...attrs }).forEach(([k, v]) => {
+          n.setAttribute(k, v);
+        });
+        children.forEach(([tag, va]) => {
+          const c = document.createElementNS(ns, tag);
+          Object.entries(va).forEach(([k, v]) => {
+            c.setAttribute(k, v);
+          });
+          n.append(c);
+        });
+        return n;
+      }
+      const S = {
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "2",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+      };
+      const action = {
+        "folder-plus": () =>
+          svg(
+            [
+              [
+                "path",
+                {
+                  d: "M4 5a2 2 0 0 1 2-2h4l2 3h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z",
+                },
+              ],
+              ["path", { d: "M12 11v5M9.5 13.5h5" }],
+            ],
+            S,
+          ),
+        "message-circle": () =>
+          svg(
+            [
+              [
+                "path",
+                {
+                  d: "M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z",
+                },
+              ],
+              ["path", { d: "M8 10h8M8 14h5" }],
+            ],
+            S,
+          ),
+        "refresh-cw": () =>
+          svg(
+            [
+              ["path", { d: "M20 11a8.1 8.1 0 1 0 2.3 5.7" }],
+              ["path", { d: "M20 4v7h-7" }],
+            ],
+            S,
+          ),
+        x: () => svg([["path", { d: "M18 6 6 18M6 6l12 12" }]], S),
+        menu: () => svg([["path", { d: "M3 6h18M3 12h18M3 18h18" }]], S),
+        settings: () =>
+          svg(
+            [
+              ["circle", { cx: "12", cy: "12", r: "3" }],
+              [
+                "path",
+                {
+                  d: "M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z",
+                },
+              ],
+            ],
+            S,
+          ),
+        smartphone: () =>
+          svg(
+            [
+              ["rect", { x: "5", y: "2", width: "14", height: "20", rx: "2" }],
+              ["line", { x1: "12", y1: "18", x2: "12.01", y2: "18" }],
+            ],
+            S,
+          ),
+        "panel-right": () =>
+          svg(
+            [
+              ["rect", { x: "3", y: "3", width: "18", height: "18", rx: "2" }],
+              ["path", { d: "M15 3v18" }],
+            ],
+            S,
+          ),
+        "message-square": () =>
+          svg(
+            [
+              [
+                "path",
+                {
+                  d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z",
+                },
+              ],
+            ],
+            S,
+          ),
+        "chevron-down": () => svg([["path", { d: "m6 9 6 6 6-6" }]], S),
+        "arrow-down": () => svg([["path", { d: "M12 5v14M5 12l7 7 7-7" }]], S),
+        plus: () => svg([["path", { d: "M12 5v14M5 12h14" }]], S),
+        bot: () =>
+          svg(
+            [
+              ["rect", { x: "4", y: "8", width: "16", height: "12", rx: "2" }],
+              ["path", { d: "M12 8V4M8 4h0M16 4h0M8 16h.01M16 16h.01" }],
+            ],
+            S,
+          ),
+        mic: () =>
+          svg(
+            [
+              ["rect", { x: "9", y: "2", width: "6", height: "12", rx: "3" }],
+              ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" }],
+            ],
+            S,
+          ),
+        send: () =>
+          svg(
+            [
+              ["line", { x1: "12", y1: "19", x2: "12", y2: "5" }],
+              ["polyline", { points: "5 12 12 5 19 12" }],
+            ],
+            S,
+          ),
+        square: () =>
+          svg(
+            [
+              [
+                "rect",
+                {
+                  x: "6",
+                  y: "6",
+                  width: "12",
+                  height: "12",
+                  rx: "1",
+                  fill: "currentColor",
+                  stroke: "none",
+                },
+              ],
+            ],
+            S,
+          ),
+        "minimize-2": () =>
+          svg(
+            [
+              ["path", { d: "M8 3v3a2 2 0 0 1-2 2H3" }],
+              ["path", { d: "M21 8h-3a2 2 0 0 1-2-2V3" }],
+              ["path", { d: "M3 16h3a2 2 0 0 1 2 2v3" }],
+              ["path", { d: "M16 21v-3a2 2 0 0 1 2-2h3" }],
+            ],
+            S,
+          ),
+        clipboard: () =>
+          svg(
+            [
+              ["rect", { x: "8", y: "2", width: "8", height: "4", rx: "1" }],
+              [
+                "path",
+                {
+                  d: "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2",
+                },
+              ],
+            ],
+            S,
+          ),
+        "bar-chart": () =>
+          svg(
+            [
+              ["line", { x1: "12", y1: "20", x2: "12", y2: "10" }],
+              ["line", { x1: "18", y1: "20", x2: "18", y2: "4" }],
+              ["line", { x1: "6", y1: "20", x2: "6", y2: "16" }],
+            ],
+            S,
+          ),
+        "chevrons-down": () =>
+          svg(
+            [
+              ["path", { d: "m7 6 5 5 5-5" }],
+              ["path", { d: "m7 13 5 5 5-5" }],
+            ],
+            S,
+          ),
+        "chevrons-up": () =>
+          svg(
+            [
+              ["path", { d: "m7 13 5-5 5 5" }],
+              ["path", { d: "m7 6 5 5 5-5" }],
+            ],
+            S,
+          ),
+        copy: () =>
+          svg(
+            [
+              ["rect", { x: "9", y: "9", width: "13", height: "13", rx: "2" }],
+              [
+                "path",
+                {
+                  d: "M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1",
+                },
+              ],
+            ],
+            S,
+          ),
+        "chevron-right": () => svg([["path", { d: "m9 18 6-6-6-6" }]], S),
+        brain: () =>
+          svg(
+            [
+              [
+                "path",
+                {
+                  d: "M12 5a3 3 0 1 0-5.997.142 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z",
+                },
+              ],
+              [
+                "path",
+                {
+                  d: "M12 5a3 3 0 1 1 5.997.142 4 4 0 0 0 2.526 5.77 4 4 0 0 0-.556 6.588A4 4 0 1 1 12 18Z",
+                },
+              ],
+              ["path", { d: "M12 5v13" }],
+            ],
+            S,
+          ),
+        "panel-bottom": () =>
+          svg(
+            [
+              ["rect", { x: "3", y: "3", width: "18", height: "18", rx: "2" }],
+              ["path", { d: "M3 15h18" }],
+              ["path", { d: "m9 8 3 3-3 3M13 14h3" }],
+            ],
+            S,
+          ),
+        "external-link": () =>
+          svg(
+            [
+              ["path", { d: "M15 3h6v6" }],
+              ["path", { d: "M10 14 21 3" }],
+              [
+                "path",
+                {
+                  d: "M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5",
+                },
+              ],
+            ],
+            S,
+          ),
+        maximize: () =>
+          svg(
+            [
+              ["path", { d: "M8 3H5a2 2 0 0 0-2 2v3" }],
+              ["path", { d: "M21 8V5a2 2 0 0 0-2-2h-3" }],
+              ["path", { d: "M3 16v3a2 2 0 0 0 2 2h3" }],
+              ["path", { d: "M16 21h3a2 2 0 0 0 2-2v-3" }],
+            ],
+            S,
+          ),
+        eye: () =>
+          svg(
+            [
+              [
+                "path",
+                { d: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" },
+              ],
+              ["circle", { cx: "12", cy: "12", r: "3" }],
+            ],
+            S,
+          ),
+        save: () =>
+          svg(
+            [
+              [
+                "path",
+                {
+                  d: "M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z",
+                },
+              ],
+              ["path", { d: "M17 21v-8H7v8M7 3v5h8" }],
+            ],
+            S,
+          ),
+        search: () =>
+          svg(
+            [
+              ["circle", { cx: "11", cy: "11", r: "8" }],
+              ["path", { d: "m21 21-4.3-4.3" }],
+            ],
+            S,
+          ),
+        list: () =>
+          svg(
+            [
+              ["path", { d: "M8 6h13M8 12h13M8 18h13" }],
+              ["path", { d: "M3 6h.01M3 12h.01M3 18h.01" }],
+            ],
+            S,
+          ),
+        "arrow-up": () => svg([["path", { d: "M12 19V5M5 12l7-7 7 7" }]], S),
+        "folder-open": () =>
+          svg(
+            [
+              [
+                "path",
+                {
+                  d: "M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2",
+                },
+              ],
+            ],
+            S,
+          ),
+        pin: () =>
+          svg(
+            [
+              [
+                "path",
+                {
+                  d: "M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1Z",
+                },
+              ],
+            ],
+            S,
+          ),
+        archive: () =>
+          svg(
+            [
+              ["rect", { x: "2", y: "3", width: "20", height: "5", rx: "1" }],
+              [
+                "path",
+                { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4" },
+              ],
+            ],
+            S,
+          ),
+        pencil: () =>
+          svg(
+            [
+              ["path", { d: "M12 20h9" }],
+              ["path", { d: "M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" }],
+            ],
+            S,
+          ),
+        "trash-2": () =>
+          svg(
+            [
+              [
+                "path",
+                {
+                  d: "M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2",
+                },
+              ],
+              ["line", { x1: "10", y1: "11", x2: "10", y2: "17" }],
+              ["line", { x1: "14", y1: "11", x2: "14", y2: "17" }],
+            ],
+            S,
+          ),
+        ellipsis: () =>
+          svg(
+            [
+              ["circle", { cx: "12", cy: "12", r: "1" }],
+              ["circle", { cx: "19", cy: "12", r: "1" }],
+              ["circle", { cx: "5", cy: "12", r: "1" }],
+            ],
+            S,
+          ),
+        "arrow-right": () => svg([["path", { d: "M5 12h14M12 5l7 7-7 7" }]], S),
+        "rotate-cw": () =>
+          svg(
+            [
+              ["path", { d: "M21 12a9 9 0 1 1-3-6.7L21 8" }],
+              ["path", { d: "M21 3v5h-5" }],
+            ],
+            S,
+          ),
+        minus: () => svg([["path", { d: "M5 12h14" }]], S),
+        "chevron-left": () => svg([["path", { d: "m15 18-6-6 6-6" }]], S),
+        "chevron-up": () => svg([["path", { d: "m18 15-6-6-6 6" }]], S),
+      };
+      document.querySelectorAll("[data-a]").forEach((el) => {
+        const f = action[el.dataset.a];
+        if (f) el.append(f());
+      });
+      // Object icons — ported from pi-web/components/FileIcons.tsx (14×16 viewBox, flat monochrome)
+      function pwOutline() {
+        return svg(
+          [
+            [
+              "path",
+              {
+                d: "M2.5 1h6l3 3v9h-9V1Z",
+                stroke: "currentColor",
+                "stroke-width": "0.9",
+                fill: "currentColor",
+                "fill-opacity": "0.07",
+                "stroke-linejoin": "round",
+              },
+            ],
+          ],
+          { viewBox: "0 0 14 14", fill: "none" },
+        );
+      }
+      function pwLabel(label) {
+        const n = pwOutline();
+        const fold = svg(
+          [
+            [
+              "path",
+              {
+                d: "M8.5 1v3h3",
+                stroke: "currentColor",
+                "stroke-width": "0.9",
+                fill: "none",
+                "stroke-linejoin": "round",
+              },
+            ],
+          ],
+          { viewBox: "0 0 14 14", fill: "none" },
+        );
+        const t = document.createElementNS(ns, "text");
+        t.setAttribute("x", "7");
+        t.setAttribute("y", "9.5");
+        t.setAttribute("text-anchor", "middle");
+        t.setAttribute("font-size", "3.4");
+        t.setAttribute("font-weight", "600");
+        t.setAttribute("fill", "currentColor");
+        t.textContent = label;
+        n.append(fold, t);
+        return n;
+      }
+      function pwFolderOpen() {
+        return svg(
+          [
+            [
+              "path",
+              {
+                d: "M1 4.5A1 1 0 0 1 2 3.5H5.5L7 5H14a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4.5Z",
+                stroke: "currentColor",
+                "stroke-width": "1",
+                fill: "currentColor",
+                "fill-opacity": "0.1",
+              },
+            ],
+            [
+              "path",
+              {
+                d: "M1 6h14.5L14 13H2L1 6Z",
+                stroke: "currentColor",
+                "stroke-width": "1",
+                fill: "currentColor",
+                "fill-opacity": "0.12",
+              },
+            ],
+          ],
+          { viewBox: "0 0 16 16", fill: "none" },
+        );
+      }
+      const object = {
+        "folder-open": pwFolderOpen,
+        typescript: () => pwLabel("TS"),
+        json: () => pwLabel("{}"),
+        markdown: () => {
+          const n = pwOutline();
+          n.append(
+            svg(
+              [
+                [
+                  "path",
+                  {
+                    d: "M3.5 9.5V7l1.5 1.5L6.5 7v2.5",
+                    stroke: "currentColor",
+                    "stroke-width": "0.9",
+                  },
+                ],
+                [
+                  "path",
+                  {
+                    d: "M8 7v2.5M7 9l1 1.5 1-1.5",
+                    stroke: "currentColor",
+                    "stroke-width": "0.9",
+                  },
+                ],
+              ],
+              {
+                viewBox: "0 0 14 14",
+                fill: "none",
+                "stroke-linecap": "round",
+                "stroke-linejoin": "round",
+              },
+            ),
+          );
+          return n;
+        },
+        image: () => {
+          const n = pwOutline();
+          n.append(
+            svg(
+              [
+                [
+                  "rect",
+                  {
+                    x: "3.5",
+                    y: "5",
+                    width: "7",
+                    height: "5",
+                    rx: "0.5",
+                    stroke: "currentColor",
+                    "stroke-width": "0.8",
+                  },
+                ],
+              ],
+              { viewBox: "0 0 14 14", fill: "none" },
+            ),
+          );
+          return n;
+        },
+        python: () => pwLabel("PY"),
+        rust: () => pwLabel("RS"),
+      };
+      document.querySelectorAll("[data-o]").forEach((el) => {
+        const f = object[el.dataset.o];
+        if (f) el.append(f());
+      });
+      // Count
+      document.getElementById("count").textContent = "149 buttons · 21 regions";
+      document.getElementById("theme-toggle").onclick = () =>
+        (document.documentElement.dataset.theme =
+          document.documentElement.dataset.theme === "light" ? "" : "light");
+    </script>
+  </body>
+</html>

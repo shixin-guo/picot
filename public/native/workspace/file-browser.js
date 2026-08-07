@@ -4,6 +4,8 @@
  * data request scoped to the current workspace root; there is no absolute
  * filesystem path to escape to.
  */
+import { createFileTypeIcon } from "../../file-type-icons.js";
+
 export class NativeFileBrowser {
   #container;
   #pathEl;
@@ -105,8 +107,14 @@ export class NativeFileBrowser {
 
       const icon = document.createElement("span");
       icon.className = "file-icon";
-      icon.textContent = fileIcon(entry);
       icon.setAttribute("aria-hidden", "true");
+      icon.append(
+        createFileTypeIcon({
+          name: entry.name,
+          isDirectory,
+          expanded: isDirectory,
+        }),
+      );
       item.append(icon);
 
       const name = document.createElement("span");
@@ -247,98 +255,6 @@ export function toggleExclusiveSidePanel(panel, otherPanels = []) {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-/** Return an emoji glyph for the file entry based on its type / extension. */
-function fileIcon(entry) {
-  if (entry.kind === "directory") return "📁";
-
-  // Special filenames
-  if (entry.name === "Dockerfile" || entry.name.startsWith("Dockerfile.")) return "🐳";
-  if (entry.name === ".gitignore" || entry.name === ".gitattributes") return "🔧";
-
-  const ext = entry.name.split(".").pop()?.toLowerCase() ?? "";
-  const map = {
-    // Code
-    js: "📜",
-    ts: "📜",
-    jsx: "📜",
-    tsx: "📜",
-    mjs: "📜",
-    cjs: "📜",
-    // Data / config
-    json: "📋",
-    yaml: "📋",
-    yml: "📋",
-    toml: "📋",
-    xml: "📋",
-    csv: "📋",
-    // Docs
-    md: "📝",
-    mdx: "📝",
-    txt: "📝",
-    rst: "📝",
-    // Styles
-    css: "🎨",
-    scss: "🎨",
-    sass: "🎨",
-    less: "🎨",
-    // Web
-    html: "🌐",
-    htm: "🌐",
-    // Images (svg stays 🌐 here because it's usually source, not binary)
-    svg: "🌐",
-    png: "🖼️",
-    jpg: "🖼️",
-    jpeg: "🖼️",
-    gif: "🖼️",
-    webp: "🖼️",
-    ico: "🖼️",
-    bmp: "🖼️",
-    // Video
-    mp4: "🎬",
-    mov: "🎬",
-    avi: "🎬",
-    webm: "🎬",
-    mkv: "🎬",
-    // Audio
-    mp3: "🎵",
-    wav: "🎵",
-    ogg: "🎵",
-    flac: "🎵",
-    aac: "🎵",
-    // Archives
-    zip: "📦",
-    tar: "📦",
-    gz: "📦",
-    bz2: "📦",
-    rar: "📦",
-    "7z": "📦",
-    // Docs / binary
-    pdf: "📕",
-    // Languages
-    rs: "🦀",
-    py: "🐍",
-    rb: "💎",
-    go: "🔵",
-    java: "☕",
-    kt: "🟣",
-    swift: "🔶",
-    c: "⚙️",
-    cpp: "⚙️",
-    h: "⚙️",
-    hpp: "⚙️",
-    // Shell
-    sh: "⚡",
-    bash: "⚡",
-    zsh: "⚡",
-    fish: "⚡",
-    ps1: "⚡",
-    // Lock / env
-    lock: "🔒",
-    env: "🔑",
-  };
-  return map[ext] ?? "📄";
-}
 
 /** Human-readable byte size (B / KB / MB / GB). */
 function formatSize(bytes) {

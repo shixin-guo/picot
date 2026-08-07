@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { JSDOM } from "jsdom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setupThinkingEffortControl } from "./thinking-effort-control.js";
 
@@ -117,5 +120,60 @@ describe("setupThinkingEffortControl", () => {
     await vi.waitFor(() => {
       expect(onError).toHaveBeenCalledWith(error);
     });
+  });
+});
+
+describe("thinking effort static shell contract", () => {
+  it("labels the composer thinking control clearly while keeping button cycling", () => {
+    const html = readFileSync(join(process.cwd(), "public/index.html"), "utf8");
+    const dom = new JSDOM(html);
+    const { document: shellDocument } = dom.window;
+    const thinkingBtn = shellDocument.querySelector("#thinking-btn");
+
+    expect(thinkingBtn.tagName).toBe("BUTTON");
+    expect(thinkingBtn.textContent.trim()).toBe("Think off");
+    expect(thinkingBtn.getAttribute("title")).toContain("Click to cycle");
+
+    dom.window.close();
+  });
+
+  it("renders thinking effort in Settings as a Faster↔Smarter segmented slider", () => {
+    const html = readFileSync(join(process.cwd(), "public/index.html"), "utf8");
+    const dom = new JSDOM(html);
+    const { document: shellDocument } = dom.window;
+    const dots = Array.from(
+      shellDocument.querySelectorAll("#thinking-effort-steps .thinking-effort-dot"),
+    );
+
+    expect(shellDocument.querySelector("#setting-thinking .settings-label-main")?.textContent).toBe(
+      "Thinking effort",
+    );
+    expect(shellDocument.querySelector("#setting-thinking .settings-label-sub")?.textContent).toBe(
+      "Reasoning depth",
+    );
+    expect(dots.map((s) => s.dataset.level)).toEqual(["off", "minimal", "low", "medium", "high"]);
+    const ends = Array.from(
+      shellDocument.querySelectorAll(
+        "#thinking-effort .thinking-effort-ends > span:not(.thinking-effort-name)",
+      ),
+    );
+    expect(ends.map((e) => e.textContent.trim())).toEqual(["Faster", "Smarter"]);
+    expect(shellDocument.querySelector("#thinking-effort-name")?.textContent.trim()).toBe("off");
+    expect(shellDocument.querySelector("#thinking-effort-marker")).not.toBeNull();
+
+    dom.window.close();
+  });
+
+  it("uses neutral styling for every thinking level chip state", () => {
+    const headerCss = readFileSync(join(process.cwd(), "public/native/header.css"), "utf8");
+    const composerCss = readFileSync(join(process.cwd(), "public/native/composer.css"), "utf8");
+    const thinkingTagRule = headerCss.match(/\.thinking-tag\s*\{[^}]+\}/)?.[0] || "";
+    const composerThinkingTagRule =
+      composerCss.match(/\.composer-toolbar \.thinking-tag\s*\{[^}]+\}/)?.[0] || "";
+
+    expect(thinkingTagRule).toContain("border: 1px solid var(--border)");
+    expect(thinkingTagRule).toContain("color: var(--text-dim)");
+    expect(thinkingTagRule).not.toContain("--thinking-accent");
+    expect(composerThinkingTagRule).toContain("border-color: transparent");
   });
 });

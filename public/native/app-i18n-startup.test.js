@@ -89,5 +89,5 @@ test("native entry initializes i18n before rendering welcome and settings langua
   const languageOptions = Array.from(
     document.querySelectorAll("#settings-language-select option"),
   ).map((option) => option.value);
-  expect(languageOptions).toEqual(["system", "en", "zh"]);
+  expect(languageOptions).toEqual(["system", "en", "zh", "ja", "es"]);
 });

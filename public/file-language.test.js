@@ -40,6 +40,13 @@ describe("classifyFilePath", () => {
     expect(classifyFilePath("script.py").languageId).toBe("python");
   });
 
+  test("classifies Rust source as editable Rust code", () => {
+    const result = classifyFilePath("src/main.rs");
+    expect(result.contentType).toBe("text");
+    expect(result.editable).toBe(true);
+    expect(result.languageId).toBe("rust");
+  });
+
   test("classifies R scripts as editable text", () => {
     const result = classifyFilePath("analysis.R");
     expect(result.contentType).toBe("text");
@@ -145,6 +152,10 @@ describe("languageExtensionForPath", () => {
 
   test("returns extension for Python", () => {
     expect(languageExtensionForPath("script.py")).not.toBeNull();
+  });
+
+  test("returns a syntax-highlighting extension for Rust", () => {
+    expect(languageExtensionForPath("src/main.rs")).not.toBeNull();
   });
 
   test("returns extension for Markdown", () => {

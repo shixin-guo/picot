@@ -119,7 +119,23 @@ mod tests {
         let raw = include_str!("../../protocol/picot-core-commands.json");
         let manifest: Manifest = serde_json::from_str(raw).expect("manifest parses");
         assert_eq!(manifest.version, 1);
-        // 32 handleCommand cases plus the two predeclared ephemeral commands.
-        assert_eq!(manifest.commands.len(), 34);
+        // Assert known Skills commands are classified desktopOwnerOnly rather
+        // than pinning a brittle exact count (new Skills commands are added
+        // across phases). The count is recorded as a lower bound so accidentally
+        // removing a command is caught.
+        assert!(manifest.commands.len() >= 34);
+        let skills = [
+            "list_skill_inventory",
+            "set_skill_enabled",
+            "skill_add_root",
+            "list_package_skill_inventory",
+        ];
+        for name in skills {
+            assert_eq!(
+                manifest.commands.get(name),
+                Some(&"desktopOwnerOnly".to_string()),
+                "{name} must be desktopOwnerOnly"
+            );
+        }
     }
 }

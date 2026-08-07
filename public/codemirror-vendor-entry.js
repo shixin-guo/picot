@@ -9,6 +9,7 @@ export { javascript } from "@codemirror/lang-javascript";
 export { json } from "@codemirror/lang-json";
 export { markdown } from "@codemirror/lang-markdown";
 export { python } from "@codemirror/lang-python";
+export { rust } from "@codemirror/lang-rust";
 export { yaml } from "@codemirror/lang-yaml";
 export {
   forceParsing,

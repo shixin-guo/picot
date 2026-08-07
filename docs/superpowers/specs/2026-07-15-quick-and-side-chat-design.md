@@ -166,9 +166,11 @@ in host memory, survive a WebView reload or navigation in the same window, and
 disappear on window destruction or application exit. No registry data is written
 to Pi history, browser storage, a database, or an application state file.
 
-The host enforces five Side Chats and one active Quick Chat per owner. Creating,
-ready, replacing, and closing records occupy their slots until the registry
-finishes the transition. A Quick Chat replacement may temporarily own the old
+The host enforces one Side Chat and one active Quick Chat per owner. The Side Chat
+entry point opens the existing owner-scoped runtime when one already exists;
+creating, ready, and closing records occupy the single slot until the registry
+finishes the transition. Existing runtimes from an older build are not forcibly
+terminated, but no additional Side Chat can be created while they remain. A Quick Chat replacement may temporarily own the old
 and candidate children under one atomic replacement reservation; unrelated
 requests cannot use that reservation or start a second replacement.
 
@@ -487,8 +489,8 @@ unchanged, reducing regression risk.
 
 ### `public/side-chat-manager.js`
 
-Owns the collection of Side Chat runtimes and views, the five-instance limit,
-tab titles, unread state, active Side Chat selection, creation, and close flows.
+Owns the Side Chat runtime and view, the single-instance limit, tab title, unread
+state, active Side Chat selection, creation, and close flows.
 It integrates with the preview panel through an explicit transient-content-tab
 interface.
 
@@ -607,9 +609,10 @@ beside the existing Files button.
 - If the panel already shows that Side Chat, pressing the header button again
   collapses the panel without destroying it.
 
-The panel tab bar contains a distinct chat-plus control labeled "New Side Chat".
-It creates additional Side Chats. It is disabled at five and explains the limit
-in its tooltip/status text; it is not an ambiguous generic plus button.
+The header button is the only Side Chat creation/open affordance. With no Side Chat
+it creates the single runtime; when one exists it opens or restores that runtime
+instead of creating another. The File Preview tab bar has no Side Chat creation
+entry, so it cannot be mistaken for a second-instance affordance.
 
 ### Tabs
 
@@ -910,8 +913,8 @@ manual desktop verification in addition to jsdom tests.
 
 ### Frontend tests
 
-- creation, switching, and independent streaming for multiple Side Chats;
-- five-instance limit and repeated-click suppression;
+- creation and independent streaming for the single Side Chat;
+- single-instance limit and repeated-click suppression;
 - Unicode-safe first-prompt tab title and tooltip;
 - tab overflow, active visibility, streaming, and unread states;
 - transient-tab register/update/activate/close/unregister transitions and the
@@ -948,7 +951,7 @@ Implementation must run focused tests first, then `bun run test`, `bun run
 check`, and `bun run check:rust` for the files changed. It must also manually
 exercise the real bundled Pi in the desktop Tauri WebView:
 
-1. Main chat, five Side Chats, and Quick Chat can stream independently.
+1. Main chat, one Side Chat, and Quick Chat can stream independently.
 2. Side Chat can use workspace tools without adding main-session context.
 3. Quick Chat can use global skills, prompt templates, extensions, and settings,
    while built-in, extension, and custom tools remain unavailable.
@@ -979,7 +982,7 @@ exercise the real bundled Pi in the desktop Tauri WebView:
 
 The feature is complete when all of the following are true:
 
-1. A user can create up to five independent Side Chats in one workspace window.
+1. A user can create one independent Side Chat in one workspace window; a later entry opens the existing chat instead of creating another.
 2. Creating, opening, hiding, or using a Side Chat never replaces the main
    session or adds messages to it.
 3. Side Chats share the File Preview/Edit panel with file tabs and preserve both

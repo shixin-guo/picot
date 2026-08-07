@@ -5,7 +5,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const css = readFileSync(join(process.cwd(), "public/style.css"), "utf8");
+// The Quick Chat ephemeral styles live in the feature-owned stylesheet (the
+// monolithic public/style.css split into per-module files); read it directly
+// so this layout contract guards the actual rules.
+const css = readFileSync(join(process.cwd(), "public/native/session/ephemeral-chat.css"), "utf8");
 
 describe("Quick Chat composer layout", () => {
   it("matches the composer bottom margin to its horizontal margin", () => {

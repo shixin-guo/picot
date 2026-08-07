@@ -25,6 +25,17 @@ pub struct NativeLaunchSpec {
     pub extensions: Vec<PathBuf>,
     pub pi_version: String,
     pub path_env: String,
+    /// When true, spawn `pi --no-tools`: built-in, extension, and custom tools
+    /// are all disabled for this runtime (Quick Chat uses this). Extensions and
+    /// global resources still load normally.
+    pub no_tools: bool,
+    /// When true, spawn `pi --approve`: the desktop owner trusts the chosen
+    /// workspace's project-local resources (.pi/settings.json, .agents/skills,
+    /// project extensions) for this run. Picot's workspace is opened via the OS
+    /// folder picker, so the user has already opted in; pi's non-interactive
+    /// rpc mode otherwise leaves the project untrusted even when a saved
+    /// decision exists in ~/.pi/agent/trust.json.
+    pub approve: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +53,12 @@ impl NativeLaunchSpec {
             args.push(extension.to_string_lossy().into_owned());
         }
         args.extend(["--mode".into(), "rpc".into()]);
+        if self.no_tools {
+            args.push("--no-tools".into());
+        }
+        if self.approve {
+            args.push("--approve".into());
+        }
         if let Some(session_path) = &self.session_path {
             args.push("--session".into());
             args.push(session_path.to_string_lossy().into_owned());
@@ -594,6 +611,8 @@ mod tests {
             extensions: vec![PathBuf::from("/extensions/picot-bridge.mjs")],
             pi_version: env!("PI_STUDIO_PI_VERSION_BUNDLED").into(),
             path_env: "/usr/bin".into(),
+            no_tools: false,
+            approve: false,
         };
         let launch = spec.command_description();
         assert_eq!(launch.program, PathBuf::from("/embedded/pi"));
@@ -607,6 +626,44 @@ mod tests {
             .args
             .iter()
             .any(|argument| argument.parse::<u16>().is_ok()));
+    }
+
+    #[test]
+    fn no_tools_flag_appends_dash_dash_no_tools_arg() {
+        let spec = NativeLaunchSpec {
+            binary: PathBuf::from("/embedded/pi"),
+            cwd: PathBuf::from("/tmp/quick-chat"),
+            session_path: None,
+            extensions: vec![],
+            pi_version: env!("PI_STUDIO_PI_VERSION_BUNDLED").into(),
+            path_env: "/usr/bin".into(),
+            no_tools: true,
+            approve: false,
+        };
+        let launch = spec.command_description();
+        assert!(launch.args.contains(&"--no-tools".to_string()));
+
+        let side_spec = NativeLaunchSpec {
+            no_tools: false,
+            approve: false,
+            ..spec
+        };
+        assert!(!side_spec.command_description().args.contains(&"--no-tools".to_string()));
+    }
+
+    #[test]
+    fn approve_flag_appends_dash_dash_approve_arg() {
+        let spec = NativeLaunchSpec {
+            binary: PathBuf::from("/embedded/pi"),
+            cwd: PathBuf::from("/workspace"),
+            session_path: None,
+            extensions: vec![],
+            pi_version: env!("PI_STUDIO_PI_VERSION_BUNDLED").into(),
+            path_env: "/usr/bin".into(),
+            no_tools: false,
+            approve: true,
+        };
+        assert!(spec.command_description().args.contains(&"--approve".to_string()));
     }
 
     #[tokio::test]

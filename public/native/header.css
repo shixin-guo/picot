@@ -111,6 +111,17 @@
     box-shadow var(--duration) var(--ease);
 }
 
+/* Session usage pill (aggregate IN/OUT/CACHE) */
+.session-usage {
+  color: var(--header-pill-text, var(--text-dim));
+  display: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.session-usage.visible {
+  display: inline-block;
+}
+
 /* Session cost pill */
 .session-cost {
   color: var(--header-pill-text, var(--text-dim));
@@ -138,6 +149,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--header-pill-text, var(--text-dim));
+}
+
+/* Added by setupProjectHeader() when a click handler is attached, so the
+ * workspace-path pill gets the same pointer affordance as the git-branch pill. */
+.clickable-pill {
+  cursor: pointer;
 }
 
 /* Git branch toggle button (merged diff-sidebar-toggle + branch pill) */

@@ -101,11 +101,43 @@ function migrateLegacyLocalStorageValue() {
 
 migrateLegacyLocalStorageValue();
 
-export function applyTheme(themeId) {
+export function applyTheme(themeId, options) {
   const root = document.documentElement;
-  if (!themes[themeId]) themeId = "night";
-  root.setAttribute("data-theme", themeId);
-  writeThemeCookie(themeId);
+  const id = themes[themeId] ? themeId : "night";
+  const apply = () => {
+    root.setAttribute("data-theme", id);
+    writeThemeCookie(id);
+  };
+  const origin = options?.origin;
+  if (origin && Number.isFinite(origin.x) && Number.isFinite(origin.y)) {
+    withViewTransition(apply, origin);
+  } else {
+    withViewTransition(apply);
+  }
+}
+
+/**
+ * Fallback-first View Transitions wrapper. Synchronously runs `apply()` when
+ * `document.startViewTransition` is missing or the user prefers reduced
+ * motion; otherwise records the click origin (center fallback) into CSS
+ * custom properties and routes through the native transition. Callers may
+ * omit the origin entirely to retain the documented 50%/50% center fallback.
+ */
+export function withViewTransition(apply, origin) {
+  const root = document.documentElement;
+  const supportsTransition =
+    typeof document !== "undefined" && typeof document.startViewTransition === "function";
+  const prefersReducedMotion =
+    typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!supportsTransition || prefersReducedMotion) {
+    apply();
+    return;
+  }
+  const x = origin && Number.isFinite(origin.x) ? `${origin.x}px` : "50%";
+  const y = origin && Number.isFinite(origin.y) ? `${origin.y}px` : "50%";
+  root.style.setProperty("--theme-transition-x", x);
+  root.style.setProperty("--theme-transition-y", y);
+  document.startViewTransition(apply);
 }
 
 export function getCurrentTheme() {

@@ -1,1874 +1,2146 @@
 <!doctype html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1.0, viewport-fit=cover"
-        />
-        <base href="/" />
-        <title>Picot</title>
-        <link rel="icon" type="image/svg+xml" href="icons/logo-dark.svg" />
-        <meta name="theme-color" content="#f5f3ef" />
-        <link rel="stylesheet" href="style-theme.css" />
-        <link rel="stylesheet" href="design-system.css" />
-        <link rel="stylesheet" href="style.css" />
-        <link rel="stylesheet" href="vendor/xterm.css" />
-        <script src="vendor/xterm.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-        <script>
-            // Boot-time instance-swap overlay gate kept for session route swaps.
-            // Read synchronously before <body> renders so the first paint is the
-            // overlay, not a half-loaded chat UI.
-            try {
-                if (
-                    sessionStorage.getItem("pi-studio:swapping-instance") ===
-                    "1"
-                ) {
-                    document.documentElement.classList.add(
-                        "swapping-instance-pending",
-                    );
-                }
-            } catch (_e) {}
-        </script>
-    </head>
-    <body class="">
-        <div
-            class="instance-swap-overlay"
-            id="instance-swap-overlay"
-            aria-hidden="true"
-        >
-            <div class="instance-swap-overlay__spinner"></div>
-            <div
-                class="instance-swap-overlay__label"
-                id="instance-swap-overlay-label"
-             data-i18n="sidebar.startingSession">
-                Starting session…
-            </div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <base href="/" />
+    <title>Picot</title>
+    <link rel="icon" type="image/svg+xml" href="icons/logo-dark.svg" />
+    <meta name="theme-color" content="#f5f3ef" />
+    <link rel="stylesheet" href="style-theme.css" />
+    <link rel="stylesheet" href="design-system.css" />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="vendor/xterm.css" />
+    <script src="vendor/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script>
+      // Boot-time instance-swap overlay gate kept for session route swaps.
+      // Read synchronously before <body> renders so the first paint is the
+      // overlay, not a half-loaded chat UI.
+      try {
+        if (sessionStorage.getItem("pi-studio:swapping-instance") === "1") {
+          document.documentElement.classList.add("swapping-instance-pending");
+        }
+      } catch (_e) {}
+    </script>
+  </head>
+  <body class="">
+    <div
+      class="instance-swap-overlay"
+      id="instance-swap-overlay"
+      aria-hidden="true"
+    >
+      <div class="instance-swap-overlay__spinner"></div>
+      <div
+        class="instance-swap-overlay__label"
+        id="instance-swap-overlay-label"
+        data-i18n="sidebar.startingSession"
+      >
+        Starting session…
+      </div>
+    </div>
+    <script>
+      // Flip the body class as early as the body element exists. Done inline
+      // (rather than waiting for the native entry) so we don't get a chat-UI flash
+      // between body parse and app.js executing.
+      if (
+        document.documentElement.classList.contains("swapping-instance-pending")
+      ) {
+        document.body.classList.add("swapping-instance");
+        document.documentElement.classList.remove("swapping-instance-pending");
+        const overlay = document.getElementById("instance-swap-overlay");
+        if (overlay) overlay.setAttribute("data-visible", "true");
+      }
+    </script>
+    <div class="app-layout">
+      <!-- Left Sidebar -->
+      <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="mode-toggle" id="mode-toggle">
+            <span
+              class="mode-link active"
+              title="Chat"
+              data-i18n-title="nav.chat"
+              ><img
+                src="icons/logo-dark.svg"
+                alt="Picot logo"
+                data-i18n-alt="migrated.index.alt.picotLogo"
+                class="tau-icon"
+            /></span>
+          </div>
+          <div class="sidebar-search-wrap">
+            <input
+              type="text"
+              id="session-search-input"
+              class="ui-input ui-input--sm sidebar-search-input"
+              placeholder="Search..."
+              data-i18n-ph="sidebar.search"
+              autocomplete="off"
+            />
+            <button
+              type="button"
+              id="session-search-clear"
+              class="sidebar-search-clear hidden"
+              title="Clear search"
+              data-i18n-title="sidebar.clearSearch"
+              aria-label="Clear search"
+              data-i18n-aria-label="sidebar.clearSearch"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <div class="sidebar-actions">
+            <button
+              class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
+              id="new-session-btn"
+              title="New session"
+              data-i18n-title="migrated.index.title.newSession"
+              aria-label="New session"
+              data-i18n-aria-label="migrated.index.title.newSession"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+            <button
+              class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
+              id="open-folder-btn"
+              title="Open folder as workspace"
+              data-i18n-title="sidebar.openFolder"
+              aria-label="Open folder"
+              data-i18n-aria-label="sidebar.openFolderAria"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
+                />
+                <line x1="12" y1="12" x2="12" y2="18" />
+                <line x1="9" y1="15" x2="15" y2="15" />
+              </svg>
+            </button>
+            <button
+              class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn hidden"
+              id="quick-chat-btn"
+              title="Quick Chat"
+              aria-label="Quick Chat"
+              data-i18n-title="nav.quickChat"
+              data-i18n-aria-label="nav.quickChat"
+            ></button>
+            <button
+              class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
+              id="refresh-sessions-btn"
+              title="Refresh sessions"
+              data-i18n-title="sidebar.refreshSessions"
+              aria-label="Refresh sessions"
+              data-i18n-aria-label="sidebar.refreshSessions"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                <path d="M21 3v5h-5" />
+              </svg>
+            </button>
+          </div>
         </div>
-        <script>
-            // Flip the body class as early as the body element exists. Done inline
-            // (rather than waiting for the native entry) so we don't get a chat-UI flash
-            // between body parse and app.js executing.
-            if (
-                document.documentElement.classList.contains(
-                    "swapping-instance-pending",
-                )
-            ) {
-                document.body.classList.add("swapping-instance");
-                document.documentElement.classList.remove(
-                    "swapping-instance-pending",
-                );
-                const overlay = document.getElementById(
-                    "instance-swap-overlay",
-                );
-                if (overlay) overlay.setAttribute("data-visible", "true");
-            }
-        </script>
-        <div class="app-layout">
-            <!-- Left Sidebar -->
-            <div class="sidebar" id="sidebar">
-                <div class="sidebar-header">
-                    <div class="mode-toggle" id="mode-toggle">
-                        <span class="mode-link active" title="Chat" data-i18n-title="nav.chat"
-                            ><img
-                                src="icons/logo-dark.svg"
-                                alt="Picot logo" data-i18n-alt="migrated.index.alt.picotLogo"
-                                class="tau-icon"
-                        /></span>
-                    </div>
-                    <div class="sidebar-search-wrap">
-                        <input
-                            type="text"
-                            id="session-search-input"
-                            class="ui-input ui-input--sm sidebar-search-input"
-                            placeholder="Search..." data-i18n-ph="sidebar.search"
-                            autocomplete="off"
-                        />
-                        <button
-                            type="button"
-                            id="session-search-clear"
-                            class="sidebar-search-clear hidden"
-                            title="Clear search" data-i18n-title="sidebar.clearSearch"
-                            aria-label="Clear search" data-i18n-aria-label="sidebar.clearSearch"
+        <div class="session-list" id="session-list">
+          <div class="session-loading" data-i18n="sidebar.loadingSessions">
+            Loading sessions...
+          </div>
+        </div>
+        <div class="sidebar-footer">
+          <div class="sidebar-settings-row">
+            <button
+              class="ui-icon-button ui-icon-button--sm sidebar-settings-btn"
+              id="settings-btn"
+              title="Settings"
+              data-i18n-title="migrated.index.title.settings"
+              aria-label="Settings"
+              data-i18n-aria-label="migrated.index.title.settings"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
+                />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <span data-i18n="migrated.index.title.settings">Settings</span>
+            </button>
+            <button
+              class="sidebar-update-pill hidden"
+              id="sidebar-update-btn"
+              title="Download and install update"
+              data-i18n-title="migrated.index.title.downloadAndInstallUpdate"
+              aria-label="Download and install update"
+              data-i18n-aria-label="migrated.index.title.downloadAndInstallUpdate"
+              data-i18n="migrated.index.text.update"
+            >
+              Update
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar overlay for mobile -->
+      <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+      <!-- Workspace -->
+      <div class="workspace">
+        <!-- Header -->
+        <div class="header session-header">
+          <div class="header-left">
+            <button
+              class="sidebar-toggle"
+              id="sidebar-toggle"
+              title="Toggle sidebar"
+              data-i18n-title="nav.toggleSidebar"
+              aria-label="Toggle sidebar"
+              data-i18n-aria-label="nav.toggleSidebar"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+            <span class="session-info-anchor">
+              <button
+                type="button"
+                class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn session-info-toggle session-info-toggle--dim"
+                id="session-info-toggle"
+                title="Session info"
+                data-i18n-title="sessionInfo.title"
+                aria-label="Session info"
+                data-i18n-aria-label="sessionInfo.title"
+                aria-expanded="false"
+                aria-controls="session-info-panel"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 16v-4" />
+                  <path d="M12 8h.01" />
+                </svg>
+              </button>
+              <section
+                class="session-info-panel hidden"
+                id="session-info-panel"
+                aria-labelledby="session-info-heading"
+              >
+                <h2 id="session-info-heading" data-i18n="sessionInfo.heading">
+                  Session Info
+                </h2>
+                <dl class="session-info-list">
+                  <div class="session-info-row">
+                    <dt data-i18n="sessionInfo.file">File</dt>
+                    <dd>
+                      <span
+                        class="session-info-value"
+                        id="session-info-file"
+                      ></span>
+                      <button
+                        type="button"
+                        class="ui-icon-button ui-icon-button--xs ui-icon-button--ghost session-info-copy"
+                        data-copy-session-field="file"
+                        title="Copy file path"
+                        data-i18n-title="sessionInfo.copyFile"
+                        aria-label="Copy file path"
+                        data-i18n-aria-label="sessionInfo.copyFile"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          aria-hidden="true"
                         >
-                            <svg
-                                width="12"
-                                height="12"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2.2"
-                                stroke-linecap="round"
-                            >
-                                <line x1="18" y1="6" x2="6" y2="18" />
-                                <line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="sidebar-actions">
-                        <button
-                            class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
-                            id="new-session-btn"
-                            title="New session" data-i18n-title="migrated.index.title.newSession"
-                            aria-label="New session" data-i18n-aria-label="migrated.index.title.newSession"
+                          <rect
+                            width="14"
+                            height="14"
+                            x="8"
+                            y="8"
+                            rx="2"
+                            ry="2"
+                          />
+                          <path
+                            d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"
+                          />
+                        </svg>
+                      </button>
+                    </dd>
+                  </div>
+                  <div class="session-info-row">
+                    <dt data-i18n="sessionInfo.id">ID</dt>
+                    <dd>
+                      <span
+                        class="session-info-value"
+                        id="session-info-id"
+                      ></span>
+                      <button
+                        type="button"
+                        class="ui-icon-button ui-icon-button--xs ui-icon-button--ghost session-info-copy"
+                        data-copy-session-field="id"
+                        title="Copy session ID"
+                        data-i18n-title="sessionInfo.copyId"
+                        aria-label="Copy session ID"
+                        data-i18n-aria-label="sessionInfo.copyId"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          aria-hidden="true"
                         >
-                            <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <line x1="12" y1="5" x2="12" y2="19" />
-                                <line x1="5" y1="12" x2="19" y2="12" />
-                            </svg>
-                        </button>
-                        <button
-                            class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
-                            id="open-folder-btn"
-                            title="Open folder as workspace" data-i18n-title="sidebar.openFolder"
-                            aria-label="Open folder" data-i18n-aria-label="sidebar.openFolderAria"
-                        >
-                            <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path
-                                    d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
-                                />
-                                <line x1="12" y1="12" x2="12" y2="18" />
-                                <line x1="9" y1="15" x2="15" y2="15" />
-                            </svg>
-                        </button>
-                        <button
-                            class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
-                            id="refresh-sessions-btn"
-                            title="Refresh sessions" data-i18n-title="sidebar.refreshSessions"
-                            aria-label="Refresh sessions" data-i18n-aria-label="sidebar.refreshSessions"
-                        >
-                            <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path
-                                    d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"
-                                />
-                                <path d="M21 3v5h-5" />
-                            </svg>
-                        </button>
-                    </div>
+                          <rect
+                            width="14"
+                            height="14"
+                            x="8"
+                            y="8"
+                            rx="2"
+                            ry="2"
+                          />
+                          <path
+                            d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"
+                          />
+                        </svg>
+                      </button>
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+            </span>
+            <button
+              class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn lan-qr-btn hidden"
+              id="lan-qr-btn"
+              title="Show mobile QR code"
+              data-i18n-title="nav.showMobileQR"
+              aria-label="Show mobile QR code"
+              data-i18n-aria-label="nav.showMobileQR"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+                <line x1="12" y1="18" x2="12.01" y2="18" />
+              </svg>
+            </button>
+            <div class="status">
+              <span class="status-indicator" id="status-indicator"></span>
+              <span class="status-text" id="status-text">Connecting...</span>
+            </div>
+          </div>
+          <div class="header-right">
+            <span class="pill session-usage" id="session-usage"></span>
+            <span
+              class="pill session-cost"
+              id="session-cost"
+              title="Session cost"
+              data-i18n-title="usage.sessionCostTitle"
+            ></span>
+            <span class="context-usage-anchor">
+              <span
+                class="pill token-usage"
+                id="token-usage"
+                title="Context usage"
+                data-i18n-title="usage.contextTitle"
+              ></span>
+              <div class="context-viz hidden" id="context-viz">
+                <div class="context-viz-title" data-i18n="misc.contextWindow">
+                  Context Window
                 </div>
-                <div class="session-list" id="session-list">
-                    <div class="session-loading" data-i18n="sidebar.loadingSessions">Loading sessions...</div>
+                <div class="context-bar" id="context-bar"></div>
+                <div class="context-legend" id="context-legend"></div>
+                <div class="context-viz-footer">
+                  <span class="context-viz-summary">
+                    <span id="context-viz-used"></span>
+                    <span id="context-viz-total"></span>
+                  </span>
+                  <button
+                    type="button"
+                    class="ui-button ui-button--sm ui-button--secondary context-viz-compact-btn"
+                    id="compact-context-btn"
+                    title="Compact context to save tokens"
+                    data-i18n-title="input.compactDesc"
+                    aria-label="Compact context to save tokens"
+                    data-i18n-aria-label="input.compactDesc"
+                  >
+                    <span class="compact-btn-label" data-i18n="input.compact"
+                      >Compact</span
+                    >
+                  </button>
                 </div>
-                <div class="sidebar-footer">
-                    <div class="sidebar-settings-row">
-                        <button
-                            class="ui-icon-button ui-icon-button--sm sidebar-settings-btn"
-                            id="settings-btn"
-                            title="Settings" data-i18n-title="migrated.index.title.settings"
-                            aria-label="Settings" data-i18n-aria-label="migrated.index.title.settings"
-                        >
-                            <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path
-                                    d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
-                                />
-                                <circle cx="12" cy="12" r="3" />
-                            </svg>
-                            <span data-i18n="migrated.index.title.settings">Settings</span>
-                        </button>
-                        <button
-                            class="sidebar-update-pill hidden"
-                            id="sidebar-update-btn"
-                            title="Download and install update" data-i18n-title="migrated.index.title.downloadAndInstallUpdate"
-                            aria-label="Download and install update" data-i18n-aria-label="migrated.index.title.downloadAndInstallUpdate"
-                         data-i18n="migrated.index.text.update">
-                            Update
-                        </button>
-                    </div>
+              </div>
+            </span>
+            <span
+              class="pill workspace-indicator hidden"
+              id="workspace-indicator"
+              title="Workspace path"
+              data-i18n-title="migrated.index.title.workspacePath"
+            ></span>
+
+            <span class="header-open-app hidden" id="header-open-app">
+              <button
+                class="ui-button ui-button--sm ui-button--secondary header-open-app-btn"
+                id="header-open-app-btn"
+                title="Open workspace"
+                data-i18n-title="nav.openWorkspace"
+                aria-label="Open workspace in app"
+                data-i18n-aria-label="nav.openWorkspaceInApp"
+              >
+                <span
+                  class="header-open-app-logo"
+                  id="header-open-app-logo"
+                  aria-hidden="true"
+                  ><img
+                    src="icons/app-cursor.svg"
+                    alt=""
+                    class="header-open-app-logo-img"
+                /></span>
+              </button>
+              <button
+                class="header-open-app-toggle"
+                id="header-open-app-toggle"
+                title="Choose app"
+                data-i18n-title="migrated.index.title.chooseApp"
+                aria-label="Choose app to open workspace"
+                data-i18n-aria-label="nav.chooseApp"
+              >
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              <div
+                class="header-open-app-menu hidden"
+                id="header-open-app-menu"
+              ></div>
+            </span>
+            <button
+              class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn hidden"
+              id="side-chat-btn"
+              title="Side Chat"
+              aria-label="Side Chat"
+              aria-pressed="false"
+              data-i18n-title="nav.sideChat"
+              data-i18n-aria-label="nav.sideChat"
+            ></button>
+            <button
+              class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
+              id="file-sidebar-toggle"
+              title="Files"
+              data-i18n-title="migrated.index.title.files"
+              aria-label="Toggle file browser"
+              data-i18n-aria-label="migrated.index.ariaLabel.toggleFileBrowser"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
+                />
+              </svg>
+            </button>
+            <button
+              class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn git-branch-toggle hidden"
+              id="diff-sidebar-toggle"
+              title="Git changes"
+              aria-label="Toggle Git changes"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <line x1="6" y1="3" x2="6" y2="15" />
+                <circle cx="18" cy="6" r="3" />
+                <circle cx="6" cy="18" r="3" />
+                <path d="M18 9a9 9 0 0 1-9 9" />
+              </svg>
+              <span
+                class="git-branch-toggle__label"
+                id="git-branch-indicator"
+              ></span>
+            </button>
+          </div>
+        </div>
+
+        <div class="workspace-content">
+          <!-- Main Chat Area -->
+          <div class="main">
+            <!-- Quick Chat floating dialog + minimized chip roots -->
+            <div
+              class="quick-chat-dialog-root"
+              id="quick-chat-dialog-root"
+            ></div>
+            <div class="quick-chat-chip-root" id="quick-chat-chip-root"></div>
+            <!-- Super Agent Chat Header web component (shown when SA is active) -->
+            <sa-chat-header
+              class="super-agent-chat-header hidden"
+              id="super-agent-chat-header"
+            ></sa-chat-header>
+
+            <!-- Messages Container -->
+            <div class="messages" id="messages">
+              <div class="welcome">
+                <div class="welcome-icon">
+                  <img
+                    src="icons/logo-dark.svg"
+                    alt="Picot logo"
+                    data-i18n-alt="migrated.index.alt.picotLogo"
+                    class="tau-icon-welcome"
+                  />
                 </div>
+                <p data-i18n="app.welcome">Welcome to Picot</p>
+                <p class="hint" data-i18n="app.welcomeHint">
+                  Type a message below to start chatting with Pi, or select a
+                  session from the sidebar.
+                </p>
+                <div class="shortcuts-hint">
+                  <span><kbd>/</kbd> Focus input</span>
+                  <span><kbd>Esc</kbd> Abort</span>
+                </div>
+              </div>
             </div>
 
-            <!-- Sidebar overlay for mobile -->
-            <div class="sidebar-overlay" id="sidebar-overlay"></div>
+            <!-- Conversation navigator rail (Codex-style) -->
+            <nav
+              class="conv-nav hidden"
+              id="conv-nav"
+              aria-label="Conversation navigator"
+              data-i18n-aria-label="migrated.index.ariaLabel.conversationNavigator"
+            >
+              <!-- Dot track — populated by JS -->
+              <div class="conv-nav-track" id="conv-nav-track"></div>
+            </nav>
 
-            <!-- Workspace -->
-            <div class="workspace">
-                <!-- Header -->
-                <div class="header session-header">
-                    <div class="header-left">
-                        <button
-                            class="sidebar-toggle"
-                            id="sidebar-toggle"
-                            title="Toggle sidebar" data-i18n-title="nav.toggleSidebar"
-                            aria-label="Toggle sidebar" data-i18n-aria-label="nav.toggleSidebar"
-                        >
-                            <svg
-                                width="18"
-                                height="18"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <line x1="3" y1="6" x2="21" y2="6" />
-                                <line x1="3" y1="12" x2="21" y2="12" />
-                                <line x1="3" y1="18" x2="21" y2="18" />
-                            </svg>
-                        </button>
-                        <span class="session-info-anchor">
-                            <button
-                                type="button"
-                                class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn session-info-toggle session-info-toggle--dim"
-                                id="session-info-toggle"
-                                title="Session info" data-i18n-title="sessionInfo.title"
-                                aria-label="Session info" data-i18n-aria-label="sessionInfo.title"
-                                aria-expanded="false"
-                                aria-controls="session-info-panel"
-                            >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <circle cx="12" cy="12" r="10" />
-                                    <path d="M12 16v-4" />
-                                    <path d="M12 8h.01" />
-                                </svg>
-                            </button>
-                            <section
-                                class="session-info-panel hidden"
-                                id="session-info-panel"
-                                aria-labelledby="session-info-heading"
-                            >
-                                <h2 id="session-info-heading" data-i18n="sessionInfo.heading">Session Info</h2>
-                                <dl class="session-info-list">
-                                    <div class="session-info-row">
-                                        <dt data-i18n="sessionInfo.file">File</dt>
-                                        <dd>
-                                            <span class="session-info-value" id="session-info-file"></span>
-                                            <button type="button" class="ui-icon-button ui-icon-button--xs ui-icon-button--ghost session-info-copy" data-copy-session-field="file" title="Copy file path" data-i18n-title="sessionInfo.copyFile" aria-label="Copy file path" data-i18n-aria-label="sessionInfo.copyFile">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                                    <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-                                                    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-                                                </svg>
-                                            </button>
-                                        </dd>
-                                    </div>
-                                    <div class="session-info-row">
-                                        <dt data-i18n="sessionInfo.id">ID</dt>
-                                        <dd>
-                                            <span class="session-info-value" id="session-info-id"></span>
-                                            <button type="button" class="ui-icon-button ui-icon-button--xs ui-icon-button--ghost session-info-copy" data-copy-session-field="id" title="Copy session ID" data-i18n-title="sessionInfo.copyId" aria-label="Copy session ID" data-i18n-aria-label="sessionInfo.copyId">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                                    <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-                                                    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-                                                </svg>
-                                            </button>
-                                        </dd>
-                                    </div>
-                                </dl>
-                            </section>
-                        </span>
-                        <button
-                            class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn lan-qr-btn hidden"
-                            id="lan-qr-btn"
-                            title="Show mobile QR code" data-i18n-title="nav.showMobileQR"
-                            aria-label="Show mobile QR code" data-i18n-aria-label="nav.showMobileQR"
-                        >
-                            <svg
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <rect
-                                    x="5"
-                                    y="2"
-                                    width="14"
-                                    height="20"
-                                    rx="2"
-                                    ry="2"
-                                />
-                                <line x1="12" y1="18" x2="12.01" y2="18" />
-                            </svg>
-                        </button>
-                        <div class="status">
-                            <span
-                                class="status-indicator"
-                                id="status-indicator"
-                            ></span>
-                            <span class="status-text" id="status-text"
-                                >Connecting...</span
-                            >
-                        </div>
-                    </div>
-                    <div class="header-right">
-                        <span
-                            class="pill session-cost"
-                            id="session-cost"
-                            title="Session cost" data-i18n-title="usage.sessionCostTitle"
-                        ></span>
-                        <span class="context-usage-anchor">
-                            <span
-                                class="pill token-usage"
-                                id="token-usage"
-                                title="Context usage" data-i18n-title="usage.contextTitle"
-                            ></span>
-                            <div class="context-viz hidden" id="context-viz">
-                                <div class="context-viz-title" data-i18n="misc.contextWindow">
-                                    Context Window
-                                </div>
-                                <div class="context-bar" id="context-bar"></div>
-                                <div
-                                    class="context-legend"
-                                    id="context-legend"
-                                ></div>
-                                <div class="context-viz-footer">
-                                    <span class="context-viz-summary">
-                                        <span id="context-viz-used"></span>
-                                        <span id="context-viz-total"></span>
-                                    </span>
-                                    <button
-                                        type="button"
-                                        class="ui-button ui-button--sm ui-button--secondary context-viz-compact-btn"
-                                        id="compact-context-btn"
-                                        title="Compact context to save tokens" data-i18n-title="input.compactDesc"
-                                        aria-label="Compact context to save tokens" data-i18n-aria-label="input.compactDesc"
-                                    >
-                                        <span class="compact-btn-label" data-i18n="input.compact">Compact</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </span>
-                        <span
-                            class="pill workspace-indicator hidden"
-                            id="workspace-indicator"
-                            title="Workspace path" data-i18n-title="migrated.index.title.workspacePath"
-                        ></span>
-
-
-                        <span
-                            class="header-open-app hidden"
-                            id="header-open-app"
-                        >
-                            <button
-                                class="ui-button ui-button--sm ui-button--secondary header-open-app-btn"
-                                id="header-open-app-btn"
-                                title="Open workspace" data-i18n-title="nav.openWorkspace"
-                                aria-label="Open workspace in app" data-i18n-aria-label="nav.openWorkspaceInApp"
-                            >
-                                <span
-                                    class="header-open-app-logo"
-                                    id="header-open-app-logo"
-                                    aria-hidden="true"
-                                    ><img
-                                        src="icons/app-cursor.svg"
-                                        alt=""
-                                        class="header-open-app-logo-img"
-                                /></span>
-                            </button>
-                            <button
-                                class="header-open-app-toggle"
-                                id="header-open-app-toggle"
-                                title="Choose app" data-i18n-title="migrated.index.title.chooseApp"
-                                aria-label="Choose app to open workspace" data-i18n-aria-label="nav.chooseApp"
-                            >
-                                <svg
-                                    width="10"
-                                    height="10"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2.5"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <polyline points="6 9 12 15 18 9" />
-                                </svg>
-                            </button>
-                            <div
-                                class="header-open-app-menu hidden"
-                                id="header-open-app-menu"
-                            ></div>
-                        </span>
-                        <button
-                            class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
-                            id="file-sidebar-toggle"
-                            title="Files" data-i18n-title="migrated.index.title.files"
-                            aria-label="Toggle file browser" data-i18n-aria-label="migrated.index.ariaLabel.toggleFileBrowser"
-                        >
-                            <svg
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path
-                                    d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
-                                />
-                            </svg>
-                        </button>
-                        <button
-                            class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn git-branch-toggle hidden"
-                            id="diff-sidebar-toggle"
-                            title="Git changes"
-                            aria-label="Toggle Git changes"
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <line x1="6" y1="3" x2="6" y2="15" />
-                                <circle cx="18" cy="6" r="3" />
-                                <circle cx="6" cy="18" r="3" />
-                                <path d="M18 9a9 9 0 0 1-9 9" />
-                            </svg>
-                            <span class="git-branch-toggle__label" id="git-branch-indicator"></span>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="workspace-content">
-                    <!-- Main Chat Area -->
-                    <div class="main">
-                <!-- Super Agent Chat Header web component (shown when SA is active) -->
-                <sa-chat-header
-                    class="super-agent-chat-header hidden"
-                    id="super-agent-chat-header"
-                ></sa-chat-header>
-
-                <!-- Messages Container -->
-                <div class="messages" id="messages">
-                    <div class="welcome">
-                        <div class="welcome-icon">
-                            <img
-                                src="icons/logo-dark.svg"
-                                alt="Picot logo" data-i18n-alt="migrated.index.alt.picotLogo"
-                                class="tau-icon-welcome"
-                            />
-                        </div>
-                        <p data-i18n="app.welcome">Welcome to Picot</p>
-                        <p class="hint" data-i18n="app.welcomeHint">
-                            Type a message below to start chatting with Pi, or select a session from the sidebar.
-                        </p>
-                        <div class="shortcuts-hint">
-                            <span><kbd>/</kbd> Focus input</span>
-                            <span><kbd>Esc</kbd> Abort</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Conversation navigator rail (Codex-style) -->
-                <nav class="conv-nav hidden" id="conv-nav" aria-label="Conversation navigator" data-i18n-aria-label="migrated.index.ariaLabel.conversationNavigator">
-                    <!-- Dot track — populated by JS -->
-                    <div class="conv-nav-track" id="conv-nav-track"></div>
-                </nav>
-
-                <!-- Tooltip floated next to the rail — fixed-position, outside the rail
+            <!-- Tooltip floated next to the rail — fixed-position, outside the rail
                      so it isn't clipped by any stacking context on the rail itself -->
-                <div class="conv-nav-tooltip hidden" id="conv-nav-tooltip" aria-hidden="true">
-                    <div class="conv-nav-tooltip-q" id="conv-nav-tooltip-q"></div>
-                    <div class="conv-nav-tooltip-sep" id="conv-nav-tooltip-sep"></div>
-                    <div class="conv-nav-tooltip-a" id="conv-nav-tooltip-a"></div>
-                </div>
+            <div
+              class="conv-nav-tooltip hidden"
+              id="conv-nav-tooltip"
+              aria-hidden="true"
+            >
+              <div class="conv-nav-tooltip-q" id="conv-nav-tooltip-q"></div>
+              <div class="conv-nav-tooltip-sep" id="conv-nav-tooltip-sep"></div>
+              <div class="conv-nav-tooltip-a" id="conv-nav-tooltip-a"></div>
+            </div>
 
-                <!-- New-message badge kept separate so badge logic still works -->
-                <div class="conv-nav-new-badge hidden" id="scroll-bottom-badge" data-i18n="migrated.index.text.new">New ↓</div>
+            <!-- New-message badge kept separate so badge logic still works -->
+            <div
+              class="conv-nav-new-badge hidden"
+              id="scroll-bottom-badge"
+              data-i18n="migrated.index.text.new"
+            >
+              New ↓
+            </div>
 
-                <!-- Legacy IDs kept as invisible references so existing JS bindings don't break -->
-                <button id="scroll-prev-btn" hidden ></button>
-                <button id="scroll-bottom-btn" hidden ></button>
+            <!-- Legacy IDs kept as invisible references so existing JS bindings don't break -->
+            <button id="scroll-prev-btn" hidden></button>
+            <button id="scroll-bottom-btn" hidden></button>
 
-                <!-- Typing indicator (hidden, kept for JS reference) -->
-                <div
-                    class="typing-indicator hidden"
-                    id="typing-indicator"
-                ></div>
+            <!-- Typing indicator (hidden, kept for JS reference) -->
+            <div class="typing-indicator hidden" id="typing-indicator"></div>
 
-                <!-- Input Area -->
-                <div class="input-area">
-                    <button
-                        class="mobile-context-toggle"
-                        id="mobile-context-toggle"
-                    >
+            <!-- Input Area -->
+            <div class="input-area">
+              <button class="mobile-context-toggle" id="mobile-context-toggle">
+                <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
+                  <path
+                    d="M1 5L5 1L9 5"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              <div class="mobile-model-bar" id="mobile-model-bar"></div>
+              <div class="queued-messages hidden" id="queued-messages"></div>
+              <form id="chat-form">
+                <div class="composer-card" id="composer-card">
+                  <div
+                    class="skill-slash-menu hidden"
+                    id="skill-slash-menu"
+                  ></div>
+                  <div
+                    class="at-file-mention-menu hidden"
+                    id="at-file-mention-menu"
+                  ></div>
+                  <div class="image-previews hidden" id="image-previews"></div>
+                  <textarea
+                    id="message-input"
+                    placeholder="Message… Type / for commands, @ for files"
+                    data-i18n-ph="migrated.index.placeholder.typeAMessageOrUseToCall"
+                    autocomplete="off"
+                    rows="2"
+                  ></textarea>
+                  <div class="composer-toolbar">
+                    <div class="composer-toolbar-left">
+                      <button
+                        type="button"
+                        class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost input-icon-btn"
+                        id="attach-btn"
+                        title="Attach image"
+                        data-i18n-title="input.attachImage"
+                        aria-label="Attach image"
+                        data-i18n-aria-label="input.attachImage"
+                        tabindex="-1"
+                      >
                         <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <line x1="12" y1="5" x2="12" y2="19" />
+                          <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost input-icon-btn"
+                        id="command-btn"
+                        title="Commands"
+                        data-i18n-title="input.commands"
+                        aria-label="Open commands"
+                        data-i18n-aria-label="migrated.index.ariaLabel.openCommands"
+                        tabindex="-1"
+                      >
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <path d="M12 22v-5" />
+                          <path d="M9 8V2" />
+                          <path d="M15 8V2" />
+                          <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
+                        </svg>
+                      </button>
+                      <input
+                        type="file"
+                        id="image-input"
+                        accept="image/*"
+                        multiple
+                        style="display: none"
+                      />
+                    </div>
+                    <div class="composer-toolbar-right">
+                      <div class="model-dropdown" id="model-dropdown">
+                        <button
+                          type="button"
+                          class="ui-button ui-button--sm ui-button--ghost model-dropdown-btn"
+                          id="model-dropdown-btn"
+                          title="Switch model"
+                          data-i18n-title="input.switchModel"
+                          tabindex="-1"
+                        >
+                          <span
+                            class="model-dropdown-label"
+                            id="model-dropdown-label"
+                            >model</span
+                          >
+                          <svg
+                            class="model-dropdown-chevron"
                             width="10"
                             height="6"
                             viewBox="0 0 10 6"
                             fill="none"
-                        >
+                          >
                             <path
-                                d="M1 5L5 1L9 5"
-                                stroke="currentColor"
-                                stroke-width="1.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
+                              d="M1 1L5 5L9 1"
+                              stroke="currentColor"
+                              stroke-width="1.5"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
                             />
-                        </svg>
-                    </button>
-                    <div class="mobile-model-bar" id="mobile-model-bar"></div>
-                    <div
-                        class="queued-messages hidden"
-                        id="queued-messages"
-                    ></div>
-                    <form id="chat-form">
-                        <div class="composer-card" id="composer-card">
-                            <div
-                                class="skill-slash-menu hidden"
-                                id="skill-slash-menu"
-                            ></div>
-                            <div
-                                class="at-file-mention-menu hidden"
-                                id="at-file-mention-menu"
-                            ></div>
-                            <div
-                                class="image-previews hidden"
-                                id="image-previews"
-                            ></div>
-                            <textarea
-                                id="message-input"
-                                placeholder="Message… Type / for commands, @ for files" data-i18n-ph="migrated.index.placeholder.typeAMessageOrUseToCall"
-                                autocomplete="off"
-                                rows="2"
-                            ></textarea>
-                            <div class="composer-toolbar">
-                                <div class="composer-toolbar-left">
-                                    <button
-                                        type="button"
-                                        class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost input-icon-btn"
-                                        id="attach-btn"
-                                        title="Attach image" data-i18n-title="input.attachImage"
-                                        aria-label="Attach image" data-i18n-aria-label="input.attachImage"
-                                        tabindex="-1"
-                                    >
-                                        <svg
-                                            width="18"
-                                            height="18"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <line
-                                                x1="12"
-                                                y1="5"
-                                                x2="12"
-                                                y2="19"
-                                            />
-                                            <line
-                                                x1="5"
-                                                y1="12"
-                                                x2="19"
-                                                y2="12"
-                                            />
-                                        </svg>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost input-icon-btn"
-                                        id="command-btn"
-                                        title="Commands" data-i18n-title="input.commands"
-                                        aria-label="Open commands" data-i18n-aria-label="migrated.index.ariaLabel.openCommands"
-                                        tabindex="-1"
-                                    >
-                                        <svg
-                                            width="16"
-                                            height="16"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <path d="M12 22v-5" />
-                                            <path d="M9 8V2" />
-                                            <path d="M15 8V2" />
-                                            <path
-                                                d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"
-                                            />
-                                        </svg>
-                                    </button>
-                                    <input
-                                        type="file"
-                                        id="image-input"
-                                        accept="image/*"
-                                        multiple
-                                        style="display: none"
-                                    />
-                                </div>
-                                <div class="composer-toolbar-right">
-                                    <div
-                                        class="model-dropdown"
-                                        id="model-dropdown"
-                                    >
-                                        <button
-                                            type="button"
-                                            class="ui-button ui-button--sm ui-button--ghost model-dropdown-btn"
-                                            id="model-dropdown-btn"
-                                            title="Switch model" data-i18n-title="input.switchModel"
-                                            tabindex="-1"
-                                        >
-                                            <span
-                                                class="model-dropdown-label"
-                                                id="model-dropdown-label"
-                                                >model</span
-                                            >
-                                            <svg
-                                                class="model-dropdown-chevron"
-                                                width="10"
-                                                height="6"
-                                                viewBox="0 0 10 6"
-                                                fill="none"
-                                            >
-                                                <path
-                                                    d="M1 1L5 5L9 1"
-                                                    stroke="currentColor"
-                                                    stroke-width="1.5"
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                />
-                                            </svg>
-                                        </button>
-                                        <div
-                                            class="model-dropdown-menu hidden"
-                                            id="model-dropdown-menu"
-                                        ></div>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        class="thinking-tag off"
-                                        id="thinking-btn"
-                                        title="Thinking effort controls reasoning depth. Click to cycle." data-i18n-title="settings.thinkingTitle"
-                                        aria-label="Thinking effort: off. Click to cycle reasoning depth." data-i18n-aria-label="migrated.index.ariaLabel.thinkingEffortOffClickToCycleReasoning"
-                                        tabindex="-1"
-                                     data-i18n="migrated.index.text.thinkOff">
-                                        Think off
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost input-mic-btn"
-                                        id="mic-btn"
-                                        title="Voice input" data-i18n-title="voice.voiceInput"
-                                        tabindex="-1"
-                                    >
-                                        <svg
-                                            width="16"
-                                            height="16"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        >
-                                            <path
-                                                d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"
-                                            />
-                                            <path
-                                                d="M19 10v2a7 7 0 0 1-14 0v-2"
-                                            />
-                                            <line
-                                                x1="12"
-                                                x2="12"
-                                                y1="19"
-                                                y2="22"
-                                            />
-                                        </svg>
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        id="send-btn"
-                                        title="Send message" data-i18n-title="input.send"
-                                        tabindex="-1"
-                                    >
-                                        <span class="send-icon"
-                                            ><svg
-                                                width="16"
-                                                height="16"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2.5"
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                            >
-                                                <line
-                                                    x1="12"
-                                                    y1="19"
-                                                    x2="12"
-                                                    y2="5"
-                                                />
-                                                <polyline
-                                                    points="5 12 12 5 19 12"
-                                                /></svg
-                                        ></span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        id="abort-btn"
-                                        class="hidden"
-                                        title="Abort (Esc)" data-i18n-title="input.abort"
-                                        tabindex="-1"
-                                    >
-                                        <svg
-                                            width="14"
-                                            height="14"
-                                            viewBox="0 0 24 24"
-                                            fill="currentColor"
-                                        >
-                                            <rect
-                                                x="4"
-                                                y="4"
-                                                width="16"
-                                                height="16"
-                                                rx="2"
-                                            />
-                                        </svg>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                    </div>
-
-                    <!-- File Preview Panel (between chat and file tree) -->
-                    <hr
-                        class="file-preview-resizer collapsed"
-                        id="file-preview-resizer"
-                        aria-orientation="vertical"
-                        tabindex="0"
-                        aria-valuenow="42"
-                        aria-valuemin="20"
-                        aria-valuemax="70"
-                    />
-                    <section
-                        class="file-preview-panel collapsed"
-                        id="file-preview-panel"
-                        aria-label="File preview"
-                        data-i18n-aria-label="files.preview.title"
-                    >
+                          </svg>
+                        </button>
                         <div
-                            class="file-preview-tabs-bar"
-                            id="file-preview-tabs-bar"
-                        >
-                            <div
-                                class="file-preview-tabs"
-                                id="file-preview-tabs"
-                            ></div>
-                            <div class="file-preview-panel-controls">
-                                <button
-                                    type="button"
-                                    class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
-                                    id="file-preview-toolbar-toggle"
-                                    title="Editor controls"
-                                    data-i18n-title="files.preview.showControls"
-                                    aria-label="Editor controls"
-                                    data-i18n-aria-label="files.preview.showControls"
-                                    aria-expanded="false"
-                                    aria-controls="file-preview-toolbar"
-                                >
-                                    <svg
-                                        aria-hidden="true"
-                                        width="14"
-                                        height="14"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                    >
-                                        <line x1="4" y1="6" x2="20" y2="6" />
-                                        <line x1="4" y1="12" x2="20" y2="12" />
-                                        <line x1="4" y1="18" x2="20" y2="18" />
-                                        <circle cx="8" cy="6" r="2" fill="currentColor" />
-                                        <circle cx="16" cy="12" r="2" fill="currentColor" />
-                                        <circle cx="10" cy="18" r="2" fill="currentColor" />
-                                    </svg>
-                                </button>
-                                <button
-                                    type="button"
-                                    class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
-                                    id="file-preview-open"
-                                    title="Open in desktop app"
-                                    data-i18n-title="files.preview.openDesktop"
-                                    aria-label="Open in desktop app"
-                                    data-i18n-aria-label="files.preview.openDesktop"
-                                >
-                                    <svg
-                                        aria-hidden="true"
-                                        width="14"
-                                        height="14"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <path d="M14 3h7v7" />
-                                        <path d="M10 14 21 3" />
-                                        <path
-                                            d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"
-                                        />
-                                    </svg>
-                                </button>
-                                <button
-                                    class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn file-preview-enlarge-btn"
-                                    id="file-preview-enlarge"
-                                    title="Enlarge panel"
-                                    data-i18n-title="files.preview.enlarge"
-                                    aria-label="Enlarge panel"
-                                    data-i18n-aria-label="files.preview.enlarge"
-                                >
-                                    <svg
-                                        width="14"
-                                        height="14"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-                                        <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
-                                        <path d="M3 16v3a2 2 0 0 0 2 2h3" />
-                                        <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-                                    </svg>
-                                </button>
-                                <button
-                                    class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn file-preview-collapse-btn hidden"
-                                    id="file-preview-collapse"
-                                    title="Collapse panel"
-                                    data-i18n-title="files.preview.collapse"
-                                    aria-label="Collapse panel"
-                                    data-i18n-aria-label="files.preview.collapse"
-                                >
-                                    <svg
-                                        width="14"
-                                        height="14"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <path d="M8 3v3a2 2 0 0 1-2 2H3" />
-                                        <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
-                                        <path d="M3 16h3a2 2 0 0 1 2 2v3" />
-                                        <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
-                                    </svg>
-                                </button>
-                                <button
-                                    class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
-                                    id="file-preview-close"
-                                    title="Close panel"
-                                    data-i18n-title="files.preview.close"
-                                    aria-label="Close panel"
-                                    data-i18n-aria-label="files.preview.close"
-                                >
-                                    <svg
-                                        width="14"
-                                        height="14"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    >
-                                        <line x1="18" y1="6" x2="6" y2="18" />
-                                        <line x1="6" y1="6" x2="18" y2="18" />
-                                    </svg>
-                                </button>
-                            </div>
-                        </div>
-                        <div
-                            class="file-preview-toolbar hidden"
-                            id="file-preview-toolbar"
-                            role="toolbar"
-                            aria-label="Editor controls"
-                            data-i18n-aria-label="files.preview.showControls"
-                        >
-                            <fieldset
-                                class="file-preview-mode"
-                                aria-label="View mode"
-                                data-i18n-aria-label="files.preview.mode"
-                            >
-                                <button
-                                    type="button"
-                                    id="file-preview-mode-preview"
-                                    data-i18n="files.preview.preview"
-                                >
-                                    Preview
-                                </button>
-                                <button
-                                    type="button"
-                                    id="file-preview-mode-edit"
-                                    data-i18n="files.preview.edit"
-                                >
-                                    Edit
-                                </button>
-                                <button
-                                    type="button"
-                                    id="file-preview-mode-diff"
-                                    data-i18n="files.preview.diff"
-                                >
-                                    Diff
-                                </button>
-                            </fieldset>
-                            <button
-                                type="button"
-                                id="file-preview-save"
-                                title="Save"
-                                data-i18n-title="files.preview.save"
-                                aria-label="Save"
-                                data-i18n-aria-label="files.preview.save"
-                                data-i18n="files.preview.save"
-                            >
-                                Save
-                            </button>
-                            <button
-                                type="button"
-                                id="file-preview-reload"
-                                title="Reload from disk"
-                                data-i18n-title="files.preview.conflictReload"
-                                aria-label="Reload from disk"
-                                data-i18n-aria-label="files.preview.conflictReload"
-                                data-i18n="files.preview.conflictReload"
-                            >
-                                Reload
-                            </button>
-                            <button
-                                type="button"
-                                id="file-preview-search"
-                                title="Find"
-                                data-i18n-title="files.preview.find"
-                                aria-label="Find"
-                                data-i18n-aria-label="files.preview.find"
-                                data-i18n="files.preview.find"
-                            >
-                                Find
-                            </button>
-                            <button
-                                type="button"
-                                id="file-preview-go-to-line"
-                                title="Go to line"
-                                data-i18n-title="files.preview.goToLine"
-                                aria-label="Go to line"
-                                data-i18n-aria-label="files.preview.goToLine"
-                                data-i18n="files.preview.goToLine"
-                            >
-                                Line
-                            </button>
-                            <input
-                                type="text"
-                                class="file-preview-go-to-line-input hidden"
-                                id="file-preview-go-to-line-input"
-                                inputmode="numeric"
-                                autocomplete="off"
-                                placeholder="Line number"
-                                data-i18n-ph="files.preview.goToLinePrompt"
-                                aria-label="Line number"
-                                data-i18n-aria-label="files.preview.goToLinePrompt"
-                            />
-                            <button
-                                type="button"
-                                id="file-preview-copy"
-                                title="Copy all"
-                                data-i18n-title="files.preview.copyContent"
-                                aria-label="Copy all"
-                                data-i18n-aria-label="files.preview.copyContent"
-                                data-i18n="files.preview.copyContent"
-                            >
-                                Copy
-                            </button>
-                            <label class="file-preview-toolbar-check">
-                                <input type="checkbox" id="file-preview-wrap" />
-                                <span data-i18n="files.preview.lineWrap">Wrap</span>
-                            </label>
-                            <label class="file-preview-toolbar-check">
-                                <input type="checkbox" id="file-preview-autosave" />
-                                <span data-i18n="files.preview.autoSave">Auto-save</span>
-                            </label>
-                            <span
-                                class="file-preview-status"
-                                id="file-preview-status"
-                                aria-live="polite"
-                            ></span>
-                        </div>
-                        <div
-                            class="file-preview-content"
-                            id="file-preview-content"
+                          class="model-dropdown-menu hidden"
+                          id="model-dropdown-menu"
                         ></div>
-                    </section>
-
-            <!-- Super Agent Runtime Panel (right column, shown when SA active) -->
-            <super-agent-runtime
-                class="super-agent-runtime app-side-panel"
-                id="super-agent-runtime"
-            ></super-agent-runtime>
-
-
-            <!-- File Browser (right sidebar) -->
-            <div
-                class="file-sidebar app-side-panel collapsed"
-                id="file-sidebar"
-            >
-                <div class="file-sidebar-header app-side-panel-header">
-                    <span class="file-sidebar-title" id="file-sidebar-title"
-                        >Files</span
-                    >
-                    <button
-                        class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
-                        id="file-sidebar-up"
-                        title="Parent directory" data-i18n-title="files.parentDirectory"
-                    >
+                      </div>
+                      <button
+                        type="button"
+                        class="thinking-tag off"
+                        id="thinking-btn"
+                        title="Thinking effort controls reasoning depth. Click to cycle."
+                        data-i18n-title="settings.thinkingTitle"
+                        aria-label="Thinking effort: off. Click to cycle reasoning depth."
+                        data-i18n-aria-label="migrated.index.ariaLabel.thinkingEffortOffClickToCycleReasoning"
+                        tabindex="-1"
+                        data-i18n="migrated.index.text.thinkOff"
+                      >
+                        Think off
+                      </button>
+                      <button
+                        type="button"
+                        class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost input-mic-btn"
+                        id="mic-btn"
+                        title="Voice input"
+                        data-i18n-title="voice.voiceInput"
+                        tabindex="-1"
+                      >
                         <svg
-                            width="14"
-                            height="14"
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <path
+                            d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"
+                          />
+                          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                          <line x1="12" x2="12" y1="19" y2="22" />
+                        </svg>
+                      </button>
+                      <button
+                        type="submit"
+                        id="send-btn"
+                        title="Send message"
+                        data-i18n-title="input.send"
+                        tabindex="-1"
+                      >
+                        <span class="send-icon"
+                          ><svg
+                            width="16"
+                            height="16"
                             viewBox="0 0 24 24"
                             fill="none"
                             stroke="currentColor"
-                            stroke-width="2"
+                            stroke-width="2.5"
                             stroke-linecap="round"
                             stroke-linejoin="round"
-                        >
-                            <path d="m5 12 7-7 7 7" />
-                            <path d="M12 19V5" />
-                        </svg>
-                    </button>
-                    <button
-                        class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
-                        id="file-sidebar-finder"
-                        title="Open in file manager" data-i18n-title="files.openInFileManager"
-                    >
+                          >
+                            <line x1="12" y1="19" x2="12" y2="5" />
+                            <polyline points="5 12 12 5 19 12" /></svg
+                        ></span>
+                      </button>
+                      <button
+                        type="button"
+                        id="abort-btn"
+                        class="hidden"
+                        title="Abort (Esc)"
+                        data-i18n-title="input.abort"
+                        tabindex="-1"
+                      >
                         <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
                         >
-                            <path
-                                d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"
-                            />
+                          <rect x="4" y="4" width="16" height="16" rx="2" />
                         </svg>
-                    </button>
-                    <button
-                        class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn app-side-panel-close-btn"
-                        id="file-sidebar-close"
-                        title="Close" data-i18n-title="migrated.index.title.close"
-                        aria-label="Close file browser" data-i18n-aria-label="files.close"
-                    >
-                        <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <line x1="18" y1="6" x2="6" y2="18" />
-                            <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                    </button>
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div
-                    class="file-sidebar-path"
-                    id="file-sidebar-path"
-                    title=""
-                ></div>
-                <div class="file-list" id="file-list"></div>
+              </form>
             </div>
-            <div
-                class="file-sidebar diff-sidebar app-side-panel collapsed"
-                id="diff-sidebar"
-            >
-                <div class="file-sidebar-header app-side-panel-header">
-                    <span class="file-sidebar-title">Diff</span>
-                    <button
-                        class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn app-side-panel-close-btn"
-                        id="diff-sidebar-close"
-                        title="Close"
-                        aria-label="Close Git changes"
-                    >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <line x1="18" y1="6" x2="6" y2="18" />
-                            <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                    </button>
-                </div>
-                <div class="file-list" id="diff-list"></div>
-            </div>
-                </div>
-            </div>
-        </div>
+          </div>
 
-        <div class="settings-overlay hidden" id="settings-overlay"></div>
-
-        <div class="settings-panel hidden" id="settings-panel">
-            <aside class="settings-nav">
-                <div class="settings-nav-title" data-i18n="migrated.index.title.settings">Settings</div>
+          <!-- File Preview Panel (between chat and file tree) -->
+          <hr
+            class="file-preview-resizer collapsed"
+            id="file-preview-resizer"
+            aria-orientation="vertical"
+            tabindex="0"
+            aria-valuenow="42"
+            aria-valuemin="20"
+            aria-valuemax="70"
+          />
+          <section
+            class="file-preview-panel collapsed"
+            id="file-preview-panel"
+            aria-label="File preview"
+            data-i18n-aria-label="files.preview.title"
+          >
+            <div class="file-preview-tabs-bar" id="file-preview-tabs-bar">
+              <div class="file-preview-tabs" id="file-preview-tabs"></div>
+              <div class="file-preview-panel-controls">
                 <button
-                    class="settings-nav-item active"
-                    data-settings-tab="general"
-                 data-i18n="settings.general">
-                    General
+                  type="button"
+                  class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
+                  id="file-preview-toolbar-toggle"
+                  title="Editor controls"
+                  data-i18n-title="files.preview.showControls"
+                  aria-label="Editor controls"
+                  data-i18n-aria-label="files.preview.showControls"
+                  aria-expanded="false"
+                  aria-controls="file-preview-toolbar"
+                >
+                  <svg
+                    aria-hidden="true"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                  >
+                    <line x1="4" y1="6" x2="20" y2="6" />
+                    <line x1="4" y1="12" x2="20" y2="12" />
+                    <line x1="4" y1="18" x2="20" y2="18" />
+                    <circle cx="8" cy="6" r="2" fill="currentColor" />
+                    <circle cx="16" cy="12" r="2" fill="currentColor" />
+                    <circle cx="10" cy="18" r="2" fill="currentColor" />
+                  </svg>
                 </button>
                 <button
-                    class="settings-nav-item"
-                    data-settings-tab="extensions"
-                 data-i18n="migrated.index.text.extensions">
-                    Extensions
-                </button>
-                <button class="settings-nav-item" data-settings-tab="skills" data-i18n="migrated.index.text.skills">
-                    Skills
-                </button>
-                <button class="settings-nav-item" data-settings-tab="usage" data-i18n="settings.usage">
-                    Usage
-                </button>
-                <button
-                    class="settings-nav-item"
-                    data-settings-tab="configuration"
-                 data-i18n="settings.configuration">
-                    Providers
-                </button>
-                <button class="settings-nav-item" data-settings-tab="chat" data-i18n="settings.agentInbox">
-                    Agent Inbox
-                </button>
-                <button class="settings-nav-back" id="settings-close">
-                    <span class="settings-nav-back-icon">‹</span> <span data-i18n="settings.backToChat">Back to chat</span>
-                </button>
-            </aside>
-            <section class="settings-content">
-                <div class="settings-tab active" data-settings-panel="general">
-                    <div class="settings-body">
-                        <div class="settings-section">
-                            <div
-                                class="settings-section-title"
-                                data-i18n="settings.appearance"
-                            >
-                                Appearance
-                            </div>
-                            <div class="theme-grid" id="theme-grid"></div>
-                            <div class="settings-row" id="setting-language">
-                                <span class="settings-label settings-label-stack">
-                                    <span
-                                        class="settings-label-main"
-                                        data-i18n="settings.language.title"
-                                        >Language</span
-                                    >
-                                    <span
-                                        class="settings-label-sub"
-                                        data-i18n="settings.language.description"
-                                        >Choose the interface language. System
-                                        Default follows your operating
-                                        system.</span
-                                    >
-                                </span>
-                                <select
-                                    class="ui-select settings-language-select"
-                                    id="settings-language-select"
-                                    aria-label="Language"
-                                    data-i18n-aria-label="settings.language.title"
-                                ></select>
-                            </div>
-                        </div>
-                        <div class="settings-section">
-                            <div class="settings-section-title" data-i18n="settings.agent">Agent</div>
-                            <div class="settings-row" id="setting-auto-compact">
-                                <span class="settings-label" data-i18n="settings.autoCompaction"
-                                    >Auto-compaction</span
-                                >
-                                <button
-                                    class="settings-toggle"
-                                    id="toggle-auto-compact"
-                                ></button>
-                            </div>
-                            <div class="settings-row" id="setting-thinking">
-                                <span
-                                    class="settings-label settings-label-stack"
-                                >
-                                    <span class="settings-label-main" data-i18n="settings.thinkingEffort"
-                                        >Thinking effort</span
-                                    >
-                                    <span class="settings-label-sub" data-i18n="settings.reasoningDepth"
-                                        >Reasoning depth</span
-                                    >
-                                </span>
-                                <div
-                                    class="thinking-effort"
-                                    id="thinking-effort"
-                                    role="radiogroup"
-                                    aria-label="Thinking effort" data-i18n-aria-label="settings.thinkingEffort"
-                                >
-                                    <div class="thinking-effort-ends">
-                                        <span data-i18n="settings.thinkingFaster">Faster</span>
-                                        <span
-                                            class="thinking-effort-name"
-                                            id="thinking-effort-name"
-                                            data-thinking-level="off"
-                                            data-i18n="settings.thinkingLevels.off"
-                                            >off</span
-                                        >
-                                        <span data-i18n="settings.thinkingSmarter">Smarter</span>
-                                    </div>
-                                    <div
-                                        class="thinking-effort-track"
-                                        id="thinking-effort-steps"
-                                    >
-                                        <span
-                                            class="thinking-effort-thumb"
-                                            id="thinking-effort-marker"
-                                            aria-hidden="true"
-                                        ></span>
-                                        <input
-                                            type="radio"
-                                            class="thinking-effort-dot"
-                                            data-level="off"
-                                            name="thinking-effort-level"
-                                            value="off"
-                                            checked
-                                            aria-label="off" data-i18n-aria-label="settings.thinkingLevels.off"
-                                            title="off" data-i18n-title="settings.thinkingLevels.off"
-                                        />
-                                        <input
-                                            type="radio"
-                                            class="thinking-effort-dot"
-                                            data-level="minimal"
-                                            name="thinking-effort-level"
-                                            value="minimal"
-                                            aria-label="minimal" data-i18n-aria-label="settings.thinkingLevels.minimal"
-                                            title="minimal" data-i18n-title="settings.thinkingLevels.minimal"
-                                        />
-                                        <input
-                                            type="radio"
-                                            class="thinking-effort-dot"
-                                            data-level="low"
-                                            name="thinking-effort-level"
-                                            value="low"
-                                            aria-label="low" data-i18n-aria-label="settings.thinkingLevels.low"
-                                            title="low" data-i18n-title="settings.thinkingLevels.low"
-                                        />
-                                        <input
-                                            type="radio"
-                                            class="thinking-effort-dot"
-                                            data-level="medium"
-                                            name="thinking-effort-level"
-                                            value="medium"
-                                            aria-label="medium" data-i18n-aria-label="settings.thinkingLevels.medium"
-                                            title="medium" data-i18n-title="settings.thinkingLevels.medium"
-                                        />
-                                        <input
-                                            type="radio"
-                                            class="thinking-effort-dot"
-                                            data-level="high"
-                                            name="thinking-effort-level"
-                                            value="high"
-                                            aria-label="high" data-i18n-aria-label="settings.thinkingLevels.high"
-                                            title="high" data-i18n-title="settings.thinkingLevels.high"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="settings-row">
-                                <span class="settings-label" data-i18n="settings.showThinking"
-                                    >Show thinking</span
-                                >
-                                <button
-                                    class="settings-toggle on"
-                                    id="toggle-show-thinking"
-                                ></button>
-                            </div>
-                            <div class="settings-row">
-                                <span class="settings-label settings-label-stack">
-                                    <span class="settings-label-main" data-i18n="settings.taskNotifications"
-                                        >Task completion notifications</span
-                                    >
-                                    <span class="settings-label-sub" data-i18n="settings.taskNotificationsDescription"
-                                        >Show an operating system notification when a task finishes.</span
-                                    >
-                                </span>
-                                <button
-                                    class="settings-toggle on"
-                                    id="toggle-task-notifications"
-                                    role="switch"
-                                    aria-checked="true"
-                                    aria-label="Task completion notifications"
-                                    data-i18n-aria-label="settings.taskNotifications"
-                                ></button>
-                            </div>
-                        </div>
-                        <div
-                            class="settings-section"
-                            id="setting-updater-section"
-                        >
-                            <div class="settings-section-title" data-i18n="settings.updates">Updates</div>
-                            <div class="settings-row" id="setting-pi-version">
-                                <span class="settings-label" data-i18n="settings.piVersion">Pi version</span>
-                                <span
-                                    class="settings-static-value"
-                                    id="setting-pi-version-value"
-                                    >Loading...</span
-                                >
-                            </div>
-                            <div class="settings-row">
-                                <span class="settings-label"
-                                    >Picot version</span
-                                >
-                                <span
-                                    class="settings-static-value"
-                                    id="setting-app-version-value"
-                                    >Loading...</span
-                                >
-                            </div>
-                            <div class="settings-row settings-update-row">
-                                <span class="settings-label" data-i18n="settings.updates">Updates</span>
-                                <span class="settings-update-controls">
-                                    <span
-                                        class="settings-static-value"
-                                        id="setting-update-status"
-                                        role="status"
-                                        aria-live="polite"
-                                        >Click to check</span
-                                    >
-                                    <button
-                                        type="button"
-                                        class="ui-button ui-button--secondary settings-value-btn"
-                                        id="btn-check-updates"
-                                     data-i18n="updater.checkNow">
-                                        Check now
-                                    </button>
-                                </span>
-                            </div>
-                            <div class="settings-row">
-                                <span class="settings-label settings-label-stack">
-                                    <span class="settings-label-main" data-i18n="migrated.index.text.betaUpdates">Beta updates</span>
-                                    <span class="settings-label-sub" data-i18n="migrated.index.text.receivePrereleasePicotBuilds">Receive prerelease Picot builds</span>
-                                </span>
-                                <button
-                                    type="button"
-                                    class="settings-toggle"
-                                    id="toggle-beta-updates"
-                                    role="switch"
-                                    aria-label="Receive beta updates" data-i18n-aria-label="migrated.index.ariaLabel.receiveBetaUpdates"
-                                    aria-checked="false"
-                                ></button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="settings-tab" data-settings-panel="extensions">
-                    <div class="settings-body">
-                        <div class="settings-section">
-                            <div class="settings-section-title" data-i18n="settings.browseCommunityPackages">
-                                Browse Community Packages
-                            </div>
-                            <p class="settings-help" data-i18n="settings.browseHelp">
-                                Discover extensions, skills, themes, and prompts
-                                from the Pi ecosystem. Install with one click.
-                            </p>
-                            <div class="pkg-browse-filters">
-                                <input
-                                    type="text"
-                                    id="pkg-browse-search"
-                                    class="pkg-browse-search"
-                                    placeholder="Search packages..." data-i18n-ph="extensions.searchPackages"
-                                    autocomplete="off"
-                                    spellcheck="false"
-                                />
-                                <div
-                                    class="pkg-browse-pills"
-                                    id="pkg-browse-pills"
-                                >
-                                    <button
-                                        type="button"
-                                        class="pkg-browse-pill active"
-                                        data-pkg-type="all"
-                                     data-i18n="extensions.all">
-                                        All
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="pkg-browse-pill"
-                                        data-pkg-type="extension"
-                                     data-i18n="migrated.index.text.extensions">
-                                        Extensions
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="pkg-browse-pill"
-                                        data-pkg-type="skill"
-                                     data-i18n="migrated.index.text.skills">
-                                        Skills
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="pkg-browse-pill"
-                                        data-pkg-type="theme"
-                                     data-i18n="extensions.themes">
-                                        Themes
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="pkg-browse-pill"
-                                        data-pkg-type="prompt"
-                                     data-i18n="extensions.prompts">
-                                        Prompts
-                                    </button>
-                                </div>
-                                <label class="pkg-browse-installed-toggle">
-                                    <input
-                                        type="checkbox"
-                                        id="pkg-browse-installed-only"
-                                    />
-                                    <span data-i18n="extensions.installedOnly">Installed only</span>
-                                </label>
-                                <select
-                                    id="pkg-browse-sort"
-                                    class="pkg-browse-sort"
-                                    aria-label="Sort packages" data-i18n-aria-label="extensions.sortPackages"
-                                >
-                                    <option value="downloads" data-i18n="extensions.mostDownloads">
-                                        Most downloads
-                                    </option>
-                                    <option value="name" data-i18n="extensions.nameAZ">Name (A–Z)</option>
-                                    <option value="updated" data-i18n="extensions.recentlyUpdated">
-                                        Recently updated
-                                    </option>
-                                </select>
-                                <span
-                                    class="pkg-browse-count"
-                                    id="pkg-browse-count"
-                                ></span>
-                            </div>
-                            <div
-                                class="settings-extension-list pkg-browse-list"
-                                id="pkg-browse-list"
-                            ></div>
-                            <div
-                                class="pkg-browse-pagination"
-                                id="pkg-browse-pagination"
-                                hidden
-                            ></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="settings-tab" data-settings-panel="skills">
-                    <div class="settings-body">
-                        <div id="settings-skills"></div>
-                    </div>
-                </div>
-
-                <div class="settings-tab" data-settings-panel="usage">
-                    <div class="settings-usage-embed">
-                        <cost-dashboard
-                            id="settings-cost-dashboard"
-                            defer-load
-                            embedded
-                        ></cost-dashboard>
-                    </div>
-                </div>
-
-                <div class="settings-tab" data-settings-panel="configuration">
-                    <div class="settings-body">
-                        <div class="settings-section">
-                            <div class="settings-section-title" data-i18n="settings.authentication">
-                                Providers
-                            </div>
-                            <p class="settings-help">
-                                Keys are stored locally in
-                                <code data-i18n="migrated.index.text.piAgentAuthJson">~/.pi/agent/auth.json</code> (chmod 600).
-                                Picot launched from Finder does not read shell
-                                environment variables, so set keys here for them
-                                to stick across launches.
-                            </p>
-                            <div
-                                class="settings-api-keys"
-                                id="settings-api-keys"
-                            >
-                                <div class="settings-api-keys-loading" data-i18n="settings.loadingProviders">
-                                    Loading providers…
-                                </div>
-                            </div>
-                        </div>
-                        <div
-                            class="settings-section"
-                            id="settings-auth-section"
-                            style="display: none"
-                        >
-                            <div class="settings-section-title" data-i18n="settings.protection">Protection</div>
-                            <div class="settings-row">
-                                <span class="settings-label"
-                                    >Require login</span
-                                >
-                                <button
-                                    class="settings-toggle"
-                                    id="toggle-auth"
-                                ></button>
-                            </div>
-                        </div>
-
-                        <div class="settings-section">
-                            <div class="settings-section-title" data-i18n="settings.agent">Agent</div>
-                            <div class="settings-config-meta">
-                                <span class="settings-label"
-                                    >Agent config file</span
-                                >
-                                <span
-                                    class="settings-static-value"
-                                    id="inline-config-path"
-                                ></span>
-                            </div>
-                            <textarea
-                                class="ui-textarea config-editor-textarea settings-config-textarea"
-                                id="inline-config-textarea"
-                                spellcheck="false"
-                                autocomplete="off"
-                                autocorrect="off"
-                                autocapitalize="off"
-                            ></textarea>
-                            <div class="settings-config-actions">
-                                <div
-                                    class="config-editor-error settings-save-status hidden"
-                                    id="inline-config-error"
-                                    aria-live="polite"
-                                    role="status"
-                                ></div>
-                                <div class="settings-config-button-group">
-                                    <button
-                                        class="ui-button ui-button--primary"
-                                        id="inline-config-save"
-                                     data-i18n="migrated.index.text.save">
-                                        Save
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="settings-section">
-                            <div class="settings-section-title" data-i18n="settings.llmProviders">
-                                LLM providers
-                            </div>
-                            <p class="settings-help">
-                                Edit <code data-i18n="migrated.index.text.piAgentModelsJson">~/.pi/agent/models.json</code> to add
-                                custom providers (Ollama, vLLM, LM Studio,
-                                OpenAI-compatible proxies, OpenRouter routing
-                                overrides, etc). See the
-                                <a href="https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/models.md" id="models-config-docs-link" target="_blank" rel="noopener noreferrer"
-                                    >models.json docs</a
-                                >
-                                for the full schema. Changes are picked up
-                                immediately — no restart needed.
-                            </p>
-                            <div class="settings-config-meta">
-                                <span class="settings-label"
-                                    >Providers file</span
-                                >
-                                <span
-                                    class="settings-static-value"
-                                    id="inline-models-path"
-                                ></span>
-                            </div>
-                            <textarea
-                                class="ui-textarea config-editor-textarea settings-config-textarea"
-                                id="inline-models-textarea"
-                                spellcheck="false"
-                                autocomplete="off"
-                                autocorrect="off"
-                                autocapitalize="off"
-                                placeholder='{ "providers": { ... } }' data-i18n-ph="migrated.index.placeholder.providers"
-                            ></textarea>
-                            <div class="settings-config-actions">
-                                <div
-                                    class="config-editor-error settings-save-status hidden"
-                                    id="inline-models-error"
-                                    aria-live="polite"
-                                    role="status"
-                                ></div>
-                                <div class="settings-config-button-group">
-                                    <button
-                                        class="ui-button ui-button--secondary"
-                                        id="inline-models-insert-example"
-                                     data-i18n="actions.insertExample">
-                                        Insert example
-                                    </button>
-                                    <button
-                                        class="ui-button ui-button--primary"
-                                        id="inline-models-save"
-                                     data-i18n="migrated.index.text.save">
-                                        Save
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <chat-settings-panel
-                    class="settings-tab"
-                    data-settings-panel="chat"
-                ></chat-settings-panel>
-            </section>
-        </div>
-
-        <!-- Agent Config Editor Modal -->
-        <div
-            class="config-editor-overlay hidden"
-            id="config-editor-overlay"
-        ></div>
-        <div class="config-editor-modal hidden" id="config-editor-modal">
-            <div class="config-editor-header">
-                <div class="config-editor-title-group">
-                    <h3 data-i18n="settings.agentConfiguration">Agent Configuration</h3>
-                    <span
-                        class="config-editor-path"
-                        id="config-editor-path"
-                    ></span>
-                </div>
-                <button class="settings-close" id="config-editor-close">
-                    <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    >
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                </button>
-            </div>
-            <div class="config-editor-body">
-                <textarea
-                    class="ui-textarea config-editor-textarea"
-                    id="config-editor-textarea"
-                    spellcheck="false"
-                    autocomplete="off"
-                    autocorrect="off"
-                    autocapitalize="off"
-                ></textarea>
-                <div
-                    class="config-editor-error hidden"
-                    id="config-editor-error"
-                ></div>
-            </div>
-            <div class="config-editor-footer">
-                <button class="ui-button ui-button--secondary config-editor-cancel" id="config-editor-cancel" data-i18n="migrated.index.text.cancel">
-                    Cancel
-                </button>
-                <button class="ui-button ui-button--primary" id="config-editor-save" data-i18n="migrated.index.text.save">
-                    Save
-                </button>
-            </div>
-        </div>
-
-        <!-- Global Session Search -->
-        <div
-            class="session-search-overlay hidden"
-            id="session-search-overlay"
-        ></div>
-        <div
-            class="session-search-dialog hidden"
-            id="session-search-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Search tasks" data-i18n-aria-label="migrated.index.ariaLabel.searchTasks"
-        >
-            <div class="session-search-input-row">
-                <svg
-                    class="session-search-input-icon"
-                    width="18"
-                    height="18"
+                  type="button"
+                  class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
+                  id="file-preview-open"
+                  title="Open in desktop app"
+                  data-i18n-title="files.preview.openDesktop"
+                  aria-label="Open in desktop app"
+                  data-i18n-aria-label="files.preview.openDesktop"
+                >
+                  <svg
+                    aria-hidden="true"
+                    width="14"
+                    height="14"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
                     stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    aria-hidden="true"
+                  >
+                    <path d="M14 3h7v7" />
+                    <path d="M10 14 21 3" />
+                    <path
+                      d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"
+                    />
+                  </svg>
+                </button>
+                <button
+                  class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn file-preview-enlarge-btn"
+                  id="file-preview-enlarge"
+                  title="Enlarge panel"
+                  data-i18n-title="files.preview.enlarge"
+                  aria-label="Enlarge panel"
+                  data-i18n-aria-label="files.preview.enlarge"
                 >
-                    <circle cx="11" cy="11" r="8" />
-                    <path d="m21 21-4.3-4.3" />
-                </svg>
-                <input
-                    type="text"
-                    class="session-search-dialog-input"
-                    id="session-search-dialog-input"
-                    placeholder="Search tasks and messages…" data-i18n-ph="migrated.index.placeholder.searchTasksAndMessages"
-                    autocomplete="off"
-                    spellcheck="false"
-                />
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                    <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+                    <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+                    <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                  </svg>
+                </button>
+                <button
+                  class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn file-preview-collapse-btn hidden"
+                  id="file-preview-collapse"
+                  title="Collapse panel"
+                  data-i18n-title="files.preview.collapse"
+                  aria-label="Collapse panel"
+                  data-i18n-aria-label="files.preview.collapse"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+                    <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+                    <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+                    <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+                  </svg>
+                </button>
+                <button
+                  class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
+                  id="file-preview-close"
+                  title="Close panel"
+                  data-i18n-title="files.preview.close"
+                  aria-label="Close panel"
+                  data-i18n-aria-label="files.preview.close"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
             </div>
             <div
-                class="session-search-results"
-                id="session-search-results"
-                role="listbox"
-                aria-label="Search results" data-i18n-aria-label="migrated.index.ariaLabel.searchResults"
-            ></div>
-        </div>
-
-        <!-- Command Palette -->
-        <div
-            class="command-palette-overlay hidden"
-            id="command-palette-overlay"
-        ></div>
-        <div class="command-palette hidden" id="command-palette">
-            <div class="command-palette-header" data-i18n="input.commands">Commands</div>
-            <div class="command-list" id="command-list"></div>
-        </div>
-
-
-        <!-- Dialog Container -->
-        <div id="dialog-container" class="hidden"></div>
-
-        <!-- LAN QR Code Modal -->
-        <div
-            class="lan-qr-modal hidden"
-            id="lan-qr-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Mobile QR code" data-i18n-aria-label="lanQr.modalAriaLabel"
-        >
-            <div class="lan-qr-modal-backdrop" id="lan-qr-modal-backdrop"></div>
-            <div class="lan-qr-modal-content">
-                <div class="lan-qr-modal-header">
-                    <span class="lan-qr-modal-title" data-i18n="lanQr.title">Open on Mobile</span>
-                    <button
-                        class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost lan-qr-modal-close icon-btn"
-                        id="lan-qr-modal-close"
-                        aria-label="Close" data-i18n-aria-label="migrated.index.title.close"
-                    >
-                        <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <line x1="18" y1="6" x2="6" y2="18" />
-                            <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                    </button>
-                </div>
-                <div class="lan-qr-modal-body">
-                    <div class="lan-qr-loading" id="lan-qr-loading" data-i18n="lanQr.generating">
-                        Generating QR code…
-                    </div>
-                    <img
-                        class="lan-qr-image hidden"
-                        id="lan-qr-image"
-                        alt="QR code for mobile access" data-i18n-alt="lanQr.qrAlt"
-                    />
-                    <div class="lan-qr-hint" data-i18n="lanQr.hint">
-                        Scan with your phone to open Picot on the same network
-                    </div>
-                    <button
-                        class="lan-qr-open-link hidden"
-                        id="lan-qr-open-link"
-                        type="button"
-                    >
-                        <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path
-                                d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
-                            />
-                            <polyline points="15 3 21 3 21 9" />
-                            <line x1="10" y1="14" x2="21" y2="3" />
-                        </svg>
-                        <span data-i18n="migrated.index.text.openLink">Open Link</span>
-                    </button>
-                </div>
+              class="file-preview-toolbar hidden"
+              id="file-preview-toolbar"
+              role="toolbar"
+              aria-label="Editor controls"
+              data-i18n-aria-label="files.preview.showControls"
+            >
+              <fieldset
+                class="file-preview-mode"
+                aria-label="View mode"
+                data-i18n-aria-label="files.preview.mode"
+              >
+                <button
+                  type="button"
+                  id="file-preview-mode-preview"
+                  data-i18n="files.preview.preview"
+                >
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  id="file-preview-mode-edit"
+                  data-i18n="files.preview.edit"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  id="file-preview-mode-diff"
+                  data-i18n="files.preview.diff"
+                >
+                  Diff
+                </button>
+              </fieldset>
+              <button
+                type="button"
+                id="file-preview-save"
+                title="Save"
+                data-i18n-title="files.preview.save"
+                aria-label="Save"
+                data-i18n-aria-label="files.preview.save"
+                data-i18n="files.preview.save"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                id="file-preview-reload"
+                title="Reload from disk"
+                data-i18n-title="files.preview.conflictReload"
+                aria-label="Reload from disk"
+                data-i18n-aria-label="files.preview.conflictReload"
+                data-i18n="files.preview.conflictReload"
+              >
+                Reload
+              </button>
+              <button
+                type="button"
+                id="file-preview-search"
+                title="Find"
+                data-i18n-title="files.preview.find"
+                aria-label="Find"
+                data-i18n-aria-label="files.preview.find"
+                data-i18n="files.preview.find"
+              >
+                Find
+              </button>
+              <button
+                type="button"
+                id="file-preview-go-to-line"
+                title="Go to line"
+                data-i18n-title="files.preview.goToLine"
+                aria-label="Go to line"
+                data-i18n-aria-label="files.preview.goToLine"
+                data-i18n="files.preview.goToLine"
+              >
+                Line
+              </button>
+              <input
+                type="text"
+                class="file-preview-go-to-line-input hidden"
+                id="file-preview-go-to-line-input"
+                inputmode="numeric"
+                autocomplete="off"
+                placeholder="Line number"
+                data-i18n-ph="files.preview.goToLinePrompt"
+                aria-label="Line number"
+                data-i18n-aria-label="files.preview.goToLinePrompt"
+              />
+              <button
+                type="button"
+                id="file-preview-copy"
+                title="Copy all"
+                data-i18n-title="files.preview.copyContent"
+                aria-label="Copy all"
+                data-i18n-aria-label="files.preview.copyContent"
+                data-i18n="files.preview.copyContent"
+              >
+                Copy
+              </button>
+              <label class="file-preview-toolbar-check">
+                <input type="checkbox" id="file-preview-wrap" />
+                <span data-i18n="files.preview.lineWrap">Wrap</span>
+              </label>
+              <label class="file-preview-toolbar-check">
+                <input type="checkbox" id="file-preview-autosave" />
+                <span data-i18n="files.preview.autoSave">Auto-save</span>
+              </label>
+              <span
+                class="file-preview-status"
+                id="file-preview-status"
+                aria-live="polite"
+              ></span>
             </div>
+            <div class="file-preview-content" id="file-preview-content"></div>
+          </section>
+
+          <!-- Super Agent Runtime Panel (right column, shown when SA active) -->
+          <super-agent-runtime
+            class="super-agent-runtime app-side-panel"
+            id="super-agent-runtime"
+          ></super-agent-runtime>
+
+          <!-- File Browser (right sidebar) -->
+          <div class="file-sidebar app-side-panel collapsed" id="file-sidebar">
+            <div class="file-sidebar-header app-side-panel-header">
+              <div
+                class="file-sidebar-tabs"
+                role="tablist"
+                aria-label="Sidebar content"
+              >
+                <button
+                  type="button"
+                  class="file-sidebar-tab active"
+                  id="file-sidebar-files-tab"
+                  role="tab"
+                  aria-selected="true"
+                  aria-controls="file-list"
+                  data-i18n="files.title"
+                >
+                  Files
+                </button>
+                <button
+                  type="button"
+                  class="file-sidebar-tab"
+                  id="file-sidebar-git-tab"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="git-panel"
+                  data-i18n="git.panel"
+                >
+                  Git
+                </button>
+              </div>
+              <button
+                class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
+                id="file-sidebar-up"
+                title="Parent directory"
+                data-i18n-title="files.parentDirectory"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="m5 12 7-7 7 7" />
+                  <path d="M12 19V5" />
+                </svg>
+              </button>
+              <button
+                class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
+                id="file-sidebar-finder"
+                title="Open in file manager"
+                data-i18n-title="files.openInFileManager"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"
+                  />
+                </svg>
+              </button>
+              <button
+                class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn app-side-panel-close-btn"
+                id="file-sidebar-close"
+                title="Close"
+                data-i18n-title="migrated.index.title.close"
+                aria-label="Close file browser"
+                data-i18n-aria-label="files.close"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <div
+              class="file-sidebar-path"
+              id="file-sidebar-path"
+              title=""
+            ></div>
+            <div class="file-list" id="file-list"></div>
+            <div class="git-panel hidden" id="git-panel" role="tabpanel"></div>
+          </div>
+          <div
+            class="file-sidebar diff-sidebar app-side-panel collapsed"
+            id="diff-sidebar"
+          >
+            <div class="file-sidebar-header app-side-panel-header">
+              <span class="file-sidebar-title">Diff</span>
+              <button
+                class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn app-side-panel-close-btn"
+                id="diff-sidebar-close"
+                title="Close"
+                aria-label="Close Git changes"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <div class="file-list" id="diff-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-overlay hidden" id="settings-overlay"></div>
+
+    <div class="settings-panel hidden" id="settings-panel">
+      <aside class="settings-nav">
+        <div
+          class="settings-nav-title"
+          data-i18n="migrated.index.title.settings"
+        >
+          Settings
+        </div>
+        <button
+          class="settings-nav-item active"
+          data-settings-tab="general"
+          data-i18n="settings.general"
+        >
+          General
+        </button>
+        <button
+          class="settings-nav-item"
+          data-settings-tab="extensions"
+          data-i18n="migrated.index.text.extensions"
+        >
+          Extensions
+        </button>
+        <button
+          class="settings-nav-item"
+          data-settings-tab="skills"
+          data-i18n="migrated.index.text.skills"
+        >
+          Skills
+        </button>
+        <button
+          class="settings-nav-item"
+          data-settings-tab="usage"
+          data-i18n="settings.usage"
+        >
+          Usage
+        </button>
+        <button
+          class="settings-nav-item"
+          data-settings-tab="configuration"
+          data-i18n="settings.configuration"
+        >
+          Providers
+        </button>
+        <button
+          class="settings-nav-item"
+          data-settings-tab="chat"
+          data-i18n="settings.agentInbox"
+        >
+          Agent Inbox
+        </button>
+        <button class="settings-nav-back" id="settings-close">
+          <span class="settings-nav-back-icon">‹</span>
+          <span data-i18n="settings.backToChat">Back to chat</span>
+        </button>
+      </aside>
+      <section class="settings-content">
+        <div class="settings-tab active" data-settings-panel="general">
+          <div class="settings-body">
+            <div class="settings-section">
+              <div
+                class="settings-section-title"
+                data-i18n="settings.appearance"
+              >
+                Appearance
+              </div>
+              <div class="theme-grid" id="theme-grid"></div>
+              <div class="settings-row" id="setting-language">
+                <span class="settings-label settings-label-stack">
+                  <span
+                    class="settings-label-main"
+                    data-i18n="settings.language.title"
+                    >Language</span
+                  >
+                  <span
+                    class="settings-label-sub"
+                    data-i18n="settings.language.description"
+                    >Choose the interface language. System Default follows your
+                    operating system.</span
+                  >
+                </span>
+                <select
+                  class="ui-select settings-language-select"
+                  id="settings-language-select"
+                  aria-label="Language"
+                  data-i18n-aria-label="settings.language.title"
+                ></select>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-section-title" data-i18n="settings.agent">
+                Agent
+              </div>
+              <div class="settings-row" id="setting-auto-compact">
+                <span class="settings-label" data-i18n="settings.autoCompaction"
+                  >Auto-compaction</span
+                >
+                <button
+                  class="settings-toggle"
+                  id="toggle-auto-compact"
+                ></button>
+              </div>
+              <div class="settings-row" id="setting-thinking">
+                <span class="settings-label settings-label-stack">
+                  <span
+                    class="settings-label-main"
+                    data-i18n="settings.thinkingEffort"
+                    >Thinking effort</span
+                  >
+                  <span
+                    class="settings-label-sub"
+                    data-i18n="settings.reasoningDepth"
+                    >Reasoning depth</span
+                  >
+                </span>
+                <div
+                  class="thinking-effort"
+                  id="thinking-effort"
+                  role="radiogroup"
+                  aria-label="Thinking effort"
+                  data-i18n-aria-label="settings.thinkingEffort"
+                >
+                  <div class="thinking-effort-ends">
+                    <span data-i18n="settings.thinkingFaster">Faster</span>
+                    <span
+                      class="thinking-effort-name"
+                      id="thinking-effort-name"
+                      data-thinking-level="off"
+                      data-i18n="settings.thinkingLevels.off"
+                      >off</span
+                    >
+                    <span data-i18n="settings.thinkingSmarter">Smarter</span>
+                  </div>
+                  <div class="thinking-effort-track" id="thinking-effort-steps">
+                    <span
+                      class="thinking-effort-thumb"
+                      id="thinking-effort-marker"
+                      aria-hidden="true"
+                    ></span>
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="off"
+                      name="thinking-effort-level"
+                      value="off"
+                      checked
+                      aria-label="off"
+                      data-i18n-aria-label="settings.thinkingLevels.off"
+                      title="off"
+                      data-i18n-title="settings.thinkingLevels.off"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="minimal"
+                      name="thinking-effort-level"
+                      value="minimal"
+                      aria-label="minimal"
+                      data-i18n-aria-label="settings.thinkingLevels.minimal"
+                      title="minimal"
+                      data-i18n-title="settings.thinkingLevels.minimal"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="low"
+                      name="thinking-effort-level"
+                      value="low"
+                      aria-label="low"
+                      data-i18n-aria-label="settings.thinkingLevels.low"
+                      title="low"
+                      data-i18n-title="settings.thinkingLevels.low"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="medium"
+                      name="thinking-effort-level"
+                      value="medium"
+                      aria-label="medium"
+                      data-i18n-aria-label="settings.thinkingLevels.medium"
+                      title="medium"
+                      data-i18n-title="settings.thinkingLevels.medium"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="high"
+                      name="thinking-effort-level"
+                      value="high"
+                      aria-label="high"
+                      data-i18n-aria-label="settings.thinkingLevels.high"
+                      title="high"
+                      data-i18n-title="settings.thinkingLevels.high"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="settings-row">
+                <span class="settings-label" data-i18n="settings.showThinking"
+                  >Show thinking</span
+                >
+                <button
+                  class="settings-toggle on"
+                  id="toggle-show-thinking"
+                ></button>
+              </div>
+              <div class="settings-row">
+                <span class="settings-label settings-label-stack">
+                  <span
+                    class="settings-label-main"
+                    data-i18n="settings.taskNotifications"
+                    >Task completion notifications</span
+                  >
+                  <span
+                    class="settings-label-sub"
+                    data-i18n="settings.taskNotificationsDescription"
+                    >Show an operating system notification when a task
+                    finishes.</span
+                  >
+                </span>
+                <button
+                  class="settings-toggle on"
+                  id="toggle-task-notifications"
+                  role="switch"
+                  aria-checked="true"
+                  aria-label="Task completion notifications"
+                  data-i18n-aria-label="settings.taskNotifications"
+                ></button>
+              </div>
+            </div>
+            <div class="settings-section" id="setting-updater-section">
+              <div class="settings-section-title" data-i18n="settings.updates">
+                Updates
+              </div>
+              <div class="settings-row" id="setting-pi-version">
+                <span class="settings-label" data-i18n="settings.piVersion"
+                  >Pi version</span
+                >
+                <span
+                  class="settings-static-value"
+                  id="setting-pi-version-value"
+                  >Loading...</span
+                >
+              </div>
+              <div class="settings-row">
+                <span class="settings-label">Picot version</span>
+                <span
+                  class="settings-static-value"
+                  id="setting-app-version-value"
+                  >Loading...</span
+                >
+              </div>
+              <div class="settings-row settings-update-row">
+                <span class="settings-label" data-i18n="settings.updates"
+                  >Updates</span
+                >
+                <span class="settings-update-controls">
+                  <span
+                    class="settings-static-value"
+                    id="setting-update-status"
+                    role="status"
+                    aria-live="polite"
+                    >Click to check</span
+                  >
+                  <button
+                    type="button"
+                    class="ui-button ui-button--secondary settings-value-btn"
+                    id="btn-check-updates"
+                    data-i18n="updater.checkNow"
+                  >
+                    Check now
+                  </button>
+                </span>
+              </div>
+              <div class="settings-row">
+                <span class="settings-label settings-label-stack">
+                  <span
+                    class="settings-label-main"
+                    data-i18n="migrated.index.text.betaUpdates"
+                    >Beta updates</span
+                  >
+                  <span
+                    class="settings-label-sub"
+                    data-i18n="migrated.index.text.receivePrereleasePicotBuilds"
+                    >Receive prerelease Picot builds</span
+                  >
+                </span>
+                <button
+                  type="button"
+                  class="settings-toggle"
+                  id="toggle-beta-updates"
+                  role="switch"
+                  aria-label="Receive beta updates"
+                  data-i18n-aria-label="migrated.index.ariaLabel.receiveBetaUpdates"
+                  aria-checked="false"
+                ></button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- Scripts -->
-        <!-- Import map: redirects browser-only package specifiers to the
+        <div class="settings-tab" data-settings-panel="extensions">
+          <div class="settings-body">
+            <div class="settings-section">
+              <div
+                class="settings-section-title"
+                data-i18n="settings.browseCommunityPackages"
+              >
+                Browse Community Packages
+              </div>
+              <p class="settings-help" data-i18n="settings.browseHelp">
+                Discover extensions, skills, themes, and prompts from the Pi
+                ecosystem. Install with one click.
+              </p>
+              <div class="pkg-browse-filters">
+                <input
+                  type="text"
+                  id="pkg-browse-search"
+                  class="pkg-browse-search"
+                  placeholder="Search packages..."
+                  data-i18n-ph="extensions.searchPackages"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <div class="pkg-browse-pills" id="pkg-browse-pills">
+                  <button
+                    type="button"
+                    class="pkg-browse-pill active"
+                    data-pkg-type="all"
+                    data-i18n="extensions.all"
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    class="pkg-browse-pill"
+                    data-pkg-type="extension"
+                    data-i18n="migrated.index.text.extensions"
+                  >
+                    Extensions
+                  </button>
+                  <button
+                    type="button"
+                    class="pkg-browse-pill"
+                    data-pkg-type="skill"
+                    data-i18n="migrated.index.text.skills"
+                  >
+                    Skills
+                  </button>
+                  <button
+                    type="button"
+                    class="pkg-browse-pill"
+                    data-pkg-type="theme"
+                    data-i18n="extensions.themes"
+                  >
+                    Themes
+                  </button>
+                  <button
+                    type="button"
+                    class="pkg-browse-pill"
+                    data-pkg-type="prompt"
+                    data-i18n="extensions.prompts"
+                  >
+                    Prompts
+                  </button>
+                </div>
+                <label class="pkg-browse-installed-toggle">
+                  <input type="checkbox" id="pkg-browse-installed-only" />
+                  <span data-i18n="extensions.installedOnly"
+                    >Installed only</span
+                  >
+                </label>
+                <select
+                  id="pkg-browse-sort"
+                  class="pkg-browse-sort"
+                  aria-label="Sort packages"
+                  data-i18n-aria-label="extensions.sortPackages"
+                >
+                  <option
+                    value="downloads"
+                    data-i18n="extensions.mostDownloads"
+                  >
+                    Most downloads
+                  </option>
+                  <option value="name" data-i18n="extensions.nameAZ">
+                    Name (A–Z)
+                  </option>
+                  <option
+                    value="updated"
+                    data-i18n="extensions.recentlyUpdated"
+                  >
+                    Recently updated
+                  </option>
+                </select>
+                <span class="pkg-browse-count" id="pkg-browse-count"></span>
+              </div>
+              <div
+                class="settings-extension-list pkg-browse-list"
+                id="pkg-browse-list"
+              ></div>
+              <div
+                class="pkg-browse-pagination"
+                id="pkg-browse-pagination"
+                hidden
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-tab" data-settings-panel="skills">
+          <div class="settings-body">
+            <div
+              class="skills-page-tabs"
+              role="tablist"
+              aria-label="Skills sections"
+            >
+              <button
+                type="button"
+                id="skills-page-tab-discovered"
+                class="skills-page-tab active"
+                role="tab"
+                aria-selected="true"
+                aria-controls="settings-skills"
+                data-skills-page-tab="discovered"
+                data-i18n="settings.skills.discovered"
+              >
+                Discovered
+              </button>
+              <button
+                type="button"
+                id="skills-page-tab-install"
+                class="skills-page-tab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="settings-install-skills"
+                data-skills-page-tab="install"
+                data-i18n="settings.skills.install"
+              >
+                Install
+              </button>
+              <button
+                type="button"
+                id="skills-page-tab-packages"
+                class="skills-page-tab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="settings-package-skills"
+                data-skills-page-tab="packages"
+                data-i18n="settings.skills.packages"
+              >
+                Packages
+              </button>
+            </div>
+            <section
+              id="settings-skills"
+              class="settings-section skills-page"
+              role="tabpanel"
+              aria-labelledby="skills-page-tab-discovered"
+              aria-live="polite"
+            ></section>
+            <section
+              id="settings-install-skills"
+              class="settings-section skills-install-page hidden"
+              role="tabpanel"
+              aria-labelledby="skills-page-tab-install"
+              aria-live="polite"
+            ></section>
+            <section
+              id="settings-package-skills"
+              class="settings-section package-skills-page hidden"
+              role="tabpanel"
+              aria-labelledby="skills-page-tab-packages"
+              aria-live="polite"
+            ></section>
+          </div>
+        </div>
+
+        <div class="settings-tab" data-settings-panel="usage">
+          <div class="settings-usage-embed">
+            <cost-dashboard
+              id="settings-cost-dashboard"
+              defer-load
+              embedded
+            ></cost-dashboard>
+          </div>
+        </div>
+
+        <div class="settings-tab" data-settings-panel="configuration">
+          <div class="settings-body">
+            <div class="settings-section">
+              <div
+                class="settings-section-title"
+                data-i18n="settings.authentication"
+              >
+                Providers
+              </div>
+              <p class="settings-help">
+                Keys are stored locally in
+                <code data-i18n="migrated.index.text.piAgentAuthJson"
+                  >~/.pi/agent/auth.json</code
+                >
+                (chmod 600). Picot launched from Finder does not read shell
+                environment variables, so set keys here for them to stick across
+                launches.
+              </p>
+              <div class="settings-api-keys" id="settings-api-keys">
+                <div
+                  class="settings-api-keys-loading"
+                  data-i18n="settings.loadingProviders"
+                >
+                  Loading providers…
+                </div>
+              </div>
+            </div>
+            <div
+              class="settings-section"
+              id="settings-auth-section"
+              style="display: none"
+            >
+              <div
+                class="settings-section-title"
+                data-i18n="settings.protection"
+              >
+                Protection
+              </div>
+              <div class="settings-row">
+                <span class="settings-label">Require login</span>
+                <button class="settings-toggle" id="toggle-auth"></button>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="settings-section-title" data-i18n="settings.agent">
+                Agent
+              </div>
+              <div class="settings-config-meta">
+                <span class="settings-label">Agent config file</span>
+                <span
+                  class="settings-static-value"
+                  id="inline-config-path"
+                ></span>
+              </div>
+              <textarea
+                class="ui-textarea config-editor-textarea settings-config-textarea"
+                id="inline-config-textarea"
+                spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+              ></textarea>
+              <div class="settings-config-actions">
+                <div
+                  class="config-editor-error settings-save-status hidden"
+                  id="inline-config-error"
+                  aria-live="polite"
+                  role="status"
+                ></div>
+                <div class="settings-config-button-group">
+                  <button
+                    class="ui-button ui-button--primary"
+                    id="inline-config-save"
+                    data-i18n="migrated.index.text.save"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div
+                class="settings-section-title"
+                data-i18n="settings.llmProviders"
+              >
+                LLM providers
+              </div>
+              <p class="settings-help">
+                Edit
+                <code data-i18n="migrated.index.text.piAgentModelsJson"
+                  >~/.pi/agent/models.json</code
+                >
+                to add custom providers (Ollama, vLLM, LM Studio,
+                OpenAI-compatible proxies, OpenRouter routing overrides, etc).
+                See the
+                <a
+                  href="https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/models.md"
+                  id="models-config-docs-link"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >models.json docs</a
+                >
+                for the full schema. Changes are picked up immediately — no
+                restart needed.
+              </p>
+              <div class="settings-config-meta">
+                <span class="settings-label">Providers file</span>
+                <span
+                  class="settings-static-value"
+                  id="inline-models-path"
+                ></span>
+              </div>
+              <textarea
+                class="ui-textarea config-editor-textarea settings-config-textarea"
+                id="inline-models-textarea"
+                spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                placeholder='{ "providers": { ... } }'
+                data-i18n-ph="migrated.index.placeholder.providers"
+              ></textarea>
+              <div class="settings-config-actions">
+                <div
+                  class="config-editor-error settings-save-status hidden"
+                  id="inline-models-error"
+                  aria-live="polite"
+                  role="status"
+                ></div>
+                <div class="settings-config-button-group">
+                  <button
+                    class="ui-button ui-button--secondary"
+                    id="inline-models-insert-example"
+                    data-i18n="actions.insertExample"
+                  >
+                    Insert example
+                  </button>
+                  <button
+                    class="ui-button ui-button--primary"
+                    id="inline-models-save"
+                    data-i18n="migrated.index.text.save"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <chat-settings-panel
+          class="settings-tab"
+          data-settings-panel="chat"
+        ></chat-settings-panel>
+      </section>
+    </div>
+
+    <!-- Agent Config Editor Modal -->
+    <div class="config-editor-overlay hidden" id="config-editor-overlay"></div>
+    <div class="config-editor-modal hidden" id="config-editor-modal">
+      <div class="config-editor-header">
+        <div class="config-editor-title-group">
+          <h3 data-i18n="settings.agentConfiguration">Agent Configuration</h3>
+          <span class="config-editor-path" id="config-editor-path"></span>
+        </div>
+        <button class="settings-close" id="config-editor-close">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div class="config-editor-body">
+        <textarea
+          class="ui-textarea config-editor-textarea"
+          id="config-editor-textarea"
+          spellcheck="false"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+        ></textarea>
+        <div class="config-editor-error hidden" id="config-editor-error"></div>
+      </div>
+      <div class="config-editor-footer">
+        <button
+          class="ui-button ui-button--secondary config-editor-cancel"
+          id="config-editor-cancel"
+          data-i18n="migrated.index.text.cancel"
+        >
+          Cancel
+        </button>
+        <button
+          class="ui-button ui-button--primary"
+          id="config-editor-save"
+          data-i18n="migrated.index.text.save"
+        >
+          Save
+        </button>
+      </div>
+    </div>
+
+    <!-- Global Session Search -->
+    <div
+      class="session-search-overlay hidden"
+      id="session-search-overlay"
+    ></div>
+    <div
+      class="session-search-dialog hidden"
+      id="session-search-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Search tasks"
+      data-i18n-aria-label="migrated.index.ariaLabel.searchTasks"
+    >
+      <div class="session-search-input-row">
+        <svg
+          class="session-search-input-icon"
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input
+          type="text"
+          class="session-search-dialog-input"
+          id="session-search-dialog-input"
+          placeholder="Search tasks and messages…"
+          data-i18n-ph="migrated.index.placeholder.searchTasksAndMessages"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </div>
+      <div
+        class="session-search-results"
+        id="session-search-results"
+        role="listbox"
+        aria-label="Search results"
+        data-i18n-aria-label="migrated.index.ariaLabel.searchResults"
+      ></div>
+    </div>
+
+    <!-- Command Palette -->
+    <div
+      class="command-palette-overlay hidden"
+      id="command-palette-overlay"
+    ></div>
+    <div class="command-palette hidden" id="command-palette">
+      <div class="command-palette-header" data-i18n="input.commands">
+        Commands
+      </div>
+      <div class="command-list" id="command-list"></div>
+    </div>
+
+    <!-- Dialog Container -->
+    <div id="dialog-container" class="hidden"></div>
+
+    <!-- LAN QR Code Modal -->
+    <div
+      class="lan-qr-modal hidden"
+      id="lan-qr-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Mobile QR code"
+      data-i18n-aria-label="lanQr.modalAriaLabel"
+    >
+      <div class="lan-qr-modal-backdrop" id="lan-qr-modal-backdrop"></div>
+      <div class="lan-qr-modal-content">
+        <div class="lan-qr-modal-header">
+          <span class="lan-qr-modal-title" data-i18n="lanQr.title"
+            >Open on Mobile</span
+          >
+          <button
+            class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost lan-qr-modal-close icon-btn"
+            id="lan-qr-modal-close"
+            aria-label="Close"
+            data-i18n-aria-label="migrated.index.title.close"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        <div class="lan-qr-modal-body">
+          <div
+            class="lan-qr-loading"
+            id="lan-qr-loading"
+            data-i18n="lanQr.generating"
+          >
+            Generating QR code…
+          </div>
+          <img
+            class="lan-qr-image hidden"
+            id="lan-qr-image"
+            alt="QR code for mobile access"
+            data-i18n-alt="lanQr.qrAlt"
+          />
+          <div class="lan-qr-hint" data-i18n="lanQr.hint">
+            Scan with your phone to open Picot on the same network
+          </div>
+          <button
+            class="lan-qr-open-link hidden"
+            id="lan-qr-open-link"
+            type="button"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
+              />
+              <polyline points="15 3 21 3 21 9" />
+              <line x1="10" y1="14" x2="21" y2="3" />
+            </svg>
+            <span data-i18n="migrated.index.text.openLink">Open Link</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scripts -->
+    <!-- Import map: redirects browser-only package specifiers to the
              same-origin ESM vendor bundles produced by scripts/build-frontend.js.
              Vitest resolves these imports from node_modules directly. -->
-        <script type="importmap">
-            {
-                "imports": {
-                    "@codemirror/state": "./vendor/codemirror.js",
-                    "@codemirror/view": "./vendor/codemirror.js",
-                    "@codemirror/commands": "./vendor/codemirror.js",
-                    "@codemirror/language": "./vendor/codemirror.js",
-                    "@codemirror/search": "./vendor/codemirror.js",
-                    "@codemirror/theme-one-dark": "./vendor/codemirror.js",
-                    "@codemirror/lang-javascript": "./vendor/codemirror.js",
-                    "@codemirror/lang-json": "./vendor/codemirror.js",
-                    "@codemirror/lang-markdown": "./vendor/codemirror.js",
-                    "@codemirror/lang-python": "./vendor/codemirror.js",
-                    "@codemirror/lang-yaml": "./vendor/codemirror.js",
-                    "@codemirror/lang-css": "./vendor/codemirror.js",
-                    "@codemirror/lang-html": "./vendor/codemirror.js",
-                    "@codemirror/legacy-modes/mode/r": "./vendor/codemirror.js",
-                    "@codemirror/legacy-modes/mode/shell": "./vendor/codemirror.js",
-                    "@tauri-apps/plugin-notification": "./vendor/tauri-notification.js",
-                    "pdfjs-dist/legacy/build/pdf.mjs": "./vendor/pdf.js"
-                }
-            }
-        </script>
-        <script type="module" src="bootstrap-entry.js"></script>
-        <script type="module" src="components/super-agent-entry.js"></script>
-        <script type="module" src="components/super-agent-runtime.js"></script>
-        <script type="module" src="components/sa-chat-header.js"></script>
-        <script type="module" src="components/chat-settings-panel.js"></script>
-    </body>
+    <script type="importmap">
+      {
+        "imports": {
+          "@codemirror/state": "./vendor/codemirror.js",
+          "@codemirror/view": "./vendor/codemirror.js",
+          "@codemirror/commands": "./vendor/codemirror.js",
+          "@codemirror/language": "./vendor/codemirror.js",
+          "@codemirror/search": "./vendor/codemirror.js",
+          "@codemirror/theme-one-dark": "./vendor/codemirror.js",
+          "@codemirror/lang-javascript": "./vendor/codemirror.js",
+          "@codemirror/lang-json": "./vendor/codemirror.js",
+          "@codemirror/lang-markdown": "./vendor/codemirror.js",
+          "@codemirror/lang-python": "./vendor/codemirror.js",
+          "@codemirror/lang-rust": "./vendor/codemirror.js",
+          "@codemirror/lang-yaml": "./vendor/codemirror.js",
+          "@codemirror/lang-css": "./vendor/codemirror.js",
+          "@codemirror/lang-html": "./vendor/codemirror.js",
+          "@codemirror/legacy-modes/mode/r": "./vendor/codemirror.js",
+          "@codemirror/legacy-modes/mode/shell": "./vendor/codemirror.js",
+          "@tauri-apps/plugin-notification": "./vendor/tauri-notification.js",
+          "pdfjs-dist/legacy/build/pdf.mjs": "./vendor/pdf.js"
+        }
+      }
+    </script>
+    <script type="module" src="bootstrap-entry.js"></script>
+    <script type="module" src="components/super-agent-entry.js"></script>
+    <script type="module" src="components/super-agent-runtime.js"></script>
+    <script type="module" src="components/sa-chat-header.js"></script>
+    <script type="module" src="components/chat-settings-panel.js"></script>
+  </body>
 </html>

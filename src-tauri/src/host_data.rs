@@ -19,6 +19,12 @@ struct CachedSessionSummary {
 pub struct WorkspaceInfo {
     pub path: String,
     pub git_branch: Option<String>,
+    /// Whether the workspace root is inside a git work tree.
+    pub is_git: bool,
+    /// Top-level directory name of the git repository (e.g. "picot").
+    pub repository: String,
+    /// Current branch name (empty string in detached HEAD).
+    pub branch: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -271,14 +277,16 @@ fn message_with_entry_id(mut message: serde_json::Value, entry_id: &str) -> serd
 /// Parse a number from `git diff --shortstat` output for a given keyword.
 /// e.g. `parse_shortstat_num("3 files changed, 10 insertions(+)", "insertion")` → 10
 fn parse_shortstat_num(line: &str, keyword: &str) -> u32 {
-    line.split(',').find_map(|part| {
-        let part = part.trim();
-        if part.contains(keyword) {
-            part.split_whitespace().next().and_then(|n| n.parse().ok())
-        } else {
-            None
-        }
-    }).unwrap_or(0)
+    line.split(',')
+        .find_map(|part| {
+            let part = part.trim();
+            if part.contains(keyword) {
+                part.split_whitespace().next().and_then(|n| n.parse().ok())
+            } else {
+                None
+            }
+        })
+        .unwrap_or(0)
 }
 
 fn classify_git_status(x: char, y: char) -> (&'static str, &'static str) {
@@ -822,20 +830,75 @@ impl HostDataPlane {
         self.workspace_root(workspace_id)
     }
 
-    /// Return the workspace path and its current git branch (if any).
+    /// Return the workspace path and its current git metadata (repository
+    /// name + branch) for the sidebar hover quick-info card. The JSON shape
+    /// (`{ isGit, repository, branch, path, gitBranch }`) matches the
+    /// `/api/workspace-info` contract consumed by `WorkspaceQuickInfo`.
     pub fn workspace_info(&self, workspace_id: &str) -> Result<WorkspaceInfo, HostDataError> {
         let root = self.workspace_root(workspace_id)?;
+        Self::workspace_info_from_root(&root)
+    }
+
+    /// Variant that accepts an on-disk workspace path directly (used by
+    /// the sidebar which only knows the projectPath, not the internal
+    /// workspace ID). The path is canonicalized before running git.
+    pub fn workspace_info_by_path(
+        &self,
+        workspace_path: &str,
+    ) -> Result<WorkspaceInfo, HostDataError> {
+        let root =
+            std::fs::canonicalize(workspace_path).map_err(|e| HostDataError::Io(e.to_string()))?;
+        Self::workspace_info_from_root(&root)
+    }
+
+    fn workspace_info_from_root(root: &std::path::Path) -> Result<WorkspaceInfo, HostDataError> {
         let path = root.to_string_lossy().into_owned();
-        let git_branch = Command::new("git")
+        let check = Command::new("git")
+            .args(["rev-parse", "--is-inside-work-tree"])
+            .current_dir(root)
+            .output()
+            .map_err(|e| HostDataError::Io(e.to_string()))?;
+        if !check.status.success() {
+            return Ok(WorkspaceInfo {
+                path,
+                git_branch: None,
+                is_git: false,
+                repository: String::new(),
+                branch: String::new(),
+            });
+        }
+        // Repository name = top-level directory name of the worktree root.
+        let toplevel = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .current_dir(root)
+            .env("LC_ALL", "C")
+            .output()
+            .map_err(|e| HostDataError::Io(e.to_string()))?;
+        let repo_path = String::from_utf8_lossy(&toplevel.stdout).trim().to_string();
+        let repository = std::path::Path::new(&repo_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        // Branch name (None in detached HEAD for git_branch, empty string for branch).
+        let branch_out = Command::new("git")
             .args(["rev-parse", "--abbrev-ref", "HEAD"])
-            .current_dir(&root)
+            .current_dir(root)
+            .env("LC_ALL", "C")
             .output()
             .ok()
             .filter(|o| o.status.success())
             .and_then(|o| String::from_utf8(o.stdout).ok())
             .map(|s| s.trim().to_owned())
             .filter(|s| !s.is_empty() && s != "HEAD");
-        Ok(WorkspaceInfo { path, git_branch })
+        let branch = branch_out.clone().unwrap_or_default();
+        Ok(WorkspaceInfo {
+            path,
+            git_branch: branch_out,
+            is_git: true,
+            repository,
+            branch,
+        })
     }
 
     /// Resolve the on-disk session file for a saved session that belongs to a

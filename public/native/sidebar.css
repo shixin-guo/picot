@@ -264,3 +264,275 @@
 .sidebar-overlay.visible {
   display: block;
 }
+
+/* ── Workspace Focus mode ───────────────────────────────────────────── */
+
+.sidebar.focus-mode .sidebar-search-wrap,
+.sidebar.focus-mode #new-session-btn,
+.sidebar.focus-mode #open-folder-btn,
+.sidebar.focus-mode #refresh-sessions-btn {
+  display: none;
+}
+
+.sidebar.focus-mode .sidebar-actions {
+  margin-left: auto;
+}
+
+.focus-sidebar-container {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  overflow: auto;
+  padding: 0 var(--space-2) var(--space-2);
+}
+
+.focus-info-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+}
+
+.focus-info-path {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focus-info-branch {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.focus-info-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-dim);
+}
+
+.focus-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.focus-session-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  padding: var(--space-1-5) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: background var(--duration) var(--ease);
+}
+
+.focus-session-row:hover {
+  background: var(--bg-glass-hover);
+}
+
+.focus-session-row.active {
+  background: var(--accent-subtle);
+}
+
+.focus-session-name {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focus-session-preview {
+  font-size: var(--font-size-xs);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focus-show-more {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  padding: var(--space-1) var(--space-2);
+  text-align: center;
+}
+
+.focus-show-more:hover {
+  color: var(--text-primary);
+}
+
+.focus-empty {
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  padding: var(--space-2);
+  text-align: center;
+}
+
+/* Focus button in project group header */
+.project-focus-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: var(--space-0-5);
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition:
+    opacity var(--duration) var(--ease),
+    background var(--duration) var(--ease);
+}
+
+.project-group-header:hover .project-focus-btn {
+  opacity: 1;
+}
+
+/* Current workspace's focus button is always visible (not just on hover). */
+.current-project .project-focus-btn {
+  opacity: 1;
+}
+
+.project-focus-btn:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Workspace Focus sidebar — feature-v3 port
+   Task-workbench view: back button, workspace info card,
+   new-task button, and session list.
+   ═══════════════════════════════════════════════════════ */
+
+.workspace-focus-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.focus-back-btn {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-md);
+  padding: var(--space-1) 0;
+}
+
+.focus-back-btn:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+}
+
+.focus-back-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+}
+
+/* Static workspace info card in Focus mode — reuses .workspace-quick-info
+   visuals but lays out inline (no fixed positioning or 306 px width cap). */
+.workspace-focus-card {
+  position: static;
+  display: block;
+  width: auto;
+  max-width: 100%;
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+.focus-new-task-btn {
+  border: 1px solid var(--border-subtle, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+.focus-new-task-btn:hover {
+  background: var(--bg-glass-hover);
+}
+
+.focus-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.focus-sessions-toggle-row {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.focus-sessions-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  padding: var(--space-1) 0;
+}
+
+.focus-sessions-toggle:hover {
+  color: var(--text-primary);
+}
+
+/* Right-arrow focus button on current-workspace header */
+.workspace-focus-btn {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* biome-ignore lint/style/noDescendingSpecificity: unrelated selectors — .workspace-focus-btn and .sidebar-update-pill.loading target different elements with no cascade overlap, so the lower-specificity .workspace-focus-btn svg still applies. */
+.workspace-focus-btn svg {
+  display: block;
+}
+
+.workspace-focus-btn:hover,
+.workspace-focus-btn:focus-visible {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+  outline: none;
+}

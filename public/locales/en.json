@@ -25,13 +25,55 @@
   },
   "git": {
     "currentBranch": "Current git branch",
-    "branchName": "Branch: {name}"
+    "branchName": "Branch: {name}",
+    "panel": "Git",
+    "files": "Files",
+    "staged": "Staged",
+    "changes": "Changes",
+    "untracked": "Untracked",
+    "conflicted": "Conflicted",
+    "refresh": "Refresh Git status",
+    "noStatus": "No Git status loaded",
+    "discardWarning": "This action cannot be undone",
+    "writeUnavailable": "Git write authorization unavailable",
+    "stage": "Stage",
+    "unstage": "Unstage",
+    "discard": "Discard changes",
+    "aiCommitMessage": "Generate AI commit message",
+    "commit": "Commit",
+    "stats": "+{additions} −{deletions} · Staged {staged} · Changes {changes} · Untracked {untracked}",
+    "summary": "{branch} · {upstream} · ↑{ahead} ↓{behind}",
+    "noUpstream": "No upstream configured",
+    "confirmationRequired": "This file has staged and unstaged changes. Confirm whole-file commit?",
+    "discardConfirm": "Discard changes to {count} file(s)? This cannot be undone.",
+    "truncated": "{count} more changes not shown",
+    "commitMessageLabel": "Commit message",
+    "cancel": "Cancel",
+    "committing": "Committing...",
+    "hookChangedTree": "A pre-commit hook modified the committed content; the commit was created but may differ from the staged snapshot.",
+    "aiFailed": "AI commit message generation failed. You can still write a commit message manually.",
+    "commitInProgress": "Commit in progress...",
+    "outcomeUnknown": "The commit outcome could not be determined. Check the repository state before retrying.",
+    "diffOriginal": "Original",
+    "diffModified": "Modified",
+    "diffEmpty": "No changes to display",
+    "comparison": {
+      "staged": "Staged",
+      "changes": "Changes",
+      "untracked": "Untracked"
+    }
   },
   "usage": {
     "contextTokens": "Context: {used}k / {limit}k tokens",
     "sessionCostTitle": "Session cost",
     "contextTitle": "Context usage",
-    "costSub": "{amount} (sub)"
+    "costSub": "{amount} (sub)",
+    "sessionUsageTitle": "Session tokens (input / output / cache)",
+    "summary": "In {in} · Out {out} · Cache {cache}",
+    "input": "IN",
+    "output": "OUT",
+    "cache": "CACHE",
+    "costTitle": "Session cost"
   },
   "sessionInfo": {
     "title": "Session info",
@@ -83,7 +125,8 @@
     "expandAllTools": "Expand All Tools",
     "expandAllToolsDesc": "Expand all tool cards",
     "collapseAllTools": "Collapse All Tools",
-    "collapseAllToolsDesc": "Collapse all tool cards"
+    "collapseAllToolsDesc": "Collapse all tool cards",
+    "compacting": "Compacting…"
   },
   "messages": {
     "attachedImage": "Attached image",
@@ -91,11 +134,7 @@
     "thinking": "Thinking",
     "copy": "Copy",
     "copied": "Copied!",
-    "processDetails": "Process details",
-    "processStep": "{count} step",
-    "processSteps": "{count} steps",
-    "processToolCall": "{count} tool call",
-    "processToolCalls": "{count} tool calls"
+    "scrollToBottom": "Scroll to latest message"
   },
   "tools": {
     "copyOutput": "Copy output",
@@ -138,6 +177,7 @@
       "conflict": "File modified externally",
       "conflictReload": "Reload",
       "conflictOverwrite": "Overwrite",
+      "tabpanelLabel": "File preview",
       "outsideWorkspace": "File is outside the active workspace",
       "unsupportedBinary": "This file cannot be previewed.",
       "tooLarge": "This file is too large to preview.",
@@ -296,7 +336,9 @@
     "abortedByUser": "Aborted by user",
     "invalidJson": "Invalid JSON: {detail}",
     "modelsMustBeObject": "models.json must be a JSON object.",
-    "providersMustBeObject": "'providers' must be an object."
+    "providersMustBeObject": "'providers' must be an object.",
+    "compactionFailed": "Context compaction failed.",
+    "compactionFailedDetail": "Context compaction failed: {error}"
   },
   "onboarding": {
     "openProject": "Open a project to start chatting.",
@@ -412,7 +454,15 @@
     "deleteSessionRunning": "Cannot delete a running session",
     "archiveDisabledActive": "Cannot archive the active session",
     "archiveDisabledStreaming": "Cannot archive a streaming session",
-    "archiveDisabledRunning": "Cannot archive a running session"
+    "archiveDisabledRunning": "Cannot archive a running session",
+    "favourite": "Favourite",
+    "unfavourite": "Unfavourite",
+    "archiveAll": "Archive all sessions",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "sessionActions": "Session actions",
+    "renameErrorGeneric": "Could not rename session. Try again.",
+    "focus": "Focus"
   },
   "updater": {
     "update": "Update",
@@ -562,13 +612,13 @@
     },
     "skills": {
       "title": "Skills",
-      "description": "Manage discovered skills. Changes apply after a new session or Pi restart.",
+      "description": "Manage skills Pi discovers for this workspace. Changes are written to the matching settings.json and apply only after a new session or Pi-process restart.",
       "rescan": "Rescan",
       "global": "Global",
       "project": "Current project",
       "loading": "Loading skills…",
-      "empty": "No skills in this scope.",
-      "projectUntrusted": "Project skills are disabled until this project is trusted.",
+      "empty": "No skills discovered in this scope.",
+      "projectUntrusted": "This project is not trusted yet. Pi will not load project skills, and switches stay disabled until it is trusted.",
       "allEnabled": "All enabled",
       "allDisabled": "All disabled",
       "enabledCount": "{enabled}/{total} enabled",
@@ -582,7 +632,57 @@
       "saveFailed": "Failed to save skill settings.",
       "rescanFailed": "Failed to rescan skills.",
       "ambiguousRuleTarget": "This target maps to multiple roots; edit settings.json manually to change it.",
-      "scopeSummary": "{total} skills · {groups} groups"
+      "scopeSummary": "{total} skills · {groups} groups",
+      "discovered": "Discovered",
+      "install": "Install",
+      "packages": "Packages",
+      "addRoot": "Enable in Pi",
+      "addRootConfirmation": "Enable this Claude skills directory in Pi? The displayed settings entry applies after a new session or Pi restart.",
+      "addRootConfirm": "Enable",
+      "addRootCancel": "Cancel",
+      "addRootFailed": "Failed to enable this skills root.",
+      "rootAddedRestartRequired": "Enabled. Start a new session or restart Pi for the change to take effect.",
+      "sectionsAriaLabel": "Skills sections"
+    },
+    "installSkills": {
+      "title": "Install skills",
+      "description": "Link skills from a local folder. No files are copied or changed.",
+      "chooseFolder": "Choose folder",
+      "scanning": "Scanning skills…",
+      "scanFailed": "Failed to scan the selected folder.",
+      "global": "Global",
+      "project": "Current project",
+      "projectUntrusted": "This project is not trusted. Install to the current project is unavailable.",
+      "review": "Review installation",
+      "confirmation": "Install {count} selected skills to {scope}?",
+      "confirmationHeading": "Confirm skill installation",
+      "confirm": "Install selected skills",
+      "cancel": "Cancel",
+      "installing": "Installing…",
+      "installFailed": "Failed to install selected skills.",
+      "complete": "Installed {added} entries; {skipped} already configured.",
+      "restartRequired": "Saved. Start a new session or restart Pi for the change to take effect.",
+      "skill": "Skill",
+      "group": "Group"
+    },
+    "packageSkills": {
+      "title": "Packages skills",
+      "description": "Bundled skill candidates from configured Pi packages. These are read-only candidates; effective enable/disable state is computed by Pi and is not shown here.",
+      "bundledCandidates": "Bundled candidates",
+      "refresh": "Refresh",
+      "global": "Global",
+      "project": "Current project",
+      "loading": "Loading package skills…",
+      "retry": "Retry",
+      "empty": "No configured packages in this scope.",
+      "loadFailed": "Failed to load package skills.",
+      "projectUntrusted": "This project is not trusted. Project package paths are not shown.",
+      "notInstalled": "Not installed",
+      "package": "Package",
+      "canonicalPath": "Canonical path",
+      "candidateCount": "{count} candidates",
+      "scopeSummary": "{count} packages",
+      "enableAll": "Enable all"
     }
   },
   "lanQr": {
@@ -661,7 +761,8 @@
     "model": "model",
     "compact": "Compact",
     "compactTitle": "Context is over 80% — compact to save tokens",
-    "qrUnavailable": "QR code unavailable"
+    "qrUnavailable": "QR code unavailable",
+    "toggleContextControls": "Toggle context controls"
   },
   "browse": {
     "openExternalPrompt": "Open this link in a new tab:"
@@ -687,7 +788,8 @@
     "statusReady": "Ready",
     "statusStreaming": "Generating",
     "statusError": "Error",
-    "statusDisconnected": "Disconnected"
+    "statusDisconnected": "Disconnected",
+    "confirmCloseSideChat": "Discard side chat?"
   },
   "fileMention": {
     "listLabel": "Files"
@@ -732,7 +834,8 @@
         "thinkingEffortOffClickToCycleReasoning": "Thinking effort: off. Click to cycle reasoning depth.",
         "receiveBetaUpdates": "Receive beta updates",
         "searchTasks": "Search tasks",
-        "searchResults": "Search results"
+        "searchResults": "Search results",
+        "openFilesPanel": "Open Files panel — {path}"
       },
       "placeholder": {
         "typeAMessageOrUseToCall": "Message… Type / for commands, @ for files",

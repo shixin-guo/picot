@@ -1,0 +1,306 @@
+/* Ephemeral chats (Side Chat / Quick Chat) — panel layout, composer, and
+   loading state. Mirrors the feature-v3 private-fork styling so the Side Chat
+   panel matches the main chat's visual language.
+   (public/native/session/ephemeral-chat-view.js + side-chat-manager.js)
+   ═══════════════════════════════════════════════════════ */
+
+.ephemeral-chat-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.ephemeral-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.ephemeral-tools,
+.ephemeral-usage,
+.ephemeral-dialog-container {
+  flex: 0 0 auto;
+}
+
+.ephemeral-usage {
+  padding: var(--space-1) var(--space-3);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.ephemeral-composer {
+  flex: 0 0 auto;
+  margin: 8px 12px 12px;
+}
+.quick-chat-dialog .ephemeral-composer {
+  margin-bottom: 12px;
+}
+
+.ephemeral-composer.streaming {
+  border-color: transparent;
+}
+
+.ephemeral-composer .model-dropdown-item {
+  width: 100%;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+/* Composer input shared with the main chat's #message-input styling. */
+.ephemeral-input {
+  padding: var(--space-3) var(--space-3) var(--space-1);
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+  outline: none;
+  resize: none;
+  max-height: 160px;
+  line-height: 1.45;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.ephemeral-input:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.ephemeral-input::placeholder {
+  color: var(--text-dim);
+}
+
+/* Send button mirrors the main chat's #send-btn. */
+.ephemeral-send {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  border: none;
+  cursor: pointer;
+  transition:
+    background var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease),
+    opacity var(--duration) var(--ease);
+  box-shadow:
+    3px 3px 10px var(--accent-glow),
+    -2px -2px 6px rgba(255, 255, 255, 0.15),
+    inset 0 1px 2px rgba(255, 255, 255, 0.2);
+}
+
+.ephemeral-send:hover:not(:disabled) {
+  transform: scale(1.1);
+  filter: brightness(1.15);
+  box-shadow: 0 6px 24px var(--accent-glow);
+}
+
+.ephemeral-send:active:not(:disabled) {
+  transform: scale(0.88);
+  transition: transform 0.1s var(--ease);
+}
+
+.ephemeral-send > svg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+/* Loading placeholder shown while pi spins up. */
+.ephemeral-chat-loading {
+  flex: 1 1 auto;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 13px;
+  padding: var(--space-6);
+}
+
+/* Transient (Side Chat) tabs in the file-preview panel tab bar. */
+.file-preview-tab.transient-tab .file-preview-tab-name {
+  font-style: normal;
+}
+
+.transient-tab-status {
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-left: var(--space-1);
+}
+
+/* ── Quick Chat floating dialog + minimized chip ─────────────────────────── */
+.quick-chat-dialog-root {
+  position: static;
+}
+.quick-chat-dialog {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: min(520px, calc(100vw - 48px));
+  height: min(640px, calc(100vh - 48px));
+  min-width: 360px;
+  min-height: 280px;
+  background: var(--bg-solid);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg), var(--shadow-inset);
+  display: flex;
+  flex-direction: column;
+  z-index: 9000;
+}
+.quick-chat-dialog.hidden {
+  display: none;
+}
+.quick-chat-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding: 8px 10px;
+  cursor: grab;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-glass);
+  -webkit-app-region: no-drag;
+  user-select: none;
+}
+.quick-chat-title-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+.quick-chat-title button {
+  -webkit-app-region: no-drag;
+}
+.quick-chat-title-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  background: transparent;
+  cursor: pointer;
+}
+.quick-chat-title-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-glass-hover);
+}
+.quick-chat-resize-handle {
+  position: absolute;
+}
+.quick-chat-resize-n,
+.quick-chat-resize-s {
+  left: 12px;
+  right: 12px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.quick-chat-resize-n {
+  top: -4px;
+}
+.quick-chat-resize-s {
+  bottom: -4px;
+}
+.quick-chat-resize-e,
+.quick-chat-resize-w {
+  top: 12px;
+  bottom: 12px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.quick-chat-resize-e {
+  right: -4px;
+}
+.quick-chat-resize-w {
+  left: -4px;
+}
+.quick-chat-resize-ne,
+.quick-chat-resize-se,
+.quick-chat-resize-sw,
+.quick-chat-resize-nw {
+  width: 12px;
+  height: 12px;
+}
+.quick-chat-resize-ne {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+.quick-chat-resize-se {
+  right: -4px;
+  bottom: -4px;
+  cursor: nwse-resize;
+}
+.quick-chat-resize-sw {
+  bottom: -4px;
+  left: -4px;
+  cursor: nesw-resize;
+}
+.quick-chat-resize-nw {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+.quick-chat-dialog,
+.quick-chat-dialog *,
+.quick-chat-dialog button,
+.quick-chat-dialog textarea,
+.quick-chat-dialog input {
+  -webkit-app-region: no-drag;
+}
+.quick-chat-dialog.is-dragging,
+.quick-chat-dialog.is-resizing {
+  user-select: none;
+}
+.quick-chat-resize-handle:focus-visible {
+  outline: 2px solid var(--accent-color, #4c9ffe);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .quick-chat-dialog,
+  .quick-chat-chip {
+    transition: none;
+  }
+}
+.quick-chat-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.quick-chat-loading {
+  flex: 1 1 auto;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 13px;
+}
+.quick-chat-chip {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--accent-color, #2563eb);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  z-index: 9000;
+}
+.quick-chat-chip.hidden {
+  display: none;
+}

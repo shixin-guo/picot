@@ -1,0 +1,950 @@
+<!doctype html>
+<!-- ABOUTME: Read-only visual prototype combining the four 2026-08-01/02 UI modernization plans. -->
+<!-- ABOUTME: Demonstrates status density, panel semantics, icon rules, file objects, and resize affordances. -->
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Picot · UI revamp integration prototype</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #101217;
+        --surface: #181b22;
+        --surface2: #20242d;
+        --line: #303744;
+        --text: #e7ebf3;
+        --muted: #9ba6b8;
+        --dim: #687386;
+        --accent: #8fa9ff;
+        --accentbg: #222d51;
+        --green: #8bd4ac;
+        --amber: #e8bd71;
+        --red: #ee9b9b;
+        --shadow: 0 16px 40px #0007;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      [data-theme="light"] {
+        color-scheme: light;
+        --bg: #f3f5f9;
+        --surface: #fff;
+        --surface2: #f6f7fa;
+        --line: #d9dfea;
+        --text: #192230;
+        --muted: #59677b;
+        --dim: #8590a2;
+        --accent: #315ac6;
+        --accentbg: #e7edff;
+        --green: #24854a;
+        --amber: #a36700;
+        --red: #c44343;
+        --shadow: 0 16px 40px #30394a22;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .top {
+        height: 52px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 0 18px;
+        border-bottom: 1px solid var(--line);
+        background: color-mix(in srgb, var(--bg) 92%, transparent);
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        backdrop-filter: blur(10px);
+      }
+      .brand {
+        font-weight: 750;
+        letter-spacing: -0.02em;
+      }
+      .badge {
+        font:
+          10px ui-monospace,
+          monospace;
+        color: var(--accent);
+        background: var(--accentbg);
+        padding: 2px 7px;
+        border-radius: 99px;
+      }
+      .grow {
+        flex: 1;
+      }
+      .btn,
+      .icon {
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .btn {
+        border-radius: 7px;
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+      .btn:hover,
+      .icon:hover {
+        color: var(--text);
+        border-color: var(--accent);
+        background: var(--accentbg);
+      }
+      .icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: inline-grid;
+        place-items: center;
+        padding: 0;
+      }
+      .icon svg {
+        width: 16px;
+        height: 16px;
+      }
+      .icon[aria-pressed="true"] {
+        color: var(--accent);
+        background: var(--accentbg);
+      }
+      .iostat {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font:
+          11px ui-monospace,
+          SFMono-Regular,
+          monospace;
+        color: var(--muted);
+      }
+      .metric {
+        white-space: nowrap;
+      }
+      .metric b {
+        color: var(--text);
+        font-weight: 650;
+      }
+      .context {
+        color: var(--amber);
+        border-left: 1px solid var(--line);
+        padding-left: 8px;
+      }
+      .cost {
+        color: var(--green);
+        border-left: 1px solid var(--line);
+        padding-left: 8px;
+      }
+      .shell {
+        display: grid;
+        grid-template-columns: 236px minmax(400px, 1fr) 356px;
+        min-height: 680px;
+      }
+      .sidebar,
+      .filepanel {
+        background: var(--surface);
+        min-width: 0;
+      }
+      .sidebar {
+        border-right: 1px solid var(--line);
+        padding: 14px 10px;
+      }
+      .workspace {
+        padding: 9px 10px;
+        border-radius: 7px;
+        background: var(--accentbg);
+        color: var(--accent);
+        font-weight: 650;
+        margin-bottom: 14px;
+      }
+      .session {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 8px;
+        border-radius: 6px;
+        color: var(--muted);
+      }
+      .session.active {
+        background: var(--surface2);
+        color: var(--text);
+      }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 99px;
+        background: var(--green);
+      }
+      .main {
+        padding: 18px 20px;
+        min-width: 0;
+      }
+      .crumb {
+        font:
+          11px ui-monospace,
+          monospace;
+        color: var(--dim);
+        margin-bottom: 16px;
+      }
+      .message {
+        max-width: 720px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin-bottom: 12px;
+      }
+      .message.user {
+        margin-left: auto;
+        background: var(--accentbg);
+        border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+      }
+      .message-note {
+        color: var(--dim);
+        font-size: 10px;
+        margin: -3px 0 12px;
+      }
+      .composer {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        border-radius: 11px;
+        padding: 8px;
+        margin-top: 24px;
+      }
+      .input {
+        flex: 1;
+        color: var(--dim);
+        padding: 5px;
+      }
+      .filepanel {
+        border-left: 1px solid var(--line);
+        position: relative;
+      }
+      .resize {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: -5px;
+        width: 9px;
+        cursor: col-resize;
+        z-index: 2;
+      }
+      .resize:after {
+        content: "";
+        position: absolute;
+        top: 42%;
+        left: 3px;
+        height: 44px;
+        width: 2px;
+        border-radius: 4px;
+        background: var(--line);
+      }
+      .resize:hover:after {
+        background: var(--accent);
+      }
+      .panelhead {
+        height: 48px;
+        padding: 0 10px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .paneltitle {
+        font-size: 12px;
+        font-weight: 700;
+        flex: 1;
+      }
+      .tree {
+        padding: 8px;
+      }
+      .tree-row {
+        height: 29px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 0 7px;
+        border-radius: 5px;
+        color: var(--muted);
+      }
+      .tree-row.sel {
+        background: var(--accentbg);
+        color: var(--text);
+      }
+      .obj {
+        width: 16px;
+        height: 16px;
+        display: grid;
+        place-items: center;
+      }
+      .obj.material-folder {
+        color: #dcb67a;
+      }
+      .obj.material-javascript {
+        color: #e8ca62;
+      }
+      .obj.material-typescript {
+        color: #579cd7;
+      }
+      .obj.material-json {
+        color: #ba82c8;
+      }
+      .obj.material-markdown {
+        color: #67b5c7;
+      }
+      .obj.material-rust {
+        color: #c98669;
+      }
+      .obj svg {
+        width: 16px;
+        height: 16px;
+      }
+      .indent {
+        padding-left: 22px;
+      }
+      .status {
+        margin-left: auto;
+        font:
+          10px ui-monospace,
+          monospace;
+      }
+      .status.mod {
+        color: var(--amber);
+      }
+      .terminal {
+        grid-column: 2 / 4;
+        border-top: 1px solid var(--line);
+        background: #13161c;
+        min-height: 150px;
+      }
+      .termhead {
+        height: 42px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 12px;
+        border-bottom: 1px solid #292f39;
+      }
+      .tab {
+        font:
+          11px ui-monospace,
+          monospace;
+        padding: 5px 8px;
+        border-radius: 5px;
+        background: #202630;
+        color: #aeb9cc;
+      }
+      .termout {
+        padding: 12px 16px;
+        color: #a7d9b6;
+        font:
+          12px/1.6 ui-monospace,
+          SFMono-Regular,
+          monospace;
+      }
+      .termout span {
+        color: #87a9ff;
+      }
+      .section {
+        max-width: 1250px;
+        margin: 30px auto;
+        padding: 0 18px;
+      }
+      .section h2 {
+        font-size: 15px;
+        margin: 0 0 5px;
+      }
+      .section p {
+        margin: 0 0 14px;
+        color: var(--muted);
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .card {
+        border: 1px solid var(--line);
+        background: var(--surface);
+        border-radius: 10px;
+        padding: 14px;
+      }
+      .card h3 {
+        font-size: 12px;
+        margin: 0 0 9px;
+      }
+      .states {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .state {
+        display: grid;
+        justify-items: center;
+        gap: 4px;
+        font-size: 10px;
+        color: var(--dim);
+      }
+      .state .icon {
+        background: var(--surface2);
+      }
+      .state .icon.active {
+        color: var(--accent);
+        background: var(--accentbg);
+        border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+      }
+      .rule {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+      }
+      .rule b {
+        color: var(--text);
+      }
+      .compact-example {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 8px;
+        border: 1px solid var(--line);
+        background: var(--surface2);
+        border-radius: 7px;
+      }
+      .compact-example .cmd {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        color: var(--text);
+        font-size: 12px;
+      }
+      .compact-example svg {
+        width: 17px;
+        height: 17px;
+        color: var(--accent);
+      }
+      .sizes {
+        display: flex;
+        align-items: end;
+        gap: 14px;
+      }
+      .size {
+        display: grid;
+        justify-items: center;
+        gap: 4px;
+        color: var(--dim);
+        font:
+          10px ui-monospace,
+          monospace;
+      }
+      .size .icon {
+        background: var(--surface2);
+      }
+      .size.s28 .icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+      }
+      .size.s36 .icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 9px;
+      }
+      .size.recommended .icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .callout {
+        border-left: 3px solid var(--accent);
+        background: var(--accentbg);
+        padding: 9px 11px;
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 14px;
+      }
+      .callout b {
+        color: var(--text);
+      }
+      @media (max-width: 920px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+        .sidebar,
+        .filepanel {
+          display: none;
+        }
+        .terminal {
+          grid-column: 1;
+        }
+        .cards {
+          grid-template-columns: 1fr;
+        }
+        .iostat .metric:nth-child(2),
+        .iostat .metric:nth-child(3) {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        Picot <span class="badge">UI revamp prototype</span>
+      </div>
+      <div class="grow"></div>
+      <div class="iostat" role="status" aria-label="Session usage">
+        <span class="metric">IN <b>78.4k</b></span
+        ><span class="metric">OUT <b>12.6k</b></span
+        ><span class="metric">CACHE <b>48.0k</b></span
+        ><span class="metric cost">$<b>0.142</b></span
+        ><span class="metric context">CTX <b>63%</b></span>
+      </div>
+      <button class="btn" id="theme">切换主题</button>
+    </header>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="workspace">⌄ &nbsp; picot-v3</div>
+        <div class="session active">
+          <span class="dot"></span><span>UI polish exploration</span>
+        </div>
+        <div class="session">
+          <span class="dot" style="background: var(--dim)"></span
+          ><span>Terminal restoration</span>
+        </div>
+        <div class="session">
+          <span class="dot" style="background: var(--amber)"></span
+          ><span>Context compaction</span>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="crumb">private / features-v3 / UI polish exploration</div>
+        <div class="message">
+          这是整合后 Header 的信息密度：输入、输出、cache、成本与当前 context
+          使用率共用同一份真实 usage 投影。Compact 完成时它清空过期 usage，等待
+          Pi 的新 usage，而不预测压缩后数值。
+        </div>
+        <div class="message user">我想先看看设计方向。</div>
+        <div class="message-note">
+          Session history · 保持当前 Picot 设计：user prompt 为段落文字；agent
+          response 维持 thinking、工具调用/结果（如 bash）与 final response
+          的现有结构和样式（非本次改造范围）
+        </div>
+        <div class="composer">
+          <button class="icon" data-icon="plus" title="Attach"></button>
+          <div class="input">给 Picot 写一份可审阅的 UI 整合方案…</div>
+          <button class="icon" data-icon="send" title="Send"></button>
+        </div>
+      </main>
+      <aside class="filepanel">
+        <div
+          class="resize"
+          title="Resize panel — Arrow keys resize, Enter resets"
+        ></div>
+        <div class="panelhead">
+          <span class="paneltitle">Files</span
+          ><button class="icon" data-icon="maximize" title="放大面板"></button
+          ><button class="icon" data-icon="x" title="关闭面板"></button>
+        </div>
+        <div class="tree">
+          <div class="tree-row">
+            <span class="obj" data-object="folder"></span><b>public</b>
+          </div>
+          <div class="tree-row indent sel">
+            <span class="obj" data-object="javascript"></span>app.js
+            <span class="status mod">M</span>
+          </div>
+          <div class="tree-row indent">
+            <span class="obj" data-object="json"></span>settings.json
+          </div>
+          <div class="tree-row">
+            <span class="obj" data-object="folder"></span><b>docs</b>
+          </div>
+          <div class="tree-row indent">
+            <span class="obj" data-object="markdown"></span>design.md
+          </div>
+          <div class="tree-row">
+            <span class="obj" data-object="rust"></span>Cargo.toml
+          </div>
+        </div>
+      </aside>
+      <section class="terminal">
+        <div class="termhead">
+          <button
+            class="icon"
+            data-icon="panel-bottom"
+            title="Terminal"
+          ></button
+          ><span class="tab">default</span>
+          <div class="grow"></div>
+          <button class="icon" data-icon="maximize" title="放大面板"></button
+          ><button class="icon" data-icon="x" title="关闭 Terminal"></button>
+        </div>
+        <div class="termout">
+          <span>picot</span> $ bun run check<br />✓ lint &amp; format completed
+        </div>
+      </section>
+    </div>
+    <section class="section">
+      <h2>三种不能混用的控制语义</h2>
+      <p>
+        在整合版中，panel state 与 Context Compact 使用不同图标、不同 title
+        和不同可见状态。
+      </p>
+      <div class="cards">
+        <article class="card">
+          <h3>Panel · normal state</h3>
+          <div class="states">
+            <div class="state">
+              <button
+                class="icon active"
+                data-icon="maximize"
+                title="放大面板"
+              ></button
+              ><span>放大面板</span>
+            </div>
+            <div class="state">
+              <button class="icon" data-icon="x" title="关闭面板"></button
+              ><span>关闭</span>
+            </div>
+          </div>
+          <div class="rule">
+            <b>规则：</b>正常状态只显示 <code>maximize</code>；进入 enlarged
+            state 后它被替换。
+          </div>
+        </article>
+        <article class="card">
+          <h3>Panel · enlarged state</h3>
+          <div class="states">
+            <div class="state">
+              <button
+                class="icon active"
+                data-icon="minimize"
+                title="收起面板"
+              ></button
+              ><span>收起面板</span>
+            </div>
+            <div class="state">
+              <button class="icon" data-icon="x" title="关闭面板"></button
+              ><span>关闭</span>
+            </div>
+          </div>
+          <div class="rule">
+            <b>规则：</b>放大与收起互斥；收起使用向内四角，绝不使用 Compact
+            glyph。
+          </div>
+        </article>
+        <article class="card">
+          <h3>Context Compact</h3>
+          <div class="compact-example">
+            <span class="cmd"
+              ><span data-icon="text-collapse"></span>Compact context</span
+            ><span class="badge">63%</span>
+          </div>
+          <div class="rule">
+            <b>规则：</b><code>text-collapse</code>
+            表达“归纳文本”，不会被看作收起面板。请求期间保持
+            disabled/busy，成功后清空旧 usage。
+          </div>
+        </article>
+      </div>
+    </section>
+    <section class="section">
+      <h2>密度、对象图标与 resize 反馈</h2>
+      <p>这里用于决定哪些视觉改动应合并，哪些应保持局部。</p>
+      <div class="cards">
+        <article class="card">
+          <h3>Header action size · 32px 已定案</h3>
+          <div class="sizes">
+            <div class="size s28">
+              <button class="icon" data-icon="settings"></button
+              ><span>28px</span>
+            </div>
+            <div class="size recommended">
+              <button class="icon" data-icon="settings"></button
+              ><span>32px · Header</span>
+            </div>
+            <div class="size s36">
+              <button class="icon" data-icon="settings"></button
+              ><span>36px</span>
+            </div>
+          </div>
+          <div class="rule">
+            <b>已定案：</b>Header action controls 统一为 32px，兼顾 iostat row
+            的 可读性与点击目标。28px、36px 仅保留为其他区域的对照，不是 Header
+            选项。
+          </div>
+        </article>
+        <article class="card">
+          <h3>File / Git objects</h3>
+          <div class="tree" style="padding: 0">
+            <div class="tree-row">
+              <span class="obj" data-object="folder"></span>src
+            </div>
+            <div class="tree-row">
+              <span class="obj" data-object="typescript"></span
+              >terminal-panel.ts
+            </div>
+            <div class="tree-row">
+              <span class="obj" data-object="markdown"></span>ARCHITECTURE.md
+            </div>
+            <div class="tree-row">
+              <span class="obj" data-object="json"></span>package.json
+            </div>
+          </div>
+          <div class="rule">
+            <b>已定案：</b>采用精选、锁定版本的 Material Icon Theme SVG 白名单；
+            File tree 与 Git tree 共用 resolver，保留 MIT 许可证、来源 manifest
+            与 上游 release/commit。不得用于操作按钮。
+          </div>
+        </article>
+        <article class="card">
+          <h3>Session Info · hover / Focus</h3>
+          <div class="tree" style="padding: 0">
+            <div class="tree-row">
+              <span class="obj material-folder" data-object="folder"></span
+              ><b>picot-v3</b><span class="status">hover tip</span>
+            </div>
+            <div class="tree-row indent">
+              <span class="obj" data-icon="list"></span>42 sessions
+            </div>
+            <div class="tree-row indent">
+              <span class="obj" data-icon="folder-open"></span>/Users/…/picot-v3
+            </div>
+            <div class="tree-row indent">
+              <span class="obj" data-icon="git-branch"></span
+              >private/features-v3
+            </div>
+          </div>
+          <div class="rule">
+            <b>保留行为：</b>普通 Sidebar hover/focus tip 与 Focus mode info
+            card 共享 metadata icon mapping；folder 使用 Material object
+            icon，count/path/repository/pin 使用本地单色 SVG。Pin 保持唯一
+            interactive control；pointer/focus、延迟关闭、git loading 与 Focus
+            URL 不变。
+          </div>
+        </article>
+        <article class="card">
+          <h3>Resizable seam</h3>
+          <div class="compact-example">
+            <span
+              style="
+                width: 80px;
+                height: 40px;
+                background: var(--surface);
+                border: 1px solid var(--line);
+                border-radius: 5px;
+              "
+            ></span
+            ><span
+              style="
+                width: 7px;
+                height: 44px;
+                display: grid;
+                place-items: center;
+                border-left: 2px solid var(--accent);
+                border-right: 2px solid var(--accent);
+                color: var(--accent);
+                font:
+                  10px ui-monospace,
+                  monospace;
+              "
+              >↔</span
+            ><span
+              style="
+                width: 115px;
+                height: 40px;
+                background: var(--surface2);
+                border: 1px solid var(--line);
+                border-radius: 5px;
+              "
+            ></span>
+          </div>
+          <div class="rule">
+            <b>行为：</b>拖拽只更新 CSS 宽度；pointerup / cancel / blur
+            才写入偏好。separator 支持 Arrow、Shift+Arrow、Home、End、Enter。
+          </div>
+        </article>
+      </div>
+      <div class="callout">
+        <b>Prototype boundary：</b>此文件只展示视觉和交互语义，不接入产品
+        runtime，不更改 Pi broker、Terminal PTY、Session profile、Compact
+        生命周期或任何持久化协议。
+      </div>
+    </section>
+    <script>
+      const ns = "http://www.w3.org/2000/svg";
+      const S = {
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "2",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+      };
+      function svg(nodes, attrs = S) {
+        const el = document.createElementNS(ns, "svg");
+        el.setAttribute("viewBox", "0 0 24 24");
+        el.setAttribute("aria-hidden", "true");
+        Object.entries(attrs).forEach(([k, v]) => {
+          el.setAttribute(k, v);
+        });
+        nodes.forEach(([tag, props]) => {
+          const n = document.createElementNS(ns, tag);
+          Object.entries(props).forEach(([k, v]) => {
+            n.setAttribute(k, v);
+          });
+          el.append(n);
+        });
+        return el;
+      }
+      const icons = {
+        plus: () => svg([["path", { d: "M12 5v14M5 12h14" }]]),
+        send: () => svg([["path", { d: "M5 12h14M12 5l7 7-7 7" }]]),
+        x: () => svg([["path", { d: "M18 6 6 18M6 6l12 12" }]]),
+        settings: () =>
+          svg([
+            ["circle", { cx: 12, cy: 12, r: 3 }],
+            [
+              "path",
+              {
+                d: "M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z",
+              },
+            ],
+          ]),
+        maximize: () =>
+          svg([
+            [
+              "path",
+              {
+                d: "M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3",
+              },
+            ],
+          ]),
+        minimize: () =>
+          svg([
+            [
+              "path",
+              {
+                d: "M8 8H5a2 2 0 0 1-2-2V3M16 8h3a2 2 0 0 0 2-2V3M8 16H5a2 2 0 0 0-2 2v3M16 16h3a2 2 0 0 1 2 2v3",
+              },
+            ],
+          ]),
+        "panel-bottom": () =>
+          svg([
+            ["rect", { x: 3, y: 3, width: 18, height: 18, rx: 2 }],
+            ["path", { d: "M3 15h18M9 8l3 3-3 3M13 14h3" }],
+          ]),
+        "text-collapse": () =>
+          svg([
+            ["path", { d: "M5 4h14v16H5z" }],
+            ["path", { d: "M8 8h8M8 11h8M8 14h3M15 14l-3 3-3-3" }],
+          ]),
+        list: () =>
+          svg([
+            ["path", { d: "M8 6h13M8 12h13M8 18h13" }],
+            ["path", { d: "M3 6h.01M3 12h.01M3 18h.01" }],
+          ]),
+        "folder-open": () =>
+          svg([
+            [
+              "path",
+              {
+                d: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2H9a2 2 0 0 0-1.8 1.1L5.2 18H3zM5.2 18l2-7H22l-2.1 7z",
+              },
+            ],
+          ]),
+        "git-branch": () =>
+          svg([
+            ["line", { x1: 6, y1: 3, x2: 6, y2: 15 }],
+            ["circle", { cx: 18, cy: 6, r: 3 }],
+            ["circle", { cx: 6, cy: 18, r: 3 }],
+            ["path", { d: "M18 9a9 9 0 0 1-9 9" }],
+          ]),
+      };
+      function file(label) {
+        const n = svg(
+          [
+            [
+              "path",
+              {
+                d: "M6 2h8l4 4v16H6z",
+                "stroke-width": "1.2",
+                fill: "currentColor",
+                "fill-opacity": ".08",
+              },
+            ],
+            ["path", { d: "M14 2v4h4", "stroke-width": "1.2" }],
+          ],
+          {
+            fill: "none",
+            stroke: "currentColor",
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+          },
+        );
+        const t = document.createElementNS(ns, "text");
+        t.setAttribute("x", "12");
+        t.setAttribute("y", "15");
+        t.setAttribute("text-anchor", "middle");
+        t.setAttribute("font-size", "5");
+        t.setAttribute("font-weight", "700");
+        t.setAttribute("fill", "currentColor");
+        t.textContent = label;
+        n.append(t);
+        return n;
+      }
+      // Prototype-only Material Icon Theme visual approximation. Production uses
+      // a pinned upstream SVG whitelist, source manifest and MIT notice — never this
+      // hand-drawn preview artwork nor Material assets for action controls.
+      const objects = {
+        folder: () =>
+          svg([
+            [
+              "path",
+              {
+                d: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+                fill: "currentColor",
+                stroke: "none",
+              },
+            ],
+          ]),
+        javascript: () => file("JS"),
+        typescript: () => file("TS"),
+        json: () => file("{}"),
+        markdown: () => file("M↓"),
+        rust: () => file("RS"),
+      };
+      document.querySelectorAll("[data-icon]").forEach((e) => {
+        e.append(icons[e.dataset.icon]());
+      });
+      document.querySelectorAll("[data-object]").forEach((e) => {
+        const kind = e.dataset.object;
+        e.classList.add(`material-${kind}`);
+        e.append(objects[kind]());
+      });
+      document.getElementById("theme").onclick = () =>
+        (document.documentElement.dataset.theme = document.documentElement
+          .dataset.theme
+          ? ""
+          : "light");
+    </script>
+  </body>
+</html>

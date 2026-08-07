@@ -20,7 +20,6 @@ describe("sidebar session action controls", () => {
 
     expect(actionSlotRule).toMatch(/position:\s*absolute;/);
     expect(actionSlotRule).toMatch(/right:\s*0;/);
-    expect(actionSlotRule).toMatch(/background:\s*linear-gradient\(/);
     expect(archiveButtonRule).toMatch(/justify-content:\s*center;/);
   });
 

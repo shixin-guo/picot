@@ -20,11 +20,13 @@ import {
   type BuildSkillInventoryOptions,
   buildSkillInventory,
   type MutateSkillEnabledOptions,
+  mutateClaudeSkillRoot,
   mutateSkillEnabled,
   type SkillChild,
   type SkillGroupNode,
   type SkillInventory,
   type SkillInventoryItem,
+  type SkillMutationResult,
 } from "./skill-inventory.ts";
 
 let tmpRoot = "";
@@ -714,5 +716,268 @@ describe("mutation: atomic settings patches", () => {
     const leftovers = readdirSync(opts.agentDir).filter((f) => f.includes(".picot-skills-"));
     expect(leftovers).toEqual([]);
     expect(existsSync(join(opts.agentDir, "settings.json"))).toBe(true);
+  });
+});
+
+// ── Task 6: Claude Code skill root discovery ───────────────────────────
+
+describe("Claude Code discovery", () => {
+  it("discovers global Claude skills under homeDir/.claude/skills", () => {
+    const opts = makeOptions();
+    writeSkill(join(opts.homeDir, ".claude", "skills", "claude-skill"), {
+      name: "claude-skill",
+      description: "a",
+    });
+    const inv = buildSkillInventory(opts);
+    const skill = flatItems(inv).find((i) => i.name === "claude-skill");
+    expect(skill).toBeDefined();
+    expect(skill?.sourceRoot).toBe(join(opts.homeDir, ".claude", "skills"));
+    expect(skill?.scope).toBe("user");
+  });
+
+  it("discovers project Claude skills under cwd/.claude/skills when trusted", () => {
+    const opts = makeOptions({ projectTrusted: true });
+    writeSkill(join(opts.cwd, ".claude", "skills", "proj-claude"), {
+      name: "proj-claude",
+      description: "b",
+    });
+    const inv = buildSkillInventory(opts);
+    const skill = flatItems(inv).find((i) => i.name === "proj-claude");
+    expect(skill).toBeDefined();
+    expect(skill?.sourceRoot).toBe(join(opts.cwd, ".claude", "skills"));
+  });
+
+  it("does not fabricate Claude cards when the root is absent", () => {
+    const opts = makeOptions();
+    const inv = buildSkillInventory(opts);
+    const claudeSkills = flatItems(inv).filter((i) => i.sourceRoot.includes(".claude"));
+    expect(claudeSkills).toHaveLength(0);
+  });
+
+  it("honors Claude-mode discovery parity: ignores hidden, ignore files, and loose .md at root", () => {
+    const opts = makeOptions();
+    // Hidden .hidden directory under Claude should be skipped.
+    writeSkill(join(opts.homeDir, ".claude", "skills", ".hidden", "x"), {
+      name: "hidden-x",
+      description: "h",
+    });
+    writeSkill(join(opts.homeDir, ".claude", "skills", "review", "r"), {
+      name: "review",
+      description: "r",
+    });
+    // Loose .md at the Claude root must be ignored (agents mode).
+    writeFileSync(
+      join(opts.homeDir, ".claude", "skills", "loose.md"),
+      "---\nname: loose\ndescription: l\n---\n",
+    );
+    const inv = buildSkillInventory(opts);
+    const names = flatItems(inv)
+      .map((i) => i.name)
+      .filter((n) => n === "review" || n === "loose" || n === "hidden-x");
+    expect(names).toEqual(["review"]);
+  });
+
+  it("trust gating: untrusted project does not expose Claude candidates or paths", () => {
+    const opts = makeOptions({ projectTrusted: false });
+    writeSkill(join(opts.cwd, ".claude", "skills", "secret"), {
+      name: "secret",
+      description: "x",
+    });
+    const inv = buildSkillInventory(opts);
+    const json = JSON.stringify(inv);
+    expect(json).not.toContain("secret");
+    expect(json).not.toContain(".claude/skills");
+  });
+});
+
+describe("Claude base separation", () => {
+  it("global Claude skills use agentDir as their rule base", () => {
+    const opts = makeOptions();
+    writeSkill(join(opts.homeDir, ".claude", "skills", "review", "r"), {
+      name: "r",
+      description: "r",
+    });
+    const inv = buildSkillInventory(opts);
+    const skill = flatItems(inv).find((i) => i.name === "r");
+    // The skill is enabled by default (no auto-mapping from bare Pi rules).
+    expect(skill?.enabled).toBe(true);
+    // The skill's ruleBaseDir is the Pi global base, not the Claude
+    // discovery root, so any future !/+/- rule is generated against Pi.
+    expect(skill?.ruleBaseDir).toBe(opts.agentDir);
+  });
+
+  it("project Claude skills use project .pi base", () => {
+    const opts = makeOptions({ projectTrusted: true });
+    writeSkill(join(opts.cwd, ".claude", "skills", "review", "r"), {
+      name: "r",
+      description: "r",
+    });
+    const inv = buildSkillInventory(opts);
+    const skill = flatItems(inv).find((i) => i.name === "r");
+    expect(skill?.enabled).toBe(true);
+    expect(skill?.ruleBaseDir).toBe(join(opts.cwd, ".pi"));
+  });
+
+  it("regression: !skills/review/** stays relative to Pi base, not Claude", () => {
+    // A bare !skills/review/** rule (no ../../ prefix) refers to the Pi
+    // resource base, not the Claude discovery base. The Claude skill's
+    // ruleRelativeDir is computed against agentDir (Pi global base), so it
+    // becomes ../../.claude/skills/review, which does NOT match the bare
+    // Pi pattern skills/review/**. The Claude skill must therefore remain
+    // enabled (no automatic re-mapping).
+    const opts = makeOptions();
+    writeSkill(join(opts.homeDir, ".claude", "skills", "review", "r"), {
+      name: "r",
+      description: "r",
+    });
+    writeJson(join(opts.agentDir, "settings.json"), { skills: ["!skills/review/**"] });
+    const inv = buildSkillInventory(opts);
+    const skill = flatItems(inv).find((i) => i.name === "r");
+    expect(skill).toBeDefined();
+    expect(skill?.enabled).toBe(true);
+    expect(skill?.matchingRules).not.toContain("!skills/review/**");
+  });
+});
+
+// ── Task 7: atomic Claude root enablement ────────────────────────────
+
+describe("mutateClaudeSkillRoot — atomic enablement", () => {
+  // For Claude tests, place homeDir as the grandparent of agentDir so the
+  // recommended relative entry "../../.claude/skills" resolves to homeDir
+  // exactly. This mirrors the real layout (homeDir = $HOME, agentDir =
+  // $HOME/.pi/agent), where agentDir has the recommended entry resolve to
+  // homeDir/.claude/skills.
+  function makeClaudeOpts(
+    overrides: Partial<BuildSkillInventoryOptions> = {},
+  ): BuildSkillInventoryOptions {
+    const base = makeOptions(overrides);
+    const grandParent = dirname(dirname(base.agentDir));
+    return { ...base, homeDir: grandParent, ...overrides };
+  }
+
+  it("appends the recommended relative entry to agentDir/settings.json for global", async () => {
+    const opts = makeClaudeOpts();
+    mkdirSync(join(opts.homeDir, ".claude", "skills"), { recursive: true });
+    const result: SkillMutationResult = await mutateClaudeSkillRoot({
+      ...opts,
+      kind: "claude-global",
+    });
+    expect(result.runtimeRestartRequired).toBe(true);
+    expect(result.inventory).toBeDefined();
+    const settings = readJson(join(opts.agentDir, "settings.json"));
+    expect(settings.skills).toContain("../../.claude/skills");
+  });
+
+  it("appends the recommended relative entry to <cwd>/.pi/settings.json for project", async () => {
+    const opts = makeOptions({ projectTrusted: true });
+    mkdirSync(join(opts.cwd, ".claude", "skills"), { recursive: true });
+    await mutateClaudeSkillRoot({ ...opts, kind: "claude-project" });
+    const settings = readJson(join(opts.cwd, ".pi", "settings.json"));
+    expect(settings.skills).toContain("../.claude/skills");
+  });
+
+  it("exposes display-only source directory, target settings path, and recommended entry in inventory", async () => {
+    const opts = makeClaudeOpts();
+    mkdirSync(join(opts.homeDir, ".claude", "skills"), { recursive: true });
+    writeSkill(join(opts.homeDir, ".claude", "skills", "alpha"), {
+      name: "alpha",
+      description: "a",
+    });
+    const result = await mutateClaudeSkillRoot({ ...opts, kind: "claude-global" });
+    const claudeRoot = result.inventory.roots.find((r) => r.rootKind === "claude-global");
+    expect(claudeRoot).toBeDefined();
+    expect(claudeRoot?.recommendedEntry).toBe("../../.claude/skills");
+    expect(claudeRoot?.settingsPath).toBe(join(opts.agentDir, "settings.json"));
+  });
+
+  it("is canonical-idempotent for an already-registered equivalent relative path", async () => {
+    const opts = makeClaudeOpts();
+    mkdirSync(join(opts.homeDir, ".claude", "skills"), { recursive: true });
+    writeJson(join(opts.agentDir, "settings.json"), { skills: ["../../.claude/skills"] });
+    await mutateClaudeSkillRoot({ ...opts, kind: "claude-global" });
+    const settings = readJson(join(opts.agentDir, "settings.json"));
+    const matches = (settings.skills as string[]).filter((s) => s === "../../.claude/skills");
+    expect(matches).toHaveLength(1);
+  });
+
+  it("is canonical-idempotent for an absolute path alias", async () => {
+    const opts = makeClaudeOpts();
+    const home = opts.homeDir;
+    mkdirSync(join(home, ".claude", "skills"), { recursive: true });
+    writeJson(join(opts.agentDir, "settings.json"), {
+      skills: [join(home, ".claude", "skills")],
+    });
+    await mutateClaudeSkillRoot({ ...opts, kind: "claude-global" });
+    const settings = readJson(join(opts.agentDir, "settings.json"));
+    // The absolute alias remains, no duplicate relative path appended.
+    expect(settings.skills).toContain(join(home, ".claude", "skills"));
+    expect(settings.skills).not.toContain("../../.claude/skills");
+  });
+
+  it("is canonical-idempotent for a symlink-aliased root", async () => {
+    const opts = makeClaudeOpts();
+    const home = opts.homeDir;
+    // ~/.claude/skills-real is the real dir; ~/.claude/skills is a symlink to it.
+    const realDir = join(home, ".claude", "skills-real");
+    mkdirSync(realDir, { recursive: true });
+    const linkDir = join(home, ".claude", "skills");
+    try {
+      symlinkSync(realDir, linkDir, "dir");
+    } catch {
+      return; // symlink not supported on this platform / without privileges
+    }
+    // settings.json already points at the real dir via absolute path.
+    writeJson(join(opts.agentDir, "settings.json"), { skills: [realDir] });
+    await mutateClaudeSkillRoot({ ...opts, kind: "claude-global" });
+    const settings = readJson(join(opts.agentDir, "settings.json"));
+    // The existing alias resolves to the same canonical root; do not append
+    // the recommended relative entry.
+    expect(settings.skills).toContain(realDir);
+    expect(settings.skills).not.toContain("../../.claude/skills");
+  });
+
+  it("rejects unknown kind", async () => {
+    const opts = makeOptions();
+    await expect(mutateClaudeSkillRoot({ ...opts, kind: "bogus" as never })).rejects.toThrow();
+  });
+
+  it("rejects untrusted project", async () => {
+    const opts = makeOptions({ projectTrusted: false });
+    mkdirSync(join(opts.cwd, ".claude", "skills"), { recursive: true });
+    await expect(mutateClaudeSkillRoot({ ...opts, kind: "claude-project" })).rejects.toThrow(
+      /not trusted/,
+    );
+  });
+
+  it("preserves unrelated settings keys, ordinary entries, globs, and !/+/- rules", async () => {
+    const opts = makeClaudeOpts();
+    mkdirSync(join(opts.homeDir, ".claude", "skills"), { recursive: true });
+    writeJson(join(opts.agentDir, "settings.json"), {
+      thinkingLevel: "high",
+      skills: ["!skills/other/**", "skills/keep"],
+    });
+    await mutateClaudeSkillRoot({ ...opts, kind: "claude-global" });
+    const settings = readJson(join(opts.agentDir, "settings.json"));
+    expect(settings.thinkingLevel).toBe("high");
+    expect(settings.skills).toContain("!skills/other/**");
+    expect(settings.skills).toContain("skills/keep");
+    expect(settings.skills).toContain("../../.claude/skills");
+  });
+
+  it("serializes concurrent mutations through withSettingsLock", async () => {
+    const opts = makeClaudeOpts();
+    mkdirSync(join(opts.homeDir, ".claude", "skills"), { recursive: true });
+    const a = mutateClaudeSkillRoot({ ...opts, kind: "claude-global" });
+    const b = mutateClaudeSkillRoot({ ...opts, kind: "claude-global" });
+    await Promise.all([a, b]);
+    const settings = readJson(join(opts.agentDir, "settings.json"));
+    const matches = (settings.skills as string[]).filter((s) => s === "../../.claude/skills");
+    expect(matches).toHaveLength(1);
+  });
+
+  it("rejects a missing Claude root", async () => {
+    const opts = makeOptions();
+    // homeDir/.claude/skills is not created; mutation should fail.
+    await expect(mutateClaudeSkillRoot({ ...opts, kind: "claude-global" })).rejects.toThrow();
   });
 });

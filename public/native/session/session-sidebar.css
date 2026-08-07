@@ -461,6 +461,7 @@
   backdrop-filter: blur(40px) saturate(180%);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
   border: 0.5px solid var(--border-hover);
+  /* design-token-ignore: context-menu uses native-OS-style bespoke radius */
   border-radius: 8px;
   box-shadow:
     var(--shadow-lg),
@@ -470,7 +471,9 @@
 
 .context-menu-item {
   display: block;
+  /* design-token-ignore: native context-menu item padding, bespoke to mimic the OS menu */
   padding: 5px 14px;
+  /* design-token-ignore: native context-menu item font size */
   font-size: 13px;
   font-family: -apple-system, BlinkMacSystemFont, "San Francisco", system-ui, sans-serif;
   font-weight: 400;
@@ -601,4 +604,316 @@
   color: var(--text-dim);
   margin-top: 3px;
   line-height: 1.25;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Pinned items — section headers, session action buttons,
+   and workspace quick-info card. Ported verbatim from
+   feature-v3 public/style.css.
+   ═══════════════════════════════════════════════════════ */
+
+/* ── Section headers (RECENT / PINNED / PROJECTS / ARCHIVED) ── */
+.sidebar-section-header {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 14px;
+}
+
+.sidebar-section-header:hover {
+  color: var(--text-primary);
+}
+
+.sidebar-section-title {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Disclosure arrow shared by all four section headers: points right when
+   collapsed, rotates 90deg to point down when expanded. */
+.sidebar-section-header .section-chevron {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: transform var(--duration) var(--ease);
+}
+
+.sidebar-section-header:not(.collapsed) .section-chevron {
+  transform: rotate(90deg);
+}
+
+.sidebar-section-header.collapsed .section-chevron {
+  transform: rotate(0deg);
+}
+
+.session-delete-btn {
+  background: none;
+
+  /* ── Session action buttons (pin / archive / rename) ── */
+  margin: 0 8px;
+  position: relative;
+}
+
+.session-action-slot {
+  position: relative;
+  width: 76px;
+  height: 22px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.session-time {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
+  transition: opacity var(--duration) var(--ease);
+}
+
+.session-pin-btn,
+.session-archive-btn,
+.session-rename-btn {
+  position: absolute;
+  top: 0;
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    all var(--duration) var(--ease),
+    opacity var(--duration) var(--ease),
+    visibility var(--duration) var(--ease);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.session-pin-btn {
+  right: 48px;
+}
+
+.session-rename-btn {
+  right: 24px;
+}
+
+.session-archive-btn {
+  right: 0;
+}
+
+.session-pin-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: currentColor;
+}
+
+.context-menu-pin-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='black' d='m14.7 3.3 6 6-2.2 2.2-1.2-.2-3.4 3.4.2 1.2-1.5 1.5-3.2-3.2-4.1 4.1-.9-.9 4.1-4.1-3.2-3.2 1.5-1.5 1.2.2 3.4-3.4-.2-1.2z'/%3E%3C/svg%3E");
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='black' d='m14.7 3.3 6 6-2.2 2.2-1.2-.2-3.4 3.4.2 1.2-1.5 1.5-3.2-3.2-4.1 4.1-.9-.9 4.1-4.1-3.2-3.2 1.5-1.5 1.2.2 3.4-3.4-.2-1.2z'/%3E%3C/svg%3E");
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+.session-pin-btn[aria-pressed="true"] .session-pin-icon {
+  color: var(--accent);
+}
+
+.session-archive-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.session-item:hover .session-time {
+  opacity: 0;
+}
+
+.session-item:hover .session-pin-btn,
+.session-item:hover .session-archive-btn,
+.session-item:hover .session-rename-btn {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.session-pin-btn:hover,
+.session-archive-btn:hover,
+.session-rename-btn:hover {
+  background: var(--bg-glass-hover);
+}
+
+/* ── Workspace quick-info card ── */
+/* Workspace quick info — compact project card from the sidebar prototype. */
+.workspace-quick-info {
+  width: min(306px, calc(100vw - 16px));
+  overflow: hidden;
+  color: var(--text-primary);
+  background: var(--bg-solid);
+  border: 1px solid var(--border-hover);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg), var(--shadow-inset);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.wqi-header-row,
+.wqi-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.wqi-header-row {
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  gap: 10px;
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding: 17px 18px 13px;
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.wqi-folder-icon,
+.wqi-count-icon,
+.wqi-path-icon,
+.wqi-repo-icon,
+.wqi-pin-icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  background-color: var(--text-secondary);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}
+
+.wqi-folder-icon,
+.wqi-path-icon {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8' d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8' d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3C/svg%3E");
+}
+
+.wqi-count-icon {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8' d='M20 11.5a7.5 7.5 0 0 1-8 7.5 8.4 8.4 0 0 1-3.6-.8L4 19l.8-3.2A7.5 7.5 0 1 1 20 11.5z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8' d='M20 11.5a7.5 7.5 0 0 1-8 7.5 8.4 8.4 0 0 1-3.6-.8L4 19l.8-3.2A7.5 7.5 0 1 1 20 11.5z'/%3E%3C/svg%3E");
+}
+
+.wqi-repo-icon {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8' d='M7 3v12m0-12a3 3 0 1 0 0 6a3 3 0 0 0 0-6m0 12a3 3 0 1 0 0 6a3 3 0 0 0 0-6m0-6h7a3 3 0 1 0 3 3V9'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.8' d='M7 3v12m0-12a3 3 0 1 0 0 6a3 3 0 0 0 0-6m0 12a3 3 0 1 0 0 6a3 3 0 0 0 0-6m0-6h7a3 3 0 1 0 3 3V9'/%3E%3C/svg%3E");
+}
+
+.wqi-folder-name,
+.wqi-row-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wqi-folder-name {
+  flex: 1;
+}
+
+.wqi-pin-btn {
+  display: grid;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding: 5px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  place-items: center;
+}
+
+.wqi-pin-btn:hover,
+.wqi-pin-btn:focus-visible {
+  color: var(--text-primary);
+  background: var(--accent-subtle);
+  outline: none;
+}
+
+.wqi-pin-icon {
+  width: 20px;
+  height: 20px;
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='black' d='m14.7 3.3 6 6-2.2 2.2-1.2-.2-3.4 3.4.2 1.2-1.5 1.5-3.2-3.2-4.1 4.1-.9-.9 4.1-4.1-3.2-3.2 1.5-1.5 1.2.2 3.4-3.4-.2-1.2z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='black' d='m14.7 3.3 6 6-2.2 2.2-1.2-.2-3.4 3.4.2 1.2-1.5 1.5-3.2-3.2-4.1 4.1-.9-.9 4.1-4.1-3.2-3.2 1.5-1.5 1.2.2 3.4-3.4-.2-1.2z'/%3E%3C/svg%3E");
+}
+
+.wqi-pin-btn[aria-pressed="true"] .wqi-pin-icon {
+  background-color: var(--accent);
+}
+
+.wqi-content {
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding: 0 18px 16px;
+}
+
+.wqi-row {
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  gap: 10px;
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding: 5px 0;
+}
+
+.wqi-row-value {
+  flex: 1;
+}
+
+.wqi-git-region {
+  margin-top: 10px;
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.wqi-git-loading,
+.wqi-error {
+  padding-top: var(--space-2);
+  color: var(--text-secondary);
+  /* design-token-ignore: preserved literal sizing from private fork components */
+  font-size: 13px;
+}
+
+.wqi-error {
+  color: var(--error);
 }

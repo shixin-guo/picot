@@ -25,13 +25,55 @@
   },
   "git": {
     "currentBranch": "Rama git actual",
-    "branchName": "Rama: {name}"
+    "branchName": "Rama: {name}",
+    "panel": "Git",
+    "files": "Archivos",
+    "staged": "Preparado",
+    "changes": "Cambios",
+    "untracked": "Sin seguimiento",
+    "conflicted": "En conflicto",
+    "refresh": "Actualizar estado de Git",
+    "noStatus": "No se ha cargado el estado de Git",
+    "discardWarning": "Esta acción no se puede deshacer",
+    "writeUnavailable": "Autorización de escritura de Git no disponible",
+    "stage": "Preparar",
+    "unstage": "Quitar de preparación",
+    "discard": "Descartar cambios",
+    "aiCommitMessage": "Generar mensaje de commit con IA",
+    "commit": "Commit",
+    "stats": "+{additions} −{deletions} · Preparado {staged} · Cambios {changes} · Sin seguimiento {untracked}",
+    "summary": "{branch} · {upstream} · ↑{ahead} ↓{behind}",
+    "noUpstream": "No hay upstream configurado",
+    "confirmationRequired": "Este archivo tiene cambios preparados y no preparados. ¿Confirmar commit de todo el archivo?",
+    "discardConfirm": "¿Descartar cambios en {count} archivo(s)? Esto no se puede deshacer.",
+    "truncated": "{count} cambios más no mostrados",
+    "commitMessageLabel": "Mensaje de commit",
+    "cancel": "Cancelar",
+    "committing": "Commitiendo...",
+    "hookChangedTree": "Un hook de pre-commit modificó el contenido del commit; el commit se creó pero puede diferir de la instantánea preparada.",
+    "aiFailed": "La generación del mensaje de commit con IA falló. Todavía puedes escribir un mensaje manualmente.",
+    "commitInProgress": "Commit en progreso...",
+    "outcomeUnknown": "No se pudo determinar el resultado del commit. Verifica el estado del repositorio antes de reintentar.",
+    "diffOriginal": "Original",
+    "diffModified": "Modificado",
+    "diffEmpty": "No hay cambios para mostrar",
+    "comparison": {
+      "staged": "Preparado",
+      "changes": "Cambios",
+      "untracked": "Sin seguimiento"
+    }
   },
   "usage": {
     "contextTokens": "Contexto: {used}k / {limit}k tokens",
     "sessionCostTitle": "Costo de sesión",
     "contextTitle": "Uso del contexto",
-    "costSub": "{amount} (suscripción)"
+    "costSub": "{amount} (suscripción)",
+    "input": "input",
+    "output": "output",
+    "cache": "cache",
+    "costTitle": "costTitle",
+    "summary": "In {in} · Out {out} · Cache {cache}",
+    "sessionUsageTitle": "Session tokens (input / output / cache)"
   },
   "sessionInfo": {
     "title": "Información de la sesión",
@@ -83,7 +125,8 @@
     "expandAllTools": "Expandir todas las herramientas",
     "expandAllToolsDesc": "Expandir todas las tarjetas de herramientas",
     "collapseAllTools": "Colapsar todas las herramientas",
-    "collapseAllToolsDesc": "Colapsar todas las tarjetas de herramientas"
+    "collapseAllToolsDesc": "Colapsar todas las tarjetas de herramientas",
+    "compacting": "Compactando…"
   },
   "messages": {
     "attachedImage": "Imagen adjunta",
@@ -91,11 +134,7 @@
     "thinking": "Pensando",
     "copy": "Copiar",
     "copied": "¡Copiado!",
-    "processDetails": "Detalles del proceso",
-    "processStep": "{count} paso",
-    "processSteps": "{count} pasos",
-    "processToolCall": "{count} llamada a herramienta",
-    "processToolCalls": "{count} llamadas a herramientas"
+    "scrollToBottom": "Scroll to latest message"
   },
   "tools": {
     "copyOutput": "Copiar salida",
@@ -159,7 +198,8 @@
         "installWindows": "py -3 -m pip install \"markitdown[docx,pptx,xlsx,xls,outlook]\"",
         "remoteImageHidden": "Imagen remota oculta"
       },
-      "conflictMessage": "{name} fue modificado en disco. ¿Recargar o sobreescribir la versión del disco?"
+      "conflictMessage": "{name} fue modificado en disco. ¿Recargar o sobreescribir la versión del disco?",
+      "tabpanelLabel": "Vista previa de archivo"
     },
     "unsaved": {
       "title": "Cambios sin guardar",
@@ -296,7 +336,9 @@
     "abortedByUser": "Cancelado por el usuario",
     "invalidJson": "JSON inválido: {detail}",
     "modelsMustBeObject": "models.json debe ser un objeto JSON.",
-    "providersMustBeObject": "'providers' debe ser un objeto."
+    "providersMustBeObject": "'providers' debe ser un objeto.",
+    "compactionFailed": "Context compaction failed.",
+    "compactionFailedDetail": "Context compaction failed: {error}"
   },
   "onboarding": {
     "openProject": "Abre un proyecto para comenzar a chatear.",
@@ -412,7 +454,15 @@
     "deleteSessionRunning": "No se puede eliminar una sesión en ejecución",
     "archiveDisabledActive": "No se puede archivar la sesión activa",
     "archiveDisabledStreaming": "No se puede archivar una sesión en streaming",
-    "archiveDisabledRunning": "No se puede archivar una sesión en ejecución"
+    "archiveDisabledRunning": "No se puede archivar una sesión en ejecución",
+    "favourite": "Favorito",
+    "unfavourite": "Quitar favorito",
+    "archiveAll": "Archivar todas las sesiones",
+    "pin": "Anclar",
+    "unpin": "Desanclar",
+    "sessionActions": "Acciones de sesión",
+    "renameErrorGeneric": "No se pudo cambiar el nombre de la sesión.",
+    "focus": "Enfoque"
   },
   "updater": {
     "update": "Actualizar",
@@ -582,7 +632,57 @@
       "saveFailed": "Error al guardar la configuración de habilidades.",
       "rescanFailed": "Error al reescanear habilidades.",
       "ambiguousRuleTarget": "Este objetivo corresponde a múltiples raíces; edita settings.json manualmente para cambiarlo.",
-      "scopeSummary": "{total} habilidades · {groups} grupos"
+      "scopeSummary": "{total} habilidades · {groups} grupos",
+      "discovered": "Discovered",
+      "install": "Install",
+      "packages": "Packages",
+      "addRoot": "Enable in Pi",
+      "addRootConfirmation": "Enable this Claude skills directory in Pi? The displayed settings entry applies after a new session or Pi restart.",
+      "addRootConfirm": "Enable",
+      "addRootCancel": "Cancel",
+      "addRootFailed": "Failed to enable this skills root.",
+      "rootAddedRestartRequired": "Enabled. Start a new session or restart Pi for the change to take effect.",
+      "sectionsAriaLabel": "Skills sections"
+    },
+    "installSkills": {
+      "title": "Install skills",
+      "description": "Link skills from a local folder. No files are copied or changed.",
+      "chooseFolder": "Choose folder",
+      "scanning": "Scanning skills…",
+      "scanFailed": "Failed to scan the selected folder.",
+      "global": "Global",
+      "project": "Current project",
+      "projectUntrusted": "This project is not trusted. Install to the current project is unavailable.",
+      "review": "Review installation",
+      "confirmation": "Install {count} selected skills to {scope}?",
+      "confirm": "Install selected skills",
+      "cancel": "Cancel",
+      "installing": "Installing…",
+      "installFailed": "Failed to install selected skills.",
+      "complete": "Installed {added} entries; {skipped} already configured.",
+      "restartRequired": "Saved. Start a new session or restart Pi for the change to take effect.",
+      "confirmationHeading": "Confirm skill installation",
+      "skill": "Skill",
+      "group": "Group"
+    },
+    "packageSkills": {
+      "title": "Packages skills",
+      "description": "Bundled skill candidates from configured Pi packages. These are read-only candidates; effective enable/disable state is computed by Pi and is not shown here.",
+      "bundledCandidates": "Bundled candidates",
+      "refresh": "Refresh",
+      "global": "Global",
+      "project": "Current project",
+      "loading": "Loading package skills…",
+      "retry": "Retry",
+      "empty": "No configured packages in this scope.",
+      "loadFailed": "Failed to load package skills.",
+      "projectUntrusted": "This project is not trusted. Project package paths are not shown.",
+      "notInstalled": "Not installed",
+      "package": "Package",
+      "canonicalPath": "Canonical path",
+      "candidateCount": "{count} candidates",
+      "scopeSummary": "{count} packages",
+      "enableAll": "Enable all"
     }
   },
   "lanQr": {
@@ -661,7 +761,8 @@
     "model": "modelo",
     "compact": "Compactar",
     "compactTitle": "El contexto supera el 80% — compacta para ahorrar tokens",
-    "qrUnavailable": "Código QR no disponible"
+    "qrUnavailable": "Código QR no disponible",
+    "toggleContextControls": "Toggle context controls"
   },
   "browse": {
     "openExternalPrompt": "Abrir este enlace en una nueva pestaña:"
@@ -687,7 +788,8 @@
     "statusReady": "Listo",
     "statusStreaming": "Generando",
     "statusError": "Error",
-    "statusDisconnected": "Desconectado"
+    "statusDisconnected": "Desconectado",
+    "confirmCloseSideChat": "¿Descartar chat lateral?"
   },
   "fileMention": {
     "listLabel": "Archivos"
@@ -732,7 +834,8 @@
         "thinkingEffortOffClickToCycleReasoning": "Esfuerzo de razonamiento: apagado. Haz clic para cambiar la profundidad de razonamiento.",
         "receiveBetaUpdates": "Recibir actualizaciones beta",
         "searchTasks": "Buscar tareas",
-        "searchResults": "Resultados de búsqueda"
+        "searchResults": "Resultados de búsqueda",
+        "openFilesPanel": "Abrir panel de archivos — {path}"
       },
       "placeholder": {
         "typeAMessageOrUseToCall": "Mensaje… Escribe / para comandos, @ para archivos",

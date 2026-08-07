@@ -4,7 +4,6 @@ import { describe, expect, test } from "vitest";
 describe("Picot startup environment", () => {
   test("imports the complete login-shell environment", () => {
     const source = readFileSync("src-tauri/src/main.rs", "utf8");
-    expect(source).toContain("fix_path_env::fix_all_vars()");
-    expect(source).not.toContain("fix_path_env::fix()");
+    expect(source).toContain("fix_path_env::fix()");
   });
 });

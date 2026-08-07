@@ -33,9 +33,14 @@ export async function createSessionViaHost(workspaceId) {
     throw new Error(body?.error ?? `Server error ${response.status}`);
   }
   const target = await response.json();
-  const { workspaceId: wid, sessionId: sid } = target;
+  const { workspaceId: wid, sessionId: sid, instanceId: iid } = target;
   if (!wid || !sid) throw new Error("Server returned an invalid session target");
-  window.location.href = `/app/workspaces/${encodeURIComponent(wid)}/sessions/${encodeURIComponent(sid)}`;
+  // SPA navigation: emit an event so app.js can adoptTarget without reloading
+  window.dispatchEvent(
+    new CustomEvent("picot:session-created", {
+      detail: { workspaceId: wid, sessionId: sid, instanceId: iid },
+    }),
+  );
 }
 
 /**
@@ -100,7 +105,12 @@ export async function resolveWorkspaceViaHost(projectPath) {
  */
 export async function openSessionInProjectViaHost(session) {
   const workspaceId = session.workspaceId || (await resolveWorkspaceViaHost(session.projectPath));
-  window.location.href = `/app/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(session.id)}`;
+  // SPA navigation: emit an event so app.js can adoptTarget without reloading
+  window.dispatchEvent(
+    new CustomEvent("picot:session-created", {
+      detail: { workspaceId, sessionId: session.id },
+    }),
+  );
 }
 
 /**
@@ -109,28 +119,21 @@ export async function openSessionInProjectViaHost(session) {
  * LAN/remote clients it falls back to the host HTTP API (`POST /v2/new-session`).
  *
  * @param {object} options
- * @param {import('./data-gateway.js').HostDataGateway} options.data
  * @param {string} options.workspaceId
  * @param {(error: Error) => void} [options.onError]
  * @returns {boolean}
  */
-export function setupNewSessionButton({ data, workspaceId, onError } = {}) {
+export function setupNewSessionButton({ workspaceId, onError } = {}) {
   const button = document.getElementById("new-session-btn");
   if (!button) return false;
-
-  const invoke = resolveInvoke();
 
   button.addEventListener("click", async () => {
     button.disabled = true;
     try {
-      if (invoke) {
-        const response = await data.workspaceInfo(workspaceId);
-        const path = response?.info?.path;
-        if (!path) throw new Error("Workspace path is unavailable");
-        await invoke("open_new_session_in_workspace", { projectPath: path });
-      } else {
-        await createSessionViaHost(workspaceId);
-      }
+      // SPA navigation: always use the HTTP API so the page never reloads.
+      // The Tauri command `open_new_session_in_workspace` causes a full
+      // window.navigate() which flickers the entire UI.
+      await createSessionViaHost(workspaceId);
     } catch (error) {
       onError?.(error instanceof Error ? error : new Error(String(error)));
     } finally {

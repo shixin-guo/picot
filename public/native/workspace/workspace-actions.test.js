@@ -14,23 +14,42 @@ describe("workspace actions", () => {
 
   it("starts a new session from Command+N", async () => {
     document.body.innerHTML = '<button id="new-session-btn">New Session</button>';
-    const invoke = vi.fn().mockResolvedValue(undefined);
-    installTauriInvoke(invoke);
-    const data = {
-      workspaceInfo: vi.fn().mockResolvedValue({ info: { path: "/tmp/picot" } }),
-    };
+    delete globalThis.__TAURI__;
 
-    setupNewSessionButton({ data, workspaceId: "workspace-a" });
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "n", metaKey: true }));
-    await vi.waitFor(() => expect(invoke).toHaveBeenCalled());
-
-    expect(data.workspaceInfo).toHaveBeenCalledWith("workspace-a");
-    expect(invoke).toHaveBeenCalledWith("open_new_session_in_workspace", {
-      projectPath: "/tmp/picot",
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          workspaceId: "workspace-a",
+          sessionId: "temporary-abc123",
+          instanceId: "instance-xyz",
+        }),
     });
+    globalThis.fetch = fetchMock;
+
+    const eventSpy = vi.fn();
+    window.addEventListener("picot:session-created", eventSpy);
+
+    setupNewSessionButton({ workspaceId: "workspace-a" });
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "n", metaKey: true }));
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await vi.waitFor(() => expect(eventSpy).toHaveBeenCalled());
+    expect(eventSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: {
+          workspaceId: "workspace-a",
+          sessionId: "temporary-abc123",
+          instanceId: "instance-xyz",
+        },
+      }),
+    );
+
+    window.removeEventListener("picot:session-created", eventSpy);
+    delete globalThis.fetch;
   });
 
-  it("uses host API to create session when Tauri is unavailable", async () => {
+  it("uses host API to create session and emits SPA event", async () => {
     document.body.innerHTML = '<button id="new-session-btn">New Session</button>';
     // No Tauri installed — LAN/remote client
     delete globalThis.__TAURI__;
@@ -46,14 +65,10 @@ describe("workspace actions", () => {
     });
     globalThis.fetch = fetchMock;
 
-    const originalLocation = globalThis.window?.location;
-    Object.defineProperty(globalThis, "location", {
-      value: { href: "" },
-      writable: true,
-      configurable: true,
-    });
+    const eventSpy = vi.fn();
+    window.addEventListener("picot:session-created", eventSpy);
 
-    setupNewSessionButton({ data: {}, workspaceId: "workspace-a" });
+    setupNewSessionButton({ workspaceId: "workspace-a" });
     document.getElementById("new-session-btn").click();
 
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -62,19 +77,9 @@ describe("workspace actions", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ workspaceId: "workspace-a" }),
     });
-    await vi.waitFor(() =>
-      expect(globalThis.location.href).toBe(
-        "/app/workspaces/workspace-a/sessions/temporary-abc123",
-      ),
-    );
+    await vi.waitFor(() => expect(eventSpy).toHaveBeenCalled());
 
-    if (originalLocation !== undefined) {
-      Object.defineProperty(globalThis, "location", {
-        value: originalLocation,
-        writable: true,
-        configurable: true,
-      });
-    }
+    window.removeEventListener("picot:session-created", eventSpy);
     delete globalThis.fetch;
   });
 
@@ -85,11 +90,8 @@ describe("workspace actions", () => {
     `;
     const invoke = vi.fn().mockResolvedValue(undefined);
     installTauriInvoke(invoke);
-    const data = {
-      workspaceInfo: vi.fn().mockResolvedValue({ info: { path: "/tmp/picot" } }),
-    };
 
-    setupNewSessionButton({ data, workspaceId: "workspace-a" });
+    setupNewSessionButton({ workspaceId: "workspace-a" });
     document
       .getElementById("composer")
       .dispatchEvent(new KeyboardEvent("keydown", { key: "n", metaKey: true, bubbles: true }));

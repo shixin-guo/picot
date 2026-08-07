@@ -73,6 +73,17 @@ struct WorkspaceTransition {
     target_port: u16,
 }
 
+impl OwnerId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn from_string(value: String) -> Self {
+        Self(value)
+    }
+}
+
 impl WindowOwnerRegistry {
     pub fn create_owner(
         &self,

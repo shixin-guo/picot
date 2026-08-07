@@ -60,6 +60,11 @@ impl PiLaunchResolver {
             extensions,
             pi_version: locked_pi_version().to_owned(),
             path_env: build_augmented_path(),
+            no_tools: false,
+            // Picot workspaces are opened via the OS folder picker, so the user
+            // has already opted in; trust project-local resources for every
+            // pi process Picot spawns.
+            approve: true,
         })
     }
 
@@ -144,6 +149,10 @@ impl PiLaunchResolver {
 
     pub fn remove_pi_package(&self, source: &str) -> Result<(), String> {
         self.run_pi_command(&["remove", source]).map(|_| ())
+    }
+
+    pub fn bundled_pi_path(&self) -> Result<PathBuf, String> {
+        self.resolve_bundled_pi()
     }
 
     fn resolve_bundled_pi(&self) -> Result<PathBuf, String> {
@@ -484,5 +493,39 @@ fn strip_verbatim_prefix(path: &str) -> String {
         rest.to_string()
     } else {
         path.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_verbatim_prefix;
+
+    // Windows `std::fs::canonicalize` returns `\\?\`-prefixed extended-length
+    // paths. Bun (the embedded pi runtime) cannot resolve modules from such
+    // paths, so the prefix must be stripped before any canonicalized path
+    // reaches pi — as cwd, session path, binary, or extension argument.
+    #[test]
+    fn strip_verbatim_prefix_removes_extended_length_prefix() {
+        // Drive-prefixed extended-length path: strip the `\\?\` prefix,
+        // keep the drive letter.
+        assert_eq!(
+            strip_verbatim_prefix(r"\\?\C:\Users\WIN10\.pi\agent"),
+            r"C:\Users\WIN10\.pi\agent"
+        );
+        // UNC extended-length path: collapse `\\?\UNC\` to the plain `\\`
+        // UNC form.
+        assert_eq!(
+            strip_verbatim_prefix(r"\\?\UNC\server\share\dir"),
+            r"\\server\share\dir"
+        );
+        // Plain Windows path: returned unchanged.
+        assert_eq!(strip_verbatim_prefix(r"C:\Users\WIN10"), r"C:\Users\WIN10");
+        // Plain POSIX path: returned unchanged (no prefix to strip).
+        assert_eq!(
+            strip_verbatim_prefix("/home/user/.pi/agent"),
+            "/home/user/.pi/agent"
+        );
+        // Empty string is a valid no-op input.
+        assert_eq!(strip_verbatim_prefix(""), "");
     }
 }

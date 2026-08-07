@@ -13,6 +13,7 @@
 import { classifyFilePath } from "./file-language.js";
 import { createFileRenderer } from "./file-preview-renderers.js";
 import { FileTabState } from "./file-tab-state.js";
+import { createGitDiffRenderer } from "./git-diff-renderer.js";
 import { onLocaleChange, t } from "./i18n.js";
 import { normalizeLocalPath } from "./workspace/path-utils.js";
 
@@ -138,7 +139,10 @@ export class FilePreviewPanel {
     // Transient (non-file) content tabs — Side Chats — projected into the same
     // tab strip as file tabs but never persisted to FileTabState.
     this.transientTabs = new Map();
-    // Discriminated active content: { kind: "file" | "transient", id } | null.
+    // Git diff tabs — in-memory, single-tab model. Each openDiff() call
+    // replaces the previous diff content (id is always "git-diff").
+    this.diffTabs = new Map();
+    // Discriminated active content: { kind: "file" | "transient" | "diff", id } | null.
     this.activeContent = null;
     // Tab-bar actions (e.g. "New Side Chat") registered by an external manager.
     this.tabBarActions = new Map();
@@ -277,6 +281,7 @@ export class FilePreviewPanel {
     this._abortAllTabLoads();
     this.loadTokens.clear();
     this._destroyRenderer();
+    this.diffTabs.clear();
     this.activeDialogCancel?.();
     this.activeDialogCancel = null;
 
@@ -300,8 +305,54 @@ export class FilePreviewPanel {
     this._renderTabBar();
   }
 
+  openDiff(descriptor) {
+    const id = "git-diff";
+    this.diffTabs.set(id, { ...descriptor, id });
+    this._deactivateCurrent();
+    this.activeContent = { kind: "diff", id };
+    this._destroyRenderer();
+    this.currentRenderer = createGitDiffRenderer({ ...descriptor, wrapLines: this.wrapLines });
+    this.currentRenderer.mount(this.content);
+    this._openPanel();
+    this._renderTabBar();
+    this._renderToolbar();
+    return id;
+  }
+
+  closeDiffTab(id) {
+    if (!this.diffTabs.has(id)) return false;
+    this.diffTabs.delete(id);
+    const wasActive = this.activeContent?.kind === "diff" && this.activeContent.id === id;
+    if (wasActive) {
+      this._deactivateCurrent();
+      if (this.state.getActiveTab()) {
+        this.activateContent({ kind: "file", id: this.state.activeTabId });
+      } else {
+        this._closePanel();
+      }
+    }
+    this._renderTabBar();
+    return true;
+  }
+
   activateContent({ kind, id } = {}) {
-    if (kind !== "file" && kind !== "transient") return;
+    if (kind !== "file" && kind !== "transient" && kind !== "diff") return;
+    if (kind === "diff") {
+      const diffDescriptor = this.diffTabs.get(id);
+      if (!diffDescriptor) return;
+      this._deactivateCurrent();
+      this.activeContent = { kind: "diff", id };
+      this._destroyRenderer();
+      this.currentRenderer = createGitDiffRenderer({
+        ...diffDescriptor,
+        wrapLines: this.wrapLines,
+      });
+      this.currentRenderer.mount(this.content);
+      this._openPanel();
+      this._renderTabBar();
+      this._renderToolbar();
+      return;
+    }
     if (kind === "transient") {
       const entry = this.transientTabs.get(id);
       if (!entry) return;
@@ -441,7 +492,10 @@ export class FilePreviewPanel {
   }
 
   _deactivateCurrent() {
-    if (this.activeContent?.kind === "transient") {
+    if (this.activeContent?.kind === "diff") {
+      this._destroyRenderer();
+      this.content?.replaceChildren();
+    } else if (this.activeContent?.kind === "transient") {
       const entry = this.transientTabs.get(this.activeContent.id);
       entry?.onDeactivate?.();
       entry?.contentElement?.remove();
@@ -529,6 +583,40 @@ export class FilePreviewPanel {
     if (!this.tabBar) return;
     this.tabBar.replaceChildren();
     this.tabBar.setAttribute("role", "tablist");
+
+    // Git diff tabs render first — single-tab model (id is always "git-diff").
+    for (const [id, entry] of this.diffTabs) {
+      const isActive = this.activeContent?.kind === "diff" && this.activeContent.id === id;
+      const tabEl = document.createElement("div");
+      tabEl.className = `file-preview-tab diff-tab${isActive ? " active" : ""}`;
+      tabEl.dataset.diffId = id;
+      tabEl.setAttribute("role", "tab");
+      tabEl.setAttribute("tabindex", isActive ? "0" : "-1");
+      tabEl.setAttribute("aria-selected", String(isActive));
+
+      const name = document.createElement("span");
+      name.className = "file-preview-tab-name";
+      name.textContent = entry.displayPath || "Diff";
+      tabEl.appendChild(name);
+
+      const closeBtn = document.createElement("button");
+      closeBtn.className = "file-preview-tab-close";
+      closeBtn.type = "button";
+      closeBtn.title = t("files.preview.close");
+      closeBtn.setAttribute("aria-label", t("files.preview.close"));
+      appendCloseIcon(closeBtn);
+      closeBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.closeDiffTab(id);
+      });
+      tabEl.appendChild(closeBtn);
+
+      tabEl.addEventListener("click", () => {
+        if (!this._interactionLocked) this.activateContent({ kind: "diff", id });
+      });
+      tabEl.addEventListener("keydown", (event) => this._onTabKeydown(event));
+      this.tabBar.appendChild(tabEl);
+    }
 
     // Transient (Side Chat) tabs render before file tabs and preserve
     // registration order. They are in-memory only — never FileTabState.

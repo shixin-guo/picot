@@ -25,13 +25,55 @@
   },
   "git": {
     "currentBranch": "当前 Git 分支",
-    "branchName": "分支：{name}"
+    "branchName": "分支：{name}",
+    "panel": "Git",
+    "files": "文件",
+    "staged": "已暂存",
+    "changes": "修改",
+    "untracked": "未跟踪",
+    "conflicted": "冲突",
+    "refresh": "刷新 Git 状态",
+    "noStatus": "尚未加载 Git 状态",
+    "discardWarning": "此操作不可撤销",
+    "writeUnavailable": "Git 写入授权不可用",
+    "stage": "暂存",
+    "unstage": "取消暂存",
+    "discard": "丢弃修改",
+    "aiCommitMessage": "生成 AI 提交说明",
+    "commit": "提交",
+    "stats": "+{additions} −{deletions} · 已暂存 {staged} · 修改 {changes} · 未跟踪 {untracked}",
+    "summary": "{branch} · {upstream} · ↑{ahead} ↓{behind}",
+    "noUpstream": "未配置上游分支",
+    "confirmationRequired": "此文件同时包含已暂存和未暂存修改，确认整文件提交吗？",
+    "discardConfirm": "丢弃 {count} 个文件的修改？此操作不可撤销。",
+    "truncated": "另有 {count} 项变更未显示",
+    "commitMessageLabel": "提交说明",
+    "cancel": "取消",
+    "committing": "提交中...",
+    "hookChangedTree": "pre-commit 钩子修改了提交内容；提交已创建，但可能与暂存快照不一致。",
+    "aiFailed": "AI 提交说明生成失败。你仍可手动填写提交说明。",
+    "commitInProgress": "提交进行中...",
+    "outcomeUnknown": "无法确定提交结果。重试前请先检查仓库状态。",
+    "diffOriginal": "原始版本",
+    "diffModified": "修改后",
+    "diffEmpty": "没有可显示的修改",
+    "comparison": {
+      "staged": "已暂存",
+      "changes": "修改",
+      "untracked": "未跟踪"
+    }
   },
   "usage": {
     "contextTokens": "上下文：{used}k / {limit}k 令牌",
     "sessionCostTitle": "会话成本",
     "contextTitle": "上下文用量",
-    "costSub": "{amount}（订阅）"
+    "costSub": "{amount}（订阅）",
+    "sessionUsageTitle": "会话令牌（输入 / 输出 / 缓存）",
+    "summary": "入 {in} · 出 {out} · 缓存 {cache}",
+    "cache": "CACHE",
+    "costTitle": "Session cost",
+    "input": "IN",
+    "output": "OUT"
   },
   "sessionInfo": {
     "title": "会话信息",
@@ -83,7 +125,8 @@
     "expandAllTools": "展开所有工具",
     "expandAllToolsDesc": "展开所有工具卡片",
     "collapseAllTools": "折叠所有工具",
-    "collapseAllToolsDesc": "折叠所有工具卡片"
+    "collapseAllToolsDesc": "折叠所有工具卡片",
+    "compacting": "压缩中…"
   },
   "messages": {
     "attachedImage": "附加图片",
@@ -91,11 +134,7 @@
     "thinking": "思考中",
     "copy": "复制",
     "copied": "已复制！",
-    "processDetails": "处理详情",
-    "processStep": "{count} 个步骤",
-    "processSteps": "{count} 个步骤",
-    "processToolCall": "{count} 次工具调用",
-    "processToolCalls": "{count} 次工具调用"
+    "scrollToBottom": "滚动到最新消息"
   },
   "tools": {
     "copyOutput": "复制输出",
@@ -138,6 +177,7 @@
       "conflict": "文件已被外部修改",
       "conflictReload": "重新加载",
       "conflictOverwrite": "覆盖",
+      "tabpanelLabel": "文件预览",
       "outsideWorkspace": "文件不在当前工作区内",
       "unsupportedBinary": "此文件无法预览。",
       "tooLarge": "此文件过大，无法预览。",
@@ -296,7 +336,9 @@
     "abortedByUser": "已被用户中止",
     "invalidJson": "无效的 JSON：{detail}",
     "modelsMustBeObject": "models.json 必须是 JSON 对象。",
-    "providersMustBeObject": "'providers' 必须是对象。"
+    "providersMustBeObject": "'providers' 必须是对象。",
+    "compactionFailed": "上下文压缩失败。",
+    "compactionFailedDetail": "上下文压缩失败：{error}"
   },
   "onboarding": {
     "openProject": "打开一个项目以开始对话。",
@@ -412,7 +454,15 @@
     "deleteSessionRunning": "无法删除正在运行的会话",
     "archiveDisabledActive": "无法归档当前会话",
     "archiveDisabledStreaming": "无法归档正在流式输出的会话",
-    "archiveDisabledRunning": "无法归档正在运行的会话"
+    "archiveDisabledRunning": "无法归档正在运行的会话",
+    "favourite": "收藏",
+    "unfavourite": "取消收藏",
+    "archiveAll": "归档所有会话",
+    "pin": "置顶",
+    "unpin": "取消置顶",
+    "sessionActions": "会话操作",
+    "renameErrorGeneric": "重命名失败，请重试。",
+    "focus": "聚焦"
   },
   "updater": {
     "update": "更新",
@@ -562,13 +612,13 @@
     },
     "skills": {
       "title": "技能",
-      "description": "管理已发现的技能。更改会在新建会话或重启 Pi 后生效。",
+      "description": "管理 Pi 为当前工作区发现的技能。更改会写入对应的 settings.json，并且只有在新建会话或重启 Pi 后才会生效。",
       "rescan": "重新扫描",
       "global": "全局",
       "project": "当前项目",
       "loading": "正在加载技能…",
-      "empty": "此范围暂无技能。",
-      "projectUntrusted": "项目信任后才能启用项目技能。",
+      "empty": "此范围内未发现技能。",
+      "projectUntrusted": "当前项目尚未受信任。Pi 不会加载项目技能，在受信任前开关保持禁用。",
       "allEnabled": "全部启用",
       "allDisabled": "全部禁用",
       "enabledCount": "{enabled}/{total} 已启用",
@@ -582,7 +632,57 @@
       "saveFailed": "保存技能设置失败。",
       "rescanFailed": "重新扫描技能失败。",
       "ambiguousRuleTarget": "该目标同时命中多个根；请手动编辑 settings.json 来修改。",
-      "scopeSummary": "{total} 个 skill · {groups} 个目录"
+      "scopeSummary": "{total} 个 skill · {groups} 个目录",
+      "discovered": "已发现",
+      "install": "安装",
+      "packages": "软件包",
+      "addRoot": "启用到 Pi",
+      "addRootConfirmation": "要在 Pi 中启用此 Claude 技能目录吗？显示的设置项会在新建会话或重启 Pi 后生效。",
+      "addRootConfirm": "启用",
+      "addRootCancel": "取消",
+      "addRootFailed": "启用技能目录失败。",
+      "rootAddedRestartRequired": "已启用。新建会话或重启 Pi 后生效。",
+      "sectionsAriaLabel": "技能页面分区"
+    },
+    "installSkills": {
+      "title": "安装技能",
+      "description": "从本地目录链接技能，不会复制或修改文件。",
+      "chooseFolder": "选择目录",
+      "scanning": "正在扫描技能…",
+      "scanFailed": "扫描所选目录失败。",
+      "global": "全局",
+      "project": "当前项目",
+      "projectUntrusted": "当前项目尚未受信任，不能安装到当前项目。",
+      "review": "确认安装",
+      "confirmation": "将 {count} 个已选技能安装到 {scope}？",
+      "confirmationHeading": "确认安装技能",
+      "confirm": "安装已选技能",
+      "cancel": "取消",
+      "installing": "正在安装…",
+      "installFailed": "安装已选技能失败。",
+      "complete": "已安装 {added} 项；{skipped} 项已配置。",
+      "restartRequired": "已保存。新建会话或重启 Pi 后生效。",
+      "skill": "技能",
+      "group": "分组"
+    },
+    "packageSkills": {
+      "title": "包技能",
+      "description": "已配置 Pi 包中的内置 skill 候选。这些是只读候选；生效的启用/禁用状态由 Pi 计算且不在此展示。",
+      "bundledCandidates": "内置候选",
+      "refresh": "刷新",
+      "global": "全局",
+      "project": "当前项目",
+      "loading": "正在加载包技能…",
+      "retry": "重试",
+      "empty": "此范围内没有已配置的包。",
+      "loadFailed": "加载包技能失败。",
+      "projectUntrusted": "该项目不受信任。不显示项目包路径。",
+      "notInstalled": "未安装",
+      "package": "包",
+      "canonicalPath": "规范路径",
+      "candidateCount": "{count} 个候选",
+      "scopeSummary": "{count} 个包",
+      "enableAll": "全部启用"
     }
   },
   "lanQr": {
@@ -661,7 +761,8 @@
     "model": "模型",
     "compact": "压缩",
     "compactTitle": "上下文已超过 80% — 压缩以节省令牌",
-    "qrUnavailable": "二维码不可用"
+    "qrUnavailable": "二维码不可用",
+    "toggleContextControls": "切换上下文控制"
   },
   "browse": {
     "openExternalPrompt": "在新标签页打开此链接："
@@ -687,7 +788,8 @@
     "statusReady": "就绪",
     "statusStreaming": "生成中",
     "statusError": "错误",
-    "statusDisconnected": "已断开"
+    "statusDisconnected": "已断开",
+    "confirmCloseSideChat": "关闭侧边聊天？"
   },
   "fileMention": {
     "listLabel": "文件"
@@ -732,7 +834,8 @@
         "thinkingEffortOffClickToCycleReasoning": "思考深度：关闭。点击切换推理深度。",
         "receiveBetaUpdates": "Receive beta updates",
         "searchTasks": "Search tasks",
-        "searchResults": "Search results"
+        "searchResults": "Search results",
+        "openFilesPanel": "打开文件面板 — {path}"
       },
       "placeholder": {
         "typeAMessageOrUseToCall": "消息…输入 / 使用命令，输入 @ 查找文件",

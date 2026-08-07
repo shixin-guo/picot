@@ -3,24 +3,20 @@
 
 import { randomUUID } from "node:crypto";
 import type { Stats } from "node:fs";
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { stat as asyncStat, mkdir, rmdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import ignore from "ignore";
 import { minimatch } from "minimatch";
-import { parse as parseYaml } from "yaml";
+import {
+  canonicalizeExistingPath,
+  discoverSkillsFromRoot as discoverSharedFromRoot,
+  type DiscoveredSkill as SharedDiscoveredSkill,
+  type SkillDiagnostic as SharedSkillDiagnostic,
+  type SkillDiscoveryRoot as SharedSkillDiscoveryRoot,
+  toPosixPath,
+} from "./skill-discovery.ts";
 
 // ── Public types ──────────────────────────────────────────────────────
 
@@ -68,11 +64,17 @@ export type SkillGroupNode = {
 
 export type SkillChild = SkillInventoryItem | SkillGroupNode;
 
+export type SkillRootKind = "pi" | "agents" | "configured" | "claude-global" | "claude-project";
+
 export type SkillRoot = {
   sourceRoot: string;
   ruleBaseDir: string;
   scope: "user" | "project";
   source: "auto" | "local";
+  rootKind?: SkillRootKind;
+  configuredForPi?: boolean;
+  recommendedEntry?: string;
+  settingsPath?: string;
   children: SkillChild[];
 };
 
@@ -114,15 +116,18 @@ export type MutateSkillEnabledOptions = {
 // ── Constants mirroring Pi ────────────────────────────────────────────
 
 const CONFIG_DIR_NAME = ".pi";
-const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"];
-const MAX_NAME_LENGTH = 64;
-const MAX_DESCRIPTION_LENGTH = 1024;
 
-type DiscoveryMode = "pi" | "agents";
-
+/**
+ * Internal discovery-root shape used by the inventory pipeline. The shared
+ * `skill-discovery.ts` module owns the actual filesystem collection; this
+ * type only carries the per-root metadata (scope/source) the inventory needs
+ * to build rule contexts and resolve name precedence. `scope` is the
+ * historical `"user" | "project"` spelling used by all inventory DTOs; the
+ * adapter maps `"global"` from the shared module back to `"user"`.
+ */
 type DiscoveredRoot = {
   dir: string;
-  mode: DiscoveryMode;
+  mode: "pi" | "agents";
   baseDir: string;
   scope: "user" | "project";
   source: "auto" | "local";
@@ -138,18 +143,53 @@ type RawSkill = {
   root: DiscoveredRoot;
 };
 
-// ── Path helpers ──────────────────────────────────────────────────────
+// ── Shared-discovery adapter ──────────────────────────────────────────
 
-function toPosix(p: string): string {
-  return p.split(sep).join("/");
+/** Map an internal root's `"user"` scope to the shared module's `"global"`. */
+function toSharedScope(scope: "user" | "project"): "global" | "project" {
+  return scope === "user" ? "global" : "project";
 }
 
-function canonicalizePath(p: string): string {
-  try {
-    return realpathSync(p);
-  } catch {
-    return p;
-  }
+/** Map a shared DiscoveredSkill back into the internal RawSkill pipeline. */
+function adaptSharedSkill(s: SharedDiscoveredSkill): RawSkill {
+  return {
+    canonicalPath: s.canonicalPath,
+    filePath: s.filePath,
+    name: s.name,
+    description: s.description,
+    disableModelInvocation: s.disableModelInvocation,
+    isConfiguredFile: s.isConfiguredFile,
+    root: adaptSharedRoot(s.root),
+  };
+}
+
+/** Map a shared SkillDiscoveryRoot back to the internal DiscoveredRoot shape. */
+function adaptSharedRoot(r: SharedSkillDiscoveryRoot): DiscoveredRoot {
+  return {
+    dir: r.dir,
+    mode: r.mode,
+    baseDir: r.baseDir,
+    scope: r.scope === "global" ? "user" : "project",
+    source: r.source === "auto" || r.source === "local" ? r.source : "local",
+  };
+}
+
+/**
+ * Delegate to the shared discovery module and adapt results back into the
+ * internal RawSkill pipeline. This preserves byte-compatible behavior with
+ * the previous inline collector while letting package/install sources reuse
+ * the same collector.
+ */
+function discoverSkillsFromRoot(root: DiscoveredRoot, diagnostics: SkillDiagnostic[]): RawSkill[] {
+  const sharedRoot: SharedSkillDiscoveryRoot = {
+    dir: root.dir,
+    mode: root.mode,
+    baseDir: root.baseDir,
+    scope: toSharedScope(root.scope),
+    source: root.source,
+  };
+  const sharedDiags: SharedSkillDiagnostic[] = diagnostics;
+  return discoverSharedFromRoot(sharedRoot, sharedDiags).map(adaptSharedSkill);
 }
 
 function resolveLocal(input: string, baseDir: string): string {
@@ -158,8 +198,12 @@ function resolveLocal(input: string, baseDir: string): string {
   return isAbsolute(expanded) ? resolve(expanded) : resolve(baseDir, expanded);
 }
 
+function toPosix(p: string): string {
+  return toPosixPath(p);
+}
+
 function basenamePosix(p: string): string {
-  const parts = toPosix(p).split("/");
+  const parts = toPosixPath(p).split("/");
   return parts[parts.length - 1] || "";
 }
 
@@ -167,224 +211,6 @@ function basenamePosix(p: string): string {
 // `**` semantics match the embedded runtime exactly.
 function globMatch(pattern: string, value: string): boolean {
   return minimatch(value, pattern);
-}
-
-// ── Simple .gitignore-style ignore matcher ────────────────────────────
-
-type IgnoreMatcher = { ignores(relPosix: string, isDir: boolean): boolean };
-
-function prefixIgnoreLine(line: string, prefix: string): string | null {
-  const trimmed = line.trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith("#") && !trimmed.startsWith("\\#")) return null;
-  let pattern = line;
-  let negated = false;
-  if (pattern.startsWith("!")) {
-    negated = true;
-    pattern = pattern.slice(1);
-  } else if (pattern.startsWith("\\!")) {
-    pattern = pattern.slice(1);
-  }
-  if (pattern.startsWith("/")) pattern = pattern.slice(1);
-  const rel = prefix ? `${prefix}${pattern}` : pattern;
-  return negated ? `!${rel}` : rel;
-}
-
-function buildIgnoreMatcher(rootDir: string): IgnoreMatcher {
-  // `ignore` implements .gitignore semantics (including trailing-slash
-  // directory rules and negation) the same way Pi's resource loader does.
-  const ig = ignore();
-  const walk = (dir: string) => {
-    const relDir = toPosix(relative(rootDir, dir));
-    const prefix = relDir ? `${relDir}/` : "";
-    for (const name of IGNORE_FILE_NAMES) {
-      const p = join(dir, name);
-      if (!existsSync(p)) continue;
-      try {
-        const patterns = readFileSync(p, "utf-8")
-          .split(/\r?\n/)
-          .map((line) => prefixIgnoreLine(line, prefix))
-          .filter((line): line is string => Boolean(line));
-        if (patterns.length > 0) ig.add(patterns);
-      } catch {
-        // ignore unreadable ignore files
-      }
-    }
-    for (const name of safeReaddir(dir)) {
-      if (name.startsWith(".") || name === "node_modules") continue;
-      const full = join(dir, name);
-      if (safeIsDir(full)) walk(full);
-    }
-  };
-  walk(rootDir);
-  return {
-    ignores(relPosix, isDir) {
-      return ig.ignores(isDir ? `${relPosix}/` : relPosix);
-    },
-  };
-}
-
-// ── Small fs helpers (silent on failure, like Pi) ─────────────────────
-
-function safeReaddir(dir: string): string[] {
-  try {
-    return readdirSync(dir);
-  } catch {
-    return [];
-  }
-}
-
-function safeIsDir(p: string): boolean {
-  try {
-    return statSync(p).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-function safeStat(p: string): { isFile: boolean; isDir: boolean } | null {
-  try {
-    const s = statSync(p);
-    return { isFile: s.isFile(), isDir: s.isDirectory() };
-  } catch {
-    return null;
-  }
-}
-
-// ── Frontmatter parsing (minimal YAML subset for SKILL.md) ────────────
-
-type ParsedFrontmatter = {
-  name?: string;
-  description?: string;
-  disableModelInvocation?: boolean;
-};
-
-function parseFrontmatter(content: string): ParsedFrontmatter {
-  const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  if (!normalized.startsWith("---")) return {};
-  const endIndex = normalized.indexOf("\n---", 3);
-  if (endIndex === -1) return {};
-  const yamlText = normalized.slice(4, endIndex);
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(yamlText);
-  } catch {
-    return {};
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
-  const fm = parsed as Record<string, unknown>;
-  const result: ParsedFrontmatter = {};
-  if (typeof fm.name === "string") result.name = fm.name;
-  if (typeof fm.description === "string") result.description = fm.description;
-  if (fm["disable-model-invocation"] === true) result.disableModelInvocation = true;
-  return result;
-}
-
-// ── Skill discovery (mirrors Pi collectSkillEntries / loadSkillFromFile) ─
-
-function validateName(name: string): string[] {
-  const errors: string[] = [];
-  if (name.length > MAX_NAME_LENGTH)
-    errors.push(`name exceeds ${MAX_NAME_LENGTH} characters (${name.length})`);
-  if (!/^[a-z0-9-]+$/.test(name))
-    errors.push("name contains invalid characters (must be lowercase a-z, 0-9, hyphens)");
-  if (name.startsWith("-") || name.endsWith("-"))
-    errors.push("name must not start or end with a hyphen");
-  if (name.includes("--")) errors.push("name must not contain consecutive hyphens");
-  return errors;
-}
-
-function discoverSkillsFromRoot(root: DiscoveredRoot, diagnostics: SkillDiagnostic[]): RawSkill[] {
-  if (!existsSync(root.dir)) return [];
-  const out: RawSkill[] = [];
-  // A configured plain entry may point at a single skill file (Pi supports
-  // this via collectFilesFromPaths); treat it as one skill and stop.
-  const rootStat = safeStat(root.dir);
-  if (rootStat?.isFile) {
-    if (!root.dir.endsWith(".md")) {
-      diagnostics.push({ path: root.dir, message: "configured skill file must be Markdown" });
-      return out;
-    }
-    pushSkill(root.dir, root, diagnostics, out, true);
-    return out;
-  }
-  const ig = buildIgnoreMatcher(root.dir);
-  const collect = (dir: string) => {
-    const entries = safeReaddir(dir);
-    // SKILL.md in this dir → one skill, stop recursion under it.
-    for (const name of entries) {
-      if (name !== "SKILL.md") continue;
-      const full = join(dir, name);
-      const st = safeStat(full);
-      if (!st?.isFile) continue;
-      if (ig.ignores(toPosix(relative(root.dir, full)), false)) continue;
-      pushSkill(full, root, diagnostics, out);
-      return;
-    }
-    for (const name of entries) {
-      if (name === "SKILL.md") continue;
-      if (name.startsWith(".")) continue;
-      if (name === "node_modules") continue;
-      const full = join(dir, name);
-      const st = safeStat(full);
-      if (!st) continue;
-      const rel = toPosix(relative(root.dir, full));
-      if (st.isDir) {
-        if (ig.ignores(`${rel}/`, true)) continue;
-        collect(full);
-        continue;
-      }
-      // Direct Markdown files are valid only at a `.pi`-style root in Pi mode.
-      if (root.mode === "pi" && dir === root.dir && st.isFile && name.endsWith(".md")) {
-        if (!ig.ignores(rel, false)) pushSkill(full, root, diagnostics, out);
-      }
-    }
-  };
-  collect(root.dir);
-  return out;
-}
-
-function pushSkill(
-  filePath: string,
-  root: DiscoveredRoot,
-  diagnostics: SkillDiagnostic[],
-  out: RawSkill[],
-  isConfiguredFile = false,
-): void {
-  const canonical = canonicalizePath(filePath);
-  let raw: string;
-  try {
-    raw = readFileSync(filePath, "utf-8");
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "failed to read skill file";
-    diagnostics.push({ path: filePath, message: msg });
-    return;
-  }
-  const frontmatter = parseFrontmatter(raw);
-  const skillDir = dirname(filePath);
-  const parentName = toPosix(skillDir).split("/").pop() || "";
-  const description = frontmatter.description?.trim() ?? "";
-  const name = frontmatter.name || parentName;
-  if (!description) {
-    diagnostics.push({ path: filePath, message: "description is required" });
-    return;
-  }
-  if (description.length > MAX_DESCRIPTION_LENGTH) {
-    diagnostics.push({
-      path: filePath,
-      message: `description exceeds ${MAX_DESCRIPTION_LENGTH} characters`,
-    });
-  }
-  for (const err of validateName(name)) diagnostics.push({ path: filePath, message: err });
-  out.push({
-    canonicalPath: canonical,
-    filePath,
-    name,
-    description,
-    disableModelInvocation: frontmatter.disableModelInvocation === true,
-    isConfiguredFile,
-    root,
-  });
 }
 
 // ── Settings loading & rule helpers ───────────────────────────────────
@@ -423,13 +249,13 @@ function readSettingsSkills(settingsPath: string): {
   return { skills: skills.filter((s): s is string => typeof s === "string") };
 }
 
-function normalizeExactPattern(pattern: string): string {
+export function normalizeExactPattern(pattern: string): string {
   let p = pattern;
   if (p.startsWith("./") || p.startsWith(".\\")) p = p.slice(2);
   return toPosix(p);
 }
 
-type MatchContext = {
+export type MatchContext = {
   rel: string;
   abs: string;
   name: string;
@@ -455,7 +281,7 @@ function buildMatchContextFromRule(ruleRelativeDir: string, baseDir: string): Ma
   };
 }
 
-function buildMatchContext(filePath: string, baseDir: string): MatchContext {
+export function buildMatchContext(filePath: string, baseDir: string): MatchContext {
   const parent = dirname(filePath);
   return {
     rel: toPosix(relative(baseDir, filePath)),
@@ -467,7 +293,7 @@ function buildMatchContext(filePath: string, baseDir: string): MatchContext {
   };
 }
 
-function matchesAnyPattern(ctx: MatchContext, patterns: string[]): boolean {
+export function matchesAnyPattern(ctx: MatchContext, patterns: string[]): boolean {
   return patterns.some((pattern) => {
     const p = toPosix(pattern);
     return (
@@ -481,7 +307,7 @@ function matchesAnyPattern(ctx: MatchContext, patterns: string[]): boolean {
   });
 }
 
-function matchesAnyExact(ctx: MatchContext, patterns: string[]): boolean {
+export function matchesAnyExact(ctx: MatchContext, patterns: string[]): boolean {
   return patterns.some((pattern) => {
     const n = normalizeExactPattern(pattern);
     if (n === ctx.rel || n === ctx.abs) return true;
@@ -489,7 +315,7 @@ function matchesAnyExact(ctx: MatchContext, patterns: string[]): boolean {
   });
 }
 
-function overridesOf(skills: string[]): { excl: string[]; finc: string[]; fexc: string[] } {
+export function overridesOf(skills: string[]): { excl: string[]; finc: string[]; fexc: string[] } {
   const excl: string[] = [];
   const finc: string[] = [];
   const fexc: string[] = [];
@@ -533,6 +359,17 @@ function isEnabledByOverrides(
 }
 
 // ── Precedence (mirrors Pi resourcePrecedenceRank) ────────────────────
+
+/**
+ * Canonicalize an existing path for identity comparison. Uses realpath when
+ * the path exists (resolving symlinks) and falls back to the lexical resolve
+ * otherwise — matching `canonicalizeExistingPath` in the shared discovery
+ * module. Two skills settings entries that alias the same directory via
+ * different symlink spellings must be treated as the same root.
+ */
+function canonicalExistingPath(p: string): string {
+  return canonicalizeExistingPath(resolve(p));
+}
 
 function precedenceRank(scope: "user" | "project", source: "auto" | "local"): number {
   const scopeBase = scope === "project" ? 0 : 2;
@@ -582,6 +419,13 @@ function globalRoots(opts: BuildSkillInventoryOptions, settingsSkills: string[])
       scope: "user",
       source: "auto",
     },
+    {
+      dir: join(home, ".claude", "skills"),
+      mode: "agents",
+      baseDir: opts.agentDir,
+      scope: "user",
+      source: "auto",
+    },
   ];
   for (const entry of settingsSkills) {
     if (isOverride(entry) || isPlainGlob(entry)) continue;
@@ -621,6 +465,13 @@ function projectRoots(
       source: "auto",
     });
   }
+  roots.push({
+    dir: join(opts.cwd, ".claude", "skills"),
+    mode: "agents",
+    baseDir: projectBase,
+    scope: "project",
+    source: "auto",
+  });
   for (const entry of settingsSkills) {
     if (isOverride(entry) || isPlainGlob(entry)) continue;
     roots.push({
@@ -643,6 +494,85 @@ function projectRootPaths(opts: BuildSkillInventoryOptions): string[] {
     paths.push(agentsDir);
   }
   return paths;
+}
+
+/**
+ * Returns true if the directory is a Claude Code skills directory
+ * (global: <homeDir>/.claude/skills, project: <cwd>/.claude/skills).
+ */
+function isClaudeRoot(dir: string, opts: BuildSkillInventoryOptions): boolean {
+  const home = opts.homeDir ?? homedir();
+  return dir === join(home, ".claude", "skills") || dir === join(opts.cwd, ".claude", "skills");
+}
+
+/**
+ * Classify a discovered root into a SkillRootKind for display. Claude
+ * roots are distinguished from generic agents roots so the UI can render
+ * an explicit enablement action.
+ */
+function detectRootKind(dir: string, opts: BuildSkillInventoryOptions): SkillRootKind {
+  const home = opts.homeDir ?? homedir();
+  if (dir === join(home, ".claude", "skills")) return "claude-global";
+  if (dir === join(opts.cwd, ".claude", "skills")) return "claude-project";
+  if (dir === join(opts.agentDir, "skills")) return "pi";
+  if (dir === join(opts.cwd, CONFIG_DIR_NAME, "skills")) return "pi";
+  if (dir === join(home, ".agents", "skills")) return "agents";
+  if (dir.startsWith(`${join(home, ".agents")}/skills/`)) return "agents";
+  // Project local entry: depends on how it was registered.
+  return "configured";
+}
+
+/**
+ * The relative entry to recommend in settings.json when enabling Claude.
+ * Returns undefined for non-Claude roots.
+ */
+function detectRecommendedEntry(
+  dir: string,
+  opts: BuildSkillInventoryOptions,
+  claude: boolean,
+): string | undefined {
+  if (!claude) return undefined;
+  const home = opts.homeDir ?? homedir();
+  return dir === join(home, ".claude", "skills") ? "../../.claude/skills" : "../.claude/skills";
+}
+
+/**
+ * Detect whether the user has already registered a settings.json entry that
+ * resolves canonically to this Claude root. Override (`!`/`+`/`-`) and glob
+ * entries never count as a root source — only plain paths that resolve to
+ * the Claude root are treated as configured.
+ */
+function detectConfiguredForPi(
+  dir: string,
+  opts: BuildSkillInventoryOptions,
+  claude: boolean,
+): boolean {
+  if (!claude) return false;
+  // Not exposed in the inventory function scope; rebuild a minimal lookup.
+  const home = opts.homeDir ?? homedir();
+  const claudeBase = resolve(
+    dir === join(home, ".claude", "skills")
+      ? join(home, ".claude", "skills")
+      : join(opts.cwd, ".claude", "skills"),
+  );
+  const settingsPath =
+    dir === join(home, ".claude", "skills")
+      ? join(opts.agentDir, "settings.json")
+      : join(opts.cwd, CONFIG_DIR_NAME, "settings.json");
+  const fileSettings = readSettingsSkills(settingsPath);
+  const claudeRootCanonical = canonicalExistingPath(claudeBase);
+  return fileSettings.skills.some((entry) => {
+    if (isOverride(entry) || isPlainGlob(entry)) return false;
+    const expanded =
+      entry === "~" ? homedir() : entry.startsWith("~/") ? join(homedir(), entry.slice(2)) : entry;
+    const resolved = isAbsolute(expanded)
+      ? resolve(expanded)
+      : resolve(
+          dir === join(home, ".claude", "skills") ? opts.agentDir : join(opts.cwd, CONFIG_DIR_NAME),
+          expanded,
+        );
+    return canonicalExistingPath(resolved) === claudeRootCanonical;
+  });
 }
 
 function settingsPathFor(scope: SkillScope, opts: BuildSkillInventoryOptions): string {
@@ -938,6 +868,12 @@ export function buildSkillInventory(opts: BuildSkillInventoryOptions): SkillInve
       ruleBaseDir: meta.baseDir,
       scope: meta.scope,
       source: meta.source,
+      rootKind: detectRootKind(meta.dir, opts),
+      configuredForPi: detectConfiguredForPi(meta.dir, opts, isClaudeRoot(meta.dir, opts)),
+      recommendedEntry: detectRecommendedEntry(meta.dir, opts, isClaudeRoot(meta.dir, opts)),
+      settingsPath: isClaudeRoot(meta.dir, opts)
+        ? settingsPathFor(meta.scope === "user" ? "global" : "project", opts)
+        : undefined,
       children: [],
     };
     for (const it of rootItems) insertSkillIntoTree(tree, it, meta);
@@ -984,7 +920,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
  * keeps Picot from silently dropping `enableSkillCommands` when it rewrites
  * settings.json. The rest of this module assumes `skills` is a string[].
  */
-function migrateLegacySkills(settings: Record<string, unknown>): Record<string, unknown> {
+export function migrateLegacySkills(settings: Record<string, unknown>): Record<string, unknown> {
   const skills = settings.skills;
   if (!isPlainObject(skills)) return settings;
   const legacy = skills as { enableSkillCommands?: unknown; customDirectories?: unknown };
@@ -999,7 +935,7 @@ function migrateLegacySkills(settings: Record<string, unknown>): Record<string, 
   return settings;
 }
 
-function readSettingsObject(settingsPath: string): Record<string, unknown> {
+export function readSettingsObject(settingsPath: string): Record<string, unknown> {
   if (!existsSync(settingsPath)) return {};
   let text: string;
   try {
@@ -1020,7 +956,7 @@ function readSettingsObject(settingsPath: string): Record<string, unknown> {
   return migrateLegacySkills(parsed);
 }
 
-function writeSettingsAtomically(settingsPath: string, next: Record<string, unknown>): void {
+export function writeSettingsAtomically(settingsPath: string, next: Record<string, unknown>): void {
   const dir = dirname(settingsPath);
   mkdirSync(dir, { recursive: true });
   const tmp = join(dir, `.picot-skills-${randomUUID()}.tmp`);
@@ -1069,7 +1005,7 @@ function settingsLockDir(settingsPath: string): string {
   return `${settingsPath}.lock`;
 }
 
-async function withSettingsLock<T>(settingsPath: string, critical: () => T): Promise<T> {
+export async function withSettingsLock<T>(settingsPath: string, critical: () => T): Promise<T> {
   const lockDir = settingsLockDir(settingsPath);
   // Pi only acquires when settings.json already exists; Picot also creates it,
   // so ensure the parent dir is present before the lock mkdir (a project may
@@ -1193,7 +1129,11 @@ function computeNextSkills(
 export async function mutateSkillEnabled(
   opts: MutateSkillEnabledOptions,
 ): Promise<SkillMutationResult> {
-  const settingsPath = settingsPathFor(opts.scope, { cwd: opts.cwd, agentDir: opts.agentDir });
+  const settingsPath = settingsPathFor(opts.scope, {
+    scope: opts.scope,
+    cwd: opts.cwd,
+    agentDir: opts.agentDir,
+  });
   return serialized(settingsPath, async () => {
     if (opts.scope === "project" && !opts.projectTrusted) {
       throw new Error("Project is not trusted; cannot mutate project skills");
@@ -1234,6 +1174,70 @@ export async function mutateSkillEnabled(
     });
 
     const inventory = buildSkillInventory(opts);
+    return { inventory, runtimeRestartRequired: true };
+  });
+}
+
+export type ClaudeRootKind = "claude-global" | "claude-project";
+
+export type MutateClaudeSkillRootOptions = BuildSkillInventoryOptions & {
+  kind: ClaudeRootKind;
+};
+
+/**
+ * Atomically register a Claude Code skills root in the matching settings.json
+ * with the recommended relative entry. The new entry resolves to the existing
+ * `<homeDir>/.claude/skills` (global) or `<cwd>/.claude/skills` (project)
+ * directory. The mutation is canonical-idempotent: any existing entry that
+ * resolves to the same canonical path (relative, alternate relative, or
+ * absolute) is left untouched and the recommended entry is not appended again.
+ *
+ * The function rejects unknown kind, untrusted project, missing Claude root,
+ * and lock-timeout / atomic-write failures. It never rewrites unrelated keys,
+ * ordinary entries, custom globs, or `!`/`+`/`-` rules.
+ */
+export async function mutateClaudeSkillRoot(
+  opts: MutateClaudeSkillRootOptions,
+): Promise<SkillMutationResult> {
+  if (opts.kind !== "claude-global" && opts.kind !== "claude-project") {
+    throw new Error(`Unknown Claude root kind: ${String(opts.kind)}`);
+  }
+  if (opts.kind === "claude-project" && !opts.projectTrusted) {
+    throw new Error("Project is not trusted; cannot mutate project skills");
+  }
+  const scope: SkillScope = opts.kind === "claude-global" ? "global" : "project";
+  const settingsPath = settingsPathFor(scope, opts);
+  const home = opts.homeDir ?? homedir();
+  const claudeRoot = join(opts.kind === "claude-global" ? home : opts.cwd, ".claude", "skills");
+  if (!existsSync(claudeRoot)) {
+    throw new Error(`Claude root not found: ${claudeRoot}`);
+  }
+  const recommendedEntry =
+    opts.kind === "claude-global" ? "../../.claude/skills" : "../.claude/skills";
+  return serialized(settingsPath, async () => {
+    await withSettingsLock(settingsPath, () => {
+      const original = readSettingsObject(settingsPath);
+      const currentSkills = Array.isArray(original.skills)
+        ? (original.skills.filter((s) => typeof s === "string") as string[])
+        : [];
+      const claudeRootCanonical = canonicalExistingPath(claudeRoot);
+      // Skip override and glob entries; only plain paths can match the Claude root.
+      const hasCanonical = currentSkills.some((entry) => {
+        if (isOverride(entry) || isPlainGlob(entry)) return false;
+        const expanded =
+          entry === "~"
+            ? homedir()
+            : entry.startsWith("~/")
+              ? join(homedir(), entry.slice(2))
+              : entry;
+        const baseDir = scope === "global" ? opts.agentDir : join(opts.cwd, CONFIG_DIR_NAME);
+        const resolved = isAbsolute(expanded) ? resolve(expanded) : resolve(baseDir, expanded);
+        return canonicalExistingPath(resolved) === claudeRootCanonical;
+      });
+      const nextSkills = hasCanonical ? currentSkills : [...currentSkills, recommendedEntry];
+      writeSettingsAtomically(settingsPath, { ...original, skills: nextSkills });
+    });
+    const inventory = buildSkillInventory({ ...opts, scope });
     return { inventory, runtimeRestartRequired: true };
   });
 }

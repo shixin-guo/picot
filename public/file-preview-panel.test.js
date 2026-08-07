@@ -488,17 +488,38 @@ describe("FilePreviewPanel", () => {
     p.destroy();
   });
 
-  test("renders the New Side Chat tab action as a localized icon button", () => {
+  test("registerTabBarAction renders an icon button and invokes onClick", () => {
+    const onClick = vi.fn();
     const p = createPanel();
-    p.registerTabBarAction("new-side-chat", {
+    p.registerTabBarAction("demo-action", {
       labelKey: "nav.newSideChat",
       icon: "chat-plus",
-      onClick: vi.fn(),
+      onClick,
     });
-    const action = tabBar.querySelector('[data-action-id="new-side-chat"]');
+
+    const action = tabBar.querySelector('[data-action-id="demo-action"]');
+    expect(action).not.toBeNull();
+    // labelKey is resolved through i18n; the fixture maps nav.newSideChat to a string.
     expect(action.getAttribute("aria-label")).toBe("New Side Chat");
+    // An icon action renders an SVG and carries no visible text label.
     expect(action.querySelector("svg")).not.toBeNull();
     expect(action.textContent.trim()).toBe("");
+    expect(action.disabled).toBe(false);
+
+    action.click();
+    expect(onClick).toHaveBeenCalledTimes(1);
+
+    // Disabling the action both gates the click handler and reflects disabled state.
+    p.setTabBarActionEnabled("demo-action", false, "busy");
+    const updated = tabBar.querySelector('[data-action-id="demo-action"]');
+    expect(updated.disabled).toBe(true);
+    expect(updated.title).toBe("busy");
+    updated.click();
+    expect(onClick).toHaveBeenCalledTimes(1);
+
+    // Hiding the action removes it from the rendered tab bar entirely.
+    p.setTabBarActionVisible("demo-action", false);
+    expect(tabBar.querySelector('[data-action-id="demo-action"]')).toBeNull();
     p.destroy();
   });
 
@@ -845,6 +866,55 @@ describe("FilePreviewPanel workspace restore", () => {
     expect(p.hasPersistedTabs("/ws/empty")).toBe(false);
     // Peeking must not load tabs into the active state.
     expect(p.state.getTabs().length).toBe(0);
+    p.destroy();
+  });
+});
+
+describe("FilePreviewPanel git diff tabs", () => {
+  test("openDiff mounts a diff renderer and sets activeContent", () => {
+    const p = createPanel();
+    const id = p.openDiff({
+      displayPath: "src/main.js",
+      comparison: "changes",
+      rawPatch:
+        "--- a/src/main.js\n+++ b/src/main.js\n@@ -1,1 +1,2 @@\n-old line\n+new line\n+added line",
+    });
+
+    expect(id).toBe("git-diff");
+    expect(p.activeContent).toEqual({ kind: "diff", id: "git-diff" });
+    expect(p.diffTabs.has("git-diff")).toBe(true);
+    // The diff renderer should have mounted content into the panel.
+    expect(content.children.length).toBeGreaterThan(0);
+    expect(panel.classList.contains("collapsed")).toBe(false);
+    p.destroy();
+  });
+
+  test("closeDiffTab removes the tab and deactivates", () => {
+    const p = createPanel();
+    p.openDiff({
+      displayPath: "src/main.js",
+      comparison: "changes",
+      rawPatch: "test patch",
+    });
+
+    expect(p.diffTabs.size).toBe(1);
+    const result = p.closeDiffTab("git-diff");
+    expect(result).toBe(true);
+    expect(p.diffTabs.has("git-diff")).toBe(false);
+    p.destroy();
+  });
+
+  test("openDiff renders a diff tab in the tab bar", () => {
+    const p = createPanel();
+    p.openDiff({
+      displayPath: "src/app.ts",
+      comparison: "staged",
+      rawPatch: "test",
+    });
+
+    const diffTab = tabBar.querySelector('[data-diff-id="git-diff"]');
+    expect(diffTab).not.toBeNull();
+    expect(diffTab.classList.contains("diff-tab")).toBe(true);
     p.destroy();
   });
 });

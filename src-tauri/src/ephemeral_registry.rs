@@ -11,7 +11,7 @@ use serde::Serialize;
 
 use crate::window_owner::OwnerId;
 
-const SIDE_CHAT_QUOTA: usize = 5;
+const SIDE_CHAT_QUOTA: usize = 1;
 const INSTANCE_ID_BYTES: usize = 12;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -573,13 +573,11 @@ mod tests {
     }
 
     #[test]
-    fn enforces_side_chat_quota_of_five() {
+    fn enforces_one_side_chat_quota() {
         let reg = EphemeralRegistry::default();
         let owner = owner("w1");
-        for _ in 0..SIDE_CHAT_QUOTA {
-            reg.reserve_create(&owner, EphemeralKind::SideChat)
-                .expect("five side chats allowed");
-        }
+        reg.reserve_create(&owner, EphemeralKind::SideChat)
+            .expect("one side chat allowed");
         assert!(reg.reserve_create(&owner, EphemeralKind::SideChat).is_err());
     }
 
@@ -758,7 +756,9 @@ mod tests {
         let owner = owner("w1");
         let a = reg.reserve_create(&owner, EphemeralKind::SideChat).unwrap();
         commit(&reg, &a, 5300);
-        let b = reg.reserve_create(&owner, EphemeralKind::SideChat).unwrap();
+        let b = reg
+            .reserve_create(&owner, EphemeralKind::QuickChat)
+            .unwrap();
         commit(&reg, &b, 5301);
         let descriptors = reg.descriptors(&owner);
         assert_eq!(descriptors.len(), 2);
@@ -795,40 +795,70 @@ mod tests {
 
     #[test]
     fn side_chat_cleanup_for_transition_targets_old_workspace_only() {
+        // The quota is one Side Chat per owner, but cleanup must filter by
+        // transition_generation within a single partition — so this test
+        // injects both the old and the new Side Chat records directly into the
+        // same owner's `side` vec, bypassing reserve_create. Only the record
+        // whose transition_generation is below the threshold must be closed.
         let reg = EphemeralRegistry::default();
-        let owner = owner("w1");
-        let old_side = reg.reserve_create(&owner, EphemeralKind::SideChat).unwrap();
-        commit(&reg, &old_side, 5500);
-        // Bump the record's transition generation to simulate an older workspace binding.
+        let current_owner = owner("w1");
+
+        let old_instance_id;
+        let new_instance_id;
         {
             let mut state = reg.inner.lock().unwrap();
-            let partition = state.get_mut(&owner).unwrap();
-            let record = partition
-                .find_record_mut(&old_side.instance_id, old_side.generation)
-                .unwrap();
-            record.transition_generation = 1;
-        }
-        // A newer side chat created after the transition (transition_generation == 5).
-        let new_side = reg.reserve_create(&owner, EphemeralKind::SideChat).unwrap();
-        commit(&reg, &new_side, 5501);
-        {
-            let mut state = reg.inner.lock().unwrap();
-            let partition = state.get_mut(&owner).unwrap();
-            let record = partition
-                .find_record_mut(&new_side.instance_id, new_side.generation)
-                .unwrap();
-            record.transition_generation = 5;
+            let partition = state.entry(current_owner.clone()).or_default();
+            old_instance_id = "side-old".to_string();
+            let (old_gen, old_order) = (
+                partition.allocate_generation(),
+                partition.allocate_creation_order(),
+            );
+            partition.side.push(Record {
+                instance_id: old_instance_id.clone(),
+                generation: old_gen,
+                kind: EphemeralKind::SideChat,
+                state: EphemeralState::Ready,
+                port: 5500,
+                pid: 1,
+                child_identity: 1,
+                canonical_cwd: PathBuf::from("/ws-old"),
+                transition_generation: 1,
+                temporary_directory: None,
+                title: None,
+                unread: false,
+                creation_order: old_order,
+            });
+            new_instance_id = "side-new".to_string();
+            let (new_gen, new_order) = (
+                partition.allocate_generation(),
+                partition.allocate_creation_order(),
+            );
+            partition.side.push(Record {
+                instance_id: new_instance_id.clone(),
+                generation: new_gen,
+                kind: EphemeralKind::SideChat,
+                state: EphemeralState::Ready,
+                port: 5501,
+                pid: 2,
+                child_identity: 2,
+                canonical_cwd: PathBuf::from("/ws-new"),
+                transition_generation: 5,
+                temporary_directory: None,
+                title: None,
+                unread: false,
+                creation_order: new_order,
+            });
         }
 
-        let leases = reg.side_chat_cleanup_for_transition(&owner, 5);
+        let leases = reg.side_chat_cleanup_for_transition(&current_owner, 5);
         assert_eq!(leases.len(), 1);
-        assert_eq!(leases[0].instance_id, old_side.instance_id);
+        assert_eq!(leases[0].instance_id, old_instance_id);
         for lease in &leases {
             reg.finish_cleanup(lease);
         }
-        let remaining = reg.descriptors(&owner);
+        let remaining = reg.descriptors(&current_owner);
         assert_eq!(remaining.len(), 1);
-        assert_eq!(remaining[0].instance_id, new_side.instance_id);
+        assert_eq!(remaining[0].instance_id, new_instance_id);
     }
 
     #[test]

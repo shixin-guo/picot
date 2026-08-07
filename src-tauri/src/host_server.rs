@@ -1,6 +1,7 @@
 #![cfg_attr(not(test), allow(dead_code))]
 
 use crate::host_data::{HostDataError, HostDataPlane, WriteFileResult};
+use crate::host_git;
 use crate::host_router::{HostRouter, RoutedAction, PROTOCOL_VERSION};
 use crate::markitdown_preview::{
     ConversionOutcome, DependencyReason, MarkitdownPreviewService, INPUT_BYTE_CAP,
@@ -35,6 +36,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tauri_plugin_dialog::DialogExt;
 use tokio::sync::oneshot;
 use tower::ServiceBuilder;
 use tower_http::services::{ServeDir, ServeFile};
@@ -54,6 +56,19 @@ struct HostState {
     port: u16,
     terminal_manager: TerminalManager,
     terminal_events: tokio::sync::broadcast::Sender<(OwnerId, Value)>,
+    git_service: Arc<crate::git_service::GitService>,
+    git_events: tokio::sync::broadcast::Sender<(String, Value)>,
+    // Skill source handle registry: pick_skill_source registers an opaque
+    // sourceId for a chosen directory; scan/install resolve it by owner before
+    // forwarding to the pi process. Paths never leave the host.
+    skill_registry: Arc<crate::skill_source_registry::SkillSourceRegistry>,
+    // Persistent per-session UI profile (provider/modelId/thinkingLevel).
+    // Keyed by session id from the frontend; survives across sessions, used
+    // to restore the composer's model + thinking level when a session is
+    // reopened. Optional so the constructor stays infallible in tests.
+    session_ui_profiles: Arc<crate::session_ui_profile_store::SessionUiProfileStore>,
+    install_secret: String,
+    app_handle: Option<tauri::AppHandle>,
 }
 
 pub struct HostServer {
@@ -67,8 +82,9 @@ impl HostServer {
         static_dir: PathBuf,
         runtimes: NativePiManager,
         auth: Arc<Mutex<RemoteAuth>>,
+        app_handle: Option<tauri::AppHandle>,
     ) -> Result<Self, String> {
-        Self::start_with_workspaces(static_dir, runtimes, auth, HashMap::new()).await
+        Self::start_with_workspaces(static_dir, runtimes, auth, HashMap::new(), app_handle).await
     }
 
     pub async fn start_with_workspaces(
@@ -76,6 +92,7 @@ impl HostServer {
         runtimes: NativePiManager,
         auth: Arc<Mutex<RemoteAuth>>,
         workspace_roots: HashMap<String, PathBuf>,
+        app_handle: Option<tauri::AppHandle>,
     ) -> Result<Self, String> {
         let mut data = HostDataPlane::new(workspace_roots)
             .map_err(|error| format!("Cannot initialize Host data plane: {error:?}"))?;
@@ -113,6 +130,25 @@ impl HostServer {
         // a destination address.
         let loopback_origin = format!("http://127.0.0.1:{}", address.port());
         let (terminal_events, _) = tokio::sync::broadcast::channel(256);
+        let (git_events, _) = tokio::sync::broadcast::channel(256);
+        let git_service = Arc::new(crate::git_service::GitService::new());
+        let skill_registry = Arc::new(crate::skill_source_registry::SkillSourceRegistry::new());
+        // Persistent per-session UI profile (provider/modelId/thinkingLevel).
+        // Kept under the same config dir the terminal state store uses so a
+        // single ~/.config/picot holds all Picot-owned state.
+        let profile_dir = dirs::config_dir()
+            .unwrap_or_else(std::env::temp_dir)
+            .join("picot");
+        let session_ui_profiles = Arc::new(crate::session_ui_profile_store::SessionUiProfileStore::open(
+            profile_dir.join("session-ui-profiles.json"),
+        )?);
+        let install_secret = {
+            use base64::Engine;
+            use rand::RngCore;
+            let mut bytes = [0u8; 32];
+            rand::rngs::OsRng.fill_bytes(&mut bytes);
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+        };
         let terminal_manager = TerminalManager::new(
             TerminalRegistry::new(15),
             TerminalStateStore::new(
@@ -136,6 +172,12 @@ impl HostServer {
             port: address.port(),
             terminal_manager,
             terminal_events,
+            git_service,
+            git_events,
+            skill_registry,
+            session_ui_profiles,
+            install_secret,
+            app_handle,
         });
         let index = static_dir.join("index.html");
         let static_service = ServeDir::new(static_dir).fallback(ServeFile::new(index));
@@ -172,6 +214,7 @@ impl HostServer {
             .route("/api/git/diff", get(git_file_diff))
             .route("/api/git/stat", get(git_stat_handler))
             .route("/api/file-mentions", get(file_mentions))
+            .route("/api/workspace-info", get(workspace_info_handler))
             .route("/v2/new-session", post(new_session))
             .route("/v2/resolve-workspace", post(resolve_workspace))
             .fallback_service(static_service)
@@ -653,6 +696,33 @@ async fn git_stat_handler(
         .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "serialization_failed"))
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceInfoQuery {
+    workspace_id: Option<String>,
+    workspace_path: Option<String>,
+}
+
+async fn workspace_info_handler(
+    State(state): State<Arc<HostState>>,
+    Query(query): Query<WorkspaceInfoQuery>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    // The sidebar passes the workspace's on-disk path (projectPath), not
+    // the internal workspace ID. Try both: first by workspace_id (when
+    // available), then fall back to treating workspace_path as the root.
+    let result = if let Some(ws_id) = &query.workspace_id {
+        state.data.workspace_info(ws_id)
+    } else if let Some(ws_path) = &query.workspace_path {
+        state.data.workspace_info_by_path(ws_path)
+    } else {
+        Err(HostDataError::UnknownWorkspace)
+    }
+    .map_err(host_data_http_error)?;
+    serde_json::to_value(result)
+        .map(Json)
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "serialization_failed"))
+}
+
 async fn write_file_content(
     State(state): State<Arc<HostState>>,
     Json(body): Json<WriteFileContentRequest>,
@@ -841,6 +911,7 @@ async fn handle_websocket(mut socket: WebSocket, state: Arc<HostState>) {
 
     let mut runtime_events = state.runtimes.subscribe();
     let mut terminal_events = state.terminal_events.subscribe();
+    let mut git_events = state.git_events.subscribe();
     let mut subscriptions = HashSet::new();
     loop {
         tokio::select! {
@@ -944,6 +1015,17 @@ async fn handle_websocket(mut socket: WebSocket, state: Arc<HostState>) {
             event = terminal_events.recv() => {
                 match event {
                     Ok((owner, outgoing)) if desktop_owner.as_ref() == Some(&owner) => {
+                        if socket.send(Message::Text(outgoing.to_string().into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            event = git_events.recv() => {
+                match event {
+                    Ok((owner, outgoing)) if desktop_owner.as_ref() == Some(&OwnerId::from_client_id(&owner)) => {
                         if socket.send(Message::Text(outgoing.to_string().into())).await.is_err() {
                             break;
                         }
@@ -1192,6 +1274,22 @@ async fn dispatch(
                 "response": response,
             }))
         }
+        RoutedAction::Git {
+            client_id,
+            request_id,
+            frame,
+        } => {
+            host_git::dispatch(
+                &state.git_service,
+                &state.data,
+                &state.pi_launch,
+                &state.git_events,
+                &client_id,
+                &request_id,
+                &frame,
+            )
+            .await
+        }
         RoutedAction::Terminal {
             client_id,
             request_id,
@@ -1240,11 +1338,21 @@ async fn dispatch(
             )),
         },
         RoutedAction::Host {
+            client_id,
             request_id,
             operation,
             frame,
             ..
-        } => dispatch_host_operation(state, &request_id, &operation, &frame).await,
+        } => {
+            dispatch_host_operation(
+                state,
+                &client_id,
+                &request_id,
+                &operation,
+                &frame,
+            )
+            .await
+        }
         RoutedAction::Data {
             request_id, frame, ..
         } => match frame.get("operation").and_then(Value::as_str) {
@@ -1388,6 +1496,7 @@ async fn dispatch(
 
 async fn dispatch_host_operation(
     state: &HostState,
+    client_id: &str,
     request_id: &str,
     operation: &str,
     frame: &Value,
@@ -1512,6 +1621,401 @@ async fn dispatch_host_operation(
                 "operation": "delete_sessions",
                 "deleted": result.deleted,
                 "errors": result.errors,
+            }))
+        }
+        "pick_skill_source" => {
+            // Picker must never expose the chosen path to the browser. The host
+            // opens the OS folder dialog, canonicalizes the selection, and
+            // registers an opaque sourceId in SkillSourceRegistry keyed by the
+            // requesting owner + workspace. Only the sourceId crosses the wire.
+            let Some(app) = state.app_handle.clone() else {
+                return Err((
+                    "host_operation_failed",
+                    "Folder picker is not available".into(),
+                ));
+            };
+            let workspace_id = frame
+                .get("workspaceId")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or((
+                    "invalid_workspace",
+                    "workspaceId is required to pick a skill source".into(),
+                ))?
+                .to_owned();
+            let workspace_root = state
+                .data
+                .workspace_root_path(&workspace_id)
+                .map_err(host_data_error)?;
+            let owner_id = crate::window_owner::OwnerId::from_client_id(client_id);
+            // The native host runs one Pi process per workspace on a single
+            // host port, so workspace_port is the host port itself and
+            // workspace_generation stays 0 (no multi-generation swap in the
+            // native architecture). The window_label is the client_id — it
+            // only needs to be unique per desktop window.
+            let port = state.port;
+            let generation = 0u64;
+            let window_label = client_id.to_owned();
+            let path =
+                tokio::task::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
+                    .await
+                    .map_err(|error| ("host_operation_failed", error.to_string()))?;
+            let Some(picked) = path else {
+                return Ok(json!({
+                    "type": "host_response",
+                    "requestId": request_id,
+                    "operation": "pick_skill_source",
+                    "sourceId": null,
+                }));
+            };
+            let canonical_path = picked
+                .as_path()
+                .ok_or(("invalid_path", "Selected folder is not a local path".into()))?
+                .to_path_buf();
+            let registry = state.skill_registry.clone();
+            let source_id = tokio::task::spawn_blocking(move || {
+                registry.issue(
+                    owner_id,
+                    window_label,
+                    workspace_root,
+                    port,
+                    generation,
+                    canonical_path,
+                )
+            })
+            .await
+            .map_err(|error| ("host_operation_failed", error.to_string()))?
+            .map_err(|message| ("pick_skill_source_failed", message))?;
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "pick_skill_source",
+                "sourceId": source_id,
+            }))
+        }
+        "skill_scan_install_source" => {
+            // Resolve the opaque sourceId to its canonical path (owned by the
+            // requesting owner + workspace), then run discovery in Rust. The
+            // browser never sees the path — only the opaque scan tree.
+            let source_id = frame
+                .get("sourceId")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or(("invalid_source", "sourceId is required".into()))?
+                .to_owned();
+            let workspace_id = frame
+                .get("workspaceId")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or((
+                    "invalid_workspace",
+                    "workspaceId is required to scan a skill source".into(),
+                ))?
+                .to_owned();
+            let workspace_root = state
+                .data
+                .workspace_root_path(&workspace_id)
+                .map_err(host_data_error)?;
+            let owner_id = crate::window_owner::OwnerId::from_client_id(client_id);
+            let window_label = client_id.to_owned();
+            let generation = 0u64;
+            let registry = state.skill_registry.clone();
+            let binding = tokio::task::spawn_blocking(move || {
+                registry.resolve(&source_id, &owner_id, &window_label, &workspace_root, generation)
+            })
+            .await
+            .map_err(|error| ("host_operation_failed", error.to_string()))?
+            .map_err(|message| ("skill_scan_failed", message))?;
+            let agent_dir = dirs::home_dir()
+                .unwrap_or_else(std::env::temp_dir)
+                .join(".pi")
+                .join("agent");
+            let install_secret = state.install_secret.clone();
+            let context = crate::skill_install::InstallContext {
+                agent_dir,
+                cwd: binding.workspace_root.clone(),
+                install_secret,
+            };
+            let result = tokio::task::spawn_blocking(move || {
+                crate::skill_install::scan_install_source(&binding, &context)
+            })
+            .await
+            .map_err(|error| ("host_operation_failed", error.to_string()))?;
+            serde_json::to_value(&result)
+                .map(|scan| {
+                    json!({
+                        "type": "host_response",
+                        "requestId": request_id,
+                        "operation": "skill_scan_install_source",
+                        "scan": scan,
+                    })
+                })
+                .map_err(|error| ("host_operation_failed", error.to_string()))
+        }
+        "skill_install_links" => {
+            let source_id = frame
+                .get("sourceId")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or(("invalid_source", "sourceId is required".into()))?
+                .to_owned();
+            let scope = frame
+                .get("scope")
+                .and_then(Value::as_str)
+                .filter(|value| *value == "global" || *value == "project")
+                .ok_or((
+                    "invalid_scope",
+                    "scope must be 'global' or 'project'".into(),
+                ))?
+                .to_owned();
+            let scan_revision = frame
+                .get("scanRevision")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or(("invalid_revision", "scanRevision is required".into()))?
+                .to_owned();
+            let selection = frame
+                .get("selection")
+                .and_then(Value::as_array)
+                .filter(|items| !items.is_empty())
+                .ok_or(("invalid_selection", "selection array is required".into()))?;
+            let workspace_id = frame
+                .get("workspaceId")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or((
+                    "invalid_workspace",
+                    "workspaceId is required to install skill links".into(),
+                ))?
+                .to_owned();
+            // Parse the selection into the typed shape the install module
+            // expects, rejecting malformed entries.
+            let parsed_selection: Vec<crate::skill_install::InstallCandidateSelection> = selection
+                .iter()
+                .map(|item| {
+                    let kind = item
+                        .get("kind")
+                        .and_then(Value::as_str)
+                        .filter(|k| *k == "group" || *k == "skill")
+                        .ok_or("invalid selection entry: kind")?;
+                    let id = item
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .filter(|v| !v.is_empty())
+                        .ok_or("invalid selection entry: id")?;
+                    Ok(crate::skill_install::InstallCandidateSelection {
+                        kind: kind.to_string(),
+                        id: id.to_string(),
+                    })
+                })
+                .collect::<Result<_, String>>()
+                .map_err(|message| ("invalid_selection", message))?;
+            let workspace_root = state
+                .data
+                .workspace_root_path(&workspace_id)
+                .map_err(host_data_error)?;
+            let owner_id = crate::window_owner::OwnerId::from_client_id(client_id);
+            let window_label = client_id.to_owned();
+            let generation = 0u64;
+            let registry = state.skill_registry.clone();
+            let binding = tokio::task::spawn_blocking(move || {
+                registry.resolve(&source_id, &owner_id, &window_label, &workspace_root, generation)
+            })
+            .await
+            .map_err(|error| ("host_operation_failed", error.to_string()))?
+            .map_err(|message| ("skill_install_failed", message))?;
+            // On success, consume the sourceId so it cannot be reused — the
+            // design contract makes a successful install consume the handle.
+            let agent_dir = dirs::home_dir()
+                .unwrap_or_else(std::env::temp_dir)
+                .join(".pi")
+                .join("agent");
+            let install_secret = state.install_secret.clone();
+            let context = crate::skill_install::InstallContext {
+                agent_dir,
+                cwd: binding.workspace_root.clone(),
+                install_secret,
+            };
+            let binding_clone = binding.clone();
+            let scope_clone = scope.clone();
+            let scan_revision_clone = scan_revision.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                crate::skill_install::install_links(
+                    &binding_clone,
+                    &scope_clone,
+                    &scan_revision_clone,
+                    &parsed_selection,
+                    &context,
+                )
+            })
+            .await
+            .map_err(|error| ("host_operation_failed", error.to_string()))?
+            .map_err(|message| ("skill_install_failed", message))?;
+            // Consume the handle after a successful install.
+            let registry = state.skill_registry.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                registry.consume(&binding.source_id, &binding.owner_id, binding.workspace_generation)
+            })
+            .await;
+            serde_json::to_value(&result)
+                .map(|value| {
+                    json!({
+                        "type": "host_response",
+                        "requestId": request_id,
+                        "operation": "skill_install_links",
+                        "result": value,
+                    })
+                })
+                .map_err(|error| ("host_operation_failed", error.to_string()))
+        }
+        "ephemeral_create" => {
+            let kind = frame
+                .get("kind")
+                .and_then(Value::as_str)
+                .ok_or(("invalid_ephemeral_kind", "kind is required".into()))?;
+            let ephemeral_kind = match kind {
+                "side-chat" => crate::host_ephemeral::EphemeralKind::SideChat,
+                "quick-chat" => crate::host_ephemeral::EphemeralKind::QuickChat,
+                _ => {
+                    return Err((
+                        "invalid_ephemeral_kind",
+                        "kind must be side-chat or quick-chat".into(),
+                    ))
+                }
+            };
+            // Resolve the workspace cwd from the workspaceId.
+            let workspace_id = frame
+                .get("workspaceId")
+                .and_then(Value::as_str)
+                .ok_or(("invalid_workspace", "workspaceId is required".into()))?;
+            let workspace_cwd = state
+                .data
+                .workspace_root_path(workspace_id)
+                .map_err(host_data_error)?;
+            let cwd_str = workspace_cwd.to_string_lossy().into_owned();
+            let runtimes = state.runtimes.clone();
+            let launch = state.pi_launch.clone();
+            let descriptor = crate::host_ephemeral::create_ephemeral(
+                ephemeral_kind,
+                &cwd_str,
+                &runtimes,
+                &launch,
+            )
+            .map_err(|message| ("ephemeral_create_failed", message))?;
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "ephemeral_create",
+                "descriptor": descriptor,
+            }))
+        }
+        "ephemeral_close" => {
+            let instance_id = frame
+                .get("instanceId")
+                .and_then(Value::as_str)
+                .ok_or(("invalid_instance", "instanceId is required".into()))?;
+            let runtimes = state.runtimes.clone();
+            crate::host_ephemeral::close_ephemeral(&runtimes, instance_id)
+                .map_err(|message| ("ephemeral_close_failed", message))?;
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "ephemeral_close",
+                "ok": true,
+            }))
+        }
+        "ephemeral_replace" => {
+            // Replace the single Quick Chat instance (New Chat semantics).
+            let workspace_id = frame
+                .get("workspaceId")
+                .and_then(Value::as_str)
+                .ok_or(("invalid_workspace", "workspaceId is required".into()))?;
+            let workspace_cwd = state
+                .data
+                .workspace_root_path(workspace_id)
+                .map_err(host_data_error)?;
+            let cwd_str = workspace_cwd.to_string_lossy().into_owned();
+            let runtimes = state.runtimes.clone();
+            let launch = state.pi_launch.clone();
+            let descriptor = crate::host_ephemeral::replace_quick(&cwd_str, &runtimes, &launch)
+                .map_err(|message| ("ephemeral_replace_failed", message))?;
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "ephemeral_replace",
+                "descriptor": descriptor,
+            }))
+        }
+        "session_ui_profile_load" => {
+            // Look up the persisted provider/modelId/thinkingLevel for a
+            // session. The frontend identifies the session by its runtime
+            // sessionId (stable for the lifetime of the underlying file);
+            // we accept any non-empty string as a key — the store trims and
+            // bounds-checks internally.
+            let expected = frame
+                .get("expectedSessionId")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or((
+                    "invalid_session",
+                    "expectedSessionId is required".into(),
+                ))?
+                .to_owned();
+            let profiles = state.session_ui_profiles.clone();
+            let profile = tokio::task::spawn_blocking(move || profiles.load(&expected))
+                .await
+                .map_err(|error| ("host_operation_failed", error.to_string()))?
+                .map_err(|message| ("session_ui_profile_load_failed", message))?;
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "session_ui_profile_load",
+                "profile": profile,
+            }))
+        }
+        "session_ui_profile_save" => {
+            let expected = frame
+                .get("expectedSessionId")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or((
+                    "invalid_session",
+                    "expectedSessionId is required".into(),
+                ))?
+                .to_owned();
+            let provider = frame
+                .get("provider")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or(("invalid_provider", "provider is required".into()))?
+                .to_owned();
+            let model_id = frame
+                .get("modelId")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or(("invalid_model", "modelId is required".into()))?
+                .to_owned();
+            let thinking_level = frame
+                .get("thinkingLevel")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .unwrap_or_else(|| "off".to_string());
+            let profiles = state.session_ui_profiles.clone();
+            let saved = tokio::task::spawn_blocking(move || {
+                profiles.save(&expected, &provider, &model_id, &thinking_level)
+            })
+            .await
+            .map_err(|error| ("host_operation_failed", error.to_string()))?
+            .map_err(|message| ("session_ui_profile_save_failed", message))?;
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "session_ui_profile_save",
+                "profile": saved,
             }))
         }
         _ => Err((
@@ -1748,7 +2252,7 @@ mod tests {
         fs::write(public.join("index.html"), "<h1>Picot native host</h1>").unwrap();
         let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
         let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
-        let host = HostServer::start(public, NativePiManager::new(32), auth)
+        let host = HostServer::start(public, NativePiManager::new(32), auth, None)
             .await
             .unwrap();
 
@@ -1784,7 +2288,7 @@ mod tests {
         fs::write(public.join("index.html"), "<h1>Picot native host</h1>").unwrap();
         let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
         let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
-        let host = HostServer::start(public, NativePiManager::new(32), auth)
+        let host = HostServer::start(public, NativePiManager::new(32), auth, None)
             .await
             .unwrap();
 
@@ -1814,7 +2318,7 @@ mod tests {
         fs::write(public.join("index.html"), "<h1>Picot native host</h1>").unwrap();
         let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
         let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
-        let host = HostServer::start(public, NativePiManager::new(32), auth)
+        let host = HostServer::start(public, NativePiManager::new(32), auth, None)
             .await
             .unwrap();
 
@@ -1854,7 +2358,7 @@ mod tests {
         fs::write(public.join("index.html"), "<h1>Picot native host</h1>").unwrap();
         let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
         let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
-        let host = HostServer::start(public, NativePiManager::new(32), auth)
+        let host = HostServer::start(public, NativePiManager::new(32), auth, None)
             .await
             .unwrap();
 
@@ -1890,7 +2394,9 @@ mod tests {
         let runtimes = NativePiManager::new(32);
         let target = RuntimeTarget::new("workspace-a", "session-a", "instance-a");
         let mut fake = runtimes.register_in_memory(target.clone()).unwrap();
-        let host = HostServer::start(public, runtimes, auth).await.unwrap();
+        let host = HostServer::start(public, runtimes, auth, None)
+            .await
+            .unwrap();
         let ws_url = host.origin().replace("http://", "ws://") + "/v2/ws";
         let (mut socket, _) = tokio_tungstenite::connect_async(ws_url).await.unwrap();
         socket
@@ -1962,7 +2468,9 @@ mod tests {
         .unwrap();
         tokio::task::yield_now().await;
 
-        let host = HostServer::start(public, runtimes, auth).await.unwrap();
+        let host = HostServer::start(public, runtimes, auth, None)
+            .await
+            .unwrap();
         let ws_url = host.origin().replace("http://", "ws://") + "/v2/ws";
         let (mut socket, _) = tokio_tungstenite::connect_async(ws_url).await.unwrap();
         socket

@@ -304,6 +304,7 @@
   font-size: var(--font-size-sm);
 }
 .settings-api-keys-empty-card {
+  /* design-token-ignore: empty-state card padding, bespoke to this dialog */
   padding: 28px;
   text-align: center;
   border: 1px dashed var(--border);
@@ -337,6 +338,7 @@
 }
 .provider-picker-head h2 {
   margin: 0 0 4px;
+  /* design-token-ignore: dialog heading size, bespoke to this modal */
   font-size: 22px;
   color: var(--text-primary);
 }
@@ -348,6 +350,7 @@
   border: 0;
   background: transparent;
   color: var(--text-dim);
+  /* design-token-ignore: close-button glyph size, bespoke to this modal */
   font-size: 28px;
   cursor: pointer;
 }
@@ -355,11 +358,14 @@
   width: 100%;
   box-sizing: border-box;
   margin-bottom: 18px;
+  /* design-token-ignore: search input padding, bespoke to this dialog */
   padding: 12px 14px;
   border: 1px solid var(--border);
+  /* design-token-ignore: search input radius, bespoke to this dialog */
   border-radius: 9px;
   background: var(--bg-glass);
   color: var(--text-primary);
+  /* design-token-ignore: search input font size, bespoke to this dialog */
   font-size: 15px;
 }
 .provider-picker-grid {
@@ -371,6 +377,7 @@
   grid-column: 1 / -1;
   margin: 10px 0 0;
   color: var(--text-dim);
+  /* design-token-ignore: section eyebrow size, bespoke to this dialog */
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -387,7 +394,9 @@
   box-shadow: 0 24px 80px rgb(0 0 0 / 30%);
 }
 .provider-setup-note {
+  /* design-token-ignore: note padding, bespoke to this dialog */
   padding: 14px;
+  /* design-token-ignore: note radius, bespoke to this dialog */
   border-radius: 9px;
   background: var(--bg-glass);
   color: var(--text-dim);
@@ -396,24 +405,30 @@
 .provider-login-command {
   display: block;
   margin-top: 14px;
+  /* design-token-ignore: command block padding, bespoke to this dialog */
   padding: 14px;
+  /* design-token-ignore: command block radius, bespoke to this dialog */
   border-radius: 8px;
   background: var(--bg-glass-strong, #eee);
   color: var(--text-primary);
 }
 .provider-setup-form {
   display: grid;
+  /* design-token-ignore: form field gap, bespoke to this dialog */
   gap: 14px;
 }
 .provider-setup-form label {
   display: grid;
   gap: var(--space-1-5);
   color: var(--text-dim);
+  /* design-token-ignore: field label size, bespoke to this dialog */
   font-size: 13px;
 }
 .provider-setup-form input {
+  /* design-token-ignore: input padding, bespoke to this dialog */
   padding: 10px 12px;
   border: 1px solid var(--border);
+  /* design-token-ignore: input radius, bespoke to this dialog */
   border-radius: 8px;
   background: var(--bg-glass);
   color: var(--text-primary);
@@ -422,6 +437,7 @@
 .provider-setup-actions {
   display: flex;
   justify-content: flex-end;
+  /* design-token-ignore: action row gap, bespoke to this dialog */
   gap: 10px;
   margin-top: 20px;
 }
@@ -430,9 +446,11 @@
   align-items: center;
   gap: var(--space-3);
   min-height: 74px;
+  /* design-token-ignore: picker card padding, bespoke to this dialog */
   padding: 14px;
   text-align: left;
   border: 1px solid var(--border);
+  /* design-token-ignore: picker card radius, bespoke to this dialog */
   border-radius: 11px;
   background: var(--bg-glass);
   color: var(--text-primary);
@@ -465,6 +483,7 @@
   font-size: var(--font-size-sm);
   font-weight: 700;
   object-fit: contain;
+  /* design-token-ignore: logo glyph padding, bespoke to this dialog */
   padding: 7px;
   box-sizing: border-box;
 }
