@@ -9,6 +9,8 @@
 // uses (`get_available_models`, see `public/native/app.js` `loadAvailableModels`)
 // rather than hardcoding a separate model list, so the two stay in sync.
 
+import { onLocaleChange, t } from "../../i18n.js";
+
 const STATUS_ICON = {
   pending: "○",
   running: "◐",
@@ -16,11 +18,18 @@ const STATUS_ICON = {
   failed: "✗",
 };
 
-const STATUS_LABEL = {
-  pending: "Pending",
-  running: "Running",
-  success: "Succeeded",
-  failed: "Failed",
+const STATUS_LABEL_KEY = {
+  pending: "scheduledTasks.statusPending",
+  running: "scheduledTasks.statusRunning",
+  success: "scheduledTasks.statusSuccess",
+  failed: "scheduledTasks.statusFailed",
+};
+
+const FREQUENCY_LABEL_KEY = {
+  once: "scheduledTasks.frequencyOnce",
+  hourly: "scheduledTasks.frequencyHourly",
+  daily: "scheduledTasks.frequencyDaily",
+  weekly: "scheduledTasks.frequencyWeekly",
 };
 
 function formatTimestamp(seconds) {
@@ -80,10 +89,18 @@ export function setupScheduledTasksPanel({
 
   function updateWhenLabel() {
     if (!whenLabel) return;
-    whenLabel.textContent = frequencySelect?.value === "once" ? "Run at" : "Starting at";
+    whenLabel.textContent =
+      frequencySelect?.value === "once"
+        ? t("scheduledTasks.runAt")
+        : t("scheduledTasks.startingAt");
   }
   frequencySelect?.addEventListener("change", updateWhenLabel);
   updateWhenLabel();
+
+  onLocaleChange(() => {
+    updateWhenLabel();
+    render();
+  });
 
   async function loadModels() {
     if (modelsLoaded || !modelSelect || !runtime || !getTarget) return;
@@ -134,7 +151,7 @@ export function setupScheduledTasksPanel({
     badge.className = "scheduled-task-status";
     badge.dataset.status = task.status;
     badge.textContent = STATUS_ICON[task.status] ?? "○";
-    badge.title = STATUS_LABEL[task.status] ?? task.status;
+    badge.title = STATUS_LABEL_KEY[task.status] ? t(STATUS_LABEL_KEY[task.status]) : task.status;
     return badge;
   }
 
@@ -157,13 +174,24 @@ export function setupScheduledTasksPanel({
 
     const meta = document.createElement("div");
     meta.className = "scheduled-task-meta";
-    const frequencyLabel = task.frequency.charAt(0).toUpperCase() + task.frequency.slice(1);
-    meta.appendChild(textSpan(frequencyLabel));
-    meta.appendChild(textSpan(`Model: ${task.model || "workspace default"}`));
-    meta.appendChild(textSpan(`Next run: ${formatTimestamp(task.nextRunAt)}`));
-    meta.appendChild(textSpan(`Last run: ${formatTimestamp(task.lastRunAt)}`));
+    meta.appendChild(
+      textSpan(t(FREQUENCY_LABEL_KEY[task.frequency] ?? "scheduledTasks.frequencyOnce")),
+    );
+    meta.appendChild(
+      textSpan(
+        t("scheduledTasks.modelMeta", {
+          model: task.model || t("scheduledTasks.modelWorkspaceDefault"),
+        }),
+      ),
+    );
+    meta.appendChild(
+      textSpan(t("scheduledTasks.nextRun", { time: formatTimestamp(task.nextRunAt) })),
+    );
+    meta.appendChild(
+      textSpan(t("scheduledTasks.lastRun", { time: formatTimestamp(task.lastRunAt) })),
+    );
     if (!task.enabled) {
-      const tag = textSpan("Disabled");
+      const tag = textSpan(t("scheduledTasks.disabledTag"));
       tag.classList.add("scheduled-task-disabled-tag");
       meta.appendChild(tag);
     }
@@ -176,7 +204,7 @@ export function setupScheduledTasksPanel({
     const enabledToggle = document.createElement("input");
     enabledToggle.type = "checkbox";
     enabledToggle.checked = Boolean(task.enabled);
-    enabledToggle.title = "Enabled";
+    enabledToggle.title = t("scheduledTasks.enabledLabel");
     enabledToggle.addEventListener("click", (event) => event.stopPropagation());
     enabledToggle.addEventListener("change", () => {
       void toggleEnabled(task.id, enabledToggle.checked);
@@ -187,7 +215,7 @@ export function setupScheduledTasksPanel({
       const retryButton = document.createElement("button");
       retryButton.type = "button";
       retryButton.className = "scheduled-task-retry-btn";
-      retryButton.textContent = "Retry";
+      retryButton.textContent = t("scheduledTasks.retry");
       retryButton.addEventListener("click", (event) => {
         event.stopPropagation();
         void runNow(task.id);
@@ -198,7 +226,7 @@ export function setupScheduledTasksPanel({
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
     deleteButton.className = "scheduled-task-delete-btn";
-    deleteButton.setAttribute("aria-label", "Delete scheduled task");
+    deleteButton.setAttribute("aria-label", t("scheduledTasks.deleteAriaLabel"));
     deleteButton.textContent = "×";
     deleteButton.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -273,17 +301,17 @@ export function setupScheduledTasksPanel({
     setError("");
     const prompt = promptInput?.value?.trim();
     if (!prompt) {
-      setError("Prompt is required.");
+      setError(t("scheduledTasks.promptRequired"));
       return;
     }
     const anchorAt = whenInputToUnixSeconds(whenInput?.value);
     if (anchorAt == null) {
-      setError("Pick a valid date/time.");
+      setError(t("scheduledTasks.pickValidDateTime"));
       return;
     }
     const workspaceId = getWorkspaceId?.();
     if (!workspaceId) {
-      setError("No workspace is open.");
+      setError(t("scheduledTasks.noWorkspaceOpen"));
       return;
     }
     if (submitButton) submitButton.disabled = true;
