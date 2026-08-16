@@ -1252,6 +1252,10 @@ const settingsPanel = setupSettingsPanel({
     if (changedTarget?.sessionId === target.sessionId) updateComposerThinking(level);
   },
   desktopClient: remoteAuth.clientType === "desktop",
+  onOpenSession: (sessionId) => {
+    settingsPanel?.closeSettings();
+    void switchSession(sessionId);
+  },
 });
 setupAppUpdater({ settingsPanel });
 setupNewSessionButton({ workspaceId: target.workspaceId, onError: showError });

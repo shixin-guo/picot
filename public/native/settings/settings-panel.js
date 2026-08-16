@@ -1,6 +1,7 @@
 import { t } from "../../i18n.js";
 import { applyTheme, getCurrentTheme, themes } from "../../themes.js";
 import { applyLoadingPlaceholder, clearLoadingPlaceholder } from "../../ui/loading-placeholder.js";
+import { setupScheduledTasksPanel } from "../scheduled-tasks/scheduled-tasks-panel.js";
 import { setupRemoteAccessHeader } from "../workspace/remote-access-header.js";
 import { setupUpdateIndicator } from "../workspace/update-indicator.js";
 import { setupAppearanceSettings } from "./appearance-settings.js";
@@ -44,6 +45,7 @@ export function setupSettingsPanel({
   onRestarted,
   onThinkingLevelChanged,
   desktopClient = false,
+  onOpenSession,
 } = {}) {
   const panel = document.getElementById("settings-panel");
   const openBtn = document.getElementById("settings-btn");
@@ -51,6 +53,7 @@ export function setupSettingsPanel({
   const overlay = document.getElementById("settings-overlay");
   const extensionsBtn = document.getElementById("sidebar-extensions-btn");
   const skillsBtn = document.getElementById("sidebar-skills-btn");
+  const scheduledTasksBtn = document.getElementById("sidebar-scheduled-tasks-btn");
   if (!panel || !openBtn) return;
 
   const resourceDialogHeader = document.createElement("header");
@@ -97,6 +100,13 @@ export function setupSettingsPanel({
   const modelsPage = configGateway
     ? setupModelsPage({ configGateway, oauthGateway, onModelConfigurationChanged })
     : null;
+  const scheduledTasksPanel = setupScheduledTasksPanel({
+    getWorkspaceId,
+    runtime,
+    getTarget,
+    onOpenSession,
+    onError,
+  });
   const thinkingControl = setupThinkingEffortControl({
     runtime,
     getTarget,
@@ -237,6 +247,7 @@ export function setupSettingsPanel({
     if (target === "configuration") loadConfiguration();
     if (target === "models") loadModels();
     if (target === "remote-access") void remoteAccess.load();
+    if (target === "scheduled-tasks") void scheduledTasksPanel.load();
   }
 
   function buildThemeGrid() {
@@ -340,11 +351,17 @@ export function setupSettingsPanel({
     void loadAppVersion();
   }
 
+  const RESOURCE_DIALOG_TITLES = {
+    skills: () => t("migrated.index.text.skills"),
+    "scheduled-tasks": () => "Scheduled Tasks",
+  };
+
   function openResourceDialog(tabKey) {
     clearSettingsHash();
     setResourceDialogMode(true);
-    resourceDialogTitle.textContent =
-      tabKey === "skills" ? t("migrated.index.text.skills") : t("migrated.index.text.extensions");
+    resourceDialogTitle.textContent = (
+      RESOURCE_DIALOG_TITLES[tabKey] ?? (() => t("migrated.index.text.extensions"))
+    )();
     panel.classList.remove("hidden");
     selectTab(tabKey);
   }
@@ -368,6 +385,7 @@ export function setupSettingsPanel({
   openBtn.addEventListener("click", () => openSettings());
   extensionsBtn?.addEventListener("click", () => openResourceDialog("extensions"));
   skillsBtn?.addEventListener("click", () => openResourceDialog("skills"));
+  scheduledTasksBtn?.addEventListener("click", () => openResourceDialog("scheduled-tasks"));
   resourceDialogClose.addEventListener("click", () => closeSettings());
   closeBtn?.addEventListener("click", () => closeSettings());
   overlay?.addEventListener("click", () => closeSettings());

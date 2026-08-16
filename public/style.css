@@ -49,6 +49,7 @@
 @import url("native/settings/settings-panel.css");
 @import url("native/settings/remote-access.css");
 @import url("native/settings/settings-config.css");
+@import url("native/scheduled-tasks/scheduled-tasks-panel.css");
 
 * {
   margin: 0;
