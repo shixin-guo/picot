@@ -4,6 +4,7 @@
 
 A local desktop GUI for the [Pi](https://github.com/badlogic/pi-mono) coding agent. No cloud, no account — runs entirely on your machine.
 
+[![CI](https://github.com/shixin-guo/picot/actions/workflows/ci.yml/badge.svg)](https://github.com/shixin-guo/picot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/shixin-guo/picot?include_prereleases&label=release)](https://github.com/shixin-guo/picot/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)](#install)
@@ -257,6 +258,7 @@ For the full command reference (tests, lint/format, Rust checks, bumping the emb
 ### Project docs
 
 - [`AGENTS.md`](./AGENTS.md) — architecture, module conventions, and the full command reference for anyone (human or agent) working in this repo
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — how to set up, make changes, and open a pull request
 - [`ROADMAP.md`](./ROADMAP.md) — shipped, in-progress, and planned features
 - [`docs/adr/`](./docs/adr/) — architecture decision records
 - [`docs/DESIGN.md`](./docs/DESIGN.md) — design tokens and UI primitives

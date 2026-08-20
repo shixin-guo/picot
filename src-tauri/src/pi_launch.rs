@@ -1,5 +1,6 @@
 use crate::native_pi_manager::NativeLaunchSpec;
 use serde::Serialize;
+#[cfg(target_os = "macos")]
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};

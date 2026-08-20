@@ -4,6 +4,7 @@
 
 本地桌面 GUI，专为 [Pi](https://github.com/badlogic/pi-mono) 编程 Agent 打造。无需云端，无需账号，完全在本机运行。
 
+[![CI](https://github.com/shixin-guo/picot/actions/workflows/ci.yml/badge.svg)](https://github.com/shixin-guo/picot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/shixin-guo/picot?include_prereleases&label=release)](https://github.com/shixin-guo/picot/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)](#%E5%AE%89%E8%A3%85)
@@ -257,6 +258,7 @@ bun run build    # 下载内嵌 pi 二进制，然后运行 tauri build
 ### 项目文档
 
 - [`AGENTS.md`](./AGENTS.md) — 架构、模块规范，以及本仓库（人类或 Agent）工作时的完整命令参考
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — 环境搭建、提交改动与发起 Pull Request 的流程（英文）
 - [`ROADMAP.md`](./ROADMAP.md) — 已完成、进行中和计划中的功能
 - [`docs/adr/`](./docs/adr/) — 架构决策记录（ADR）
 - [`docs/DESIGN.md`](./docs/DESIGN.md) — 设计 token 和 UI 基础组件
