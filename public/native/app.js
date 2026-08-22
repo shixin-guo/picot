@@ -143,8 +143,7 @@ const input = document.getElementById("message-input");
 const form = document.getElementById("chat-form");
 const abortButton = document.getElementById("abort-btn");
 const sendButton = document.getElementById("send-btn");
-const statusText = document.getElementById("status-text");
-const statusIndicator = document.getElementById("status-indicator");
+const statusPill = document.querySelector("picot-session-status");
 const composerCard = document.getElementById("composer-card");
 const commandButton = document.getElementById("command-btn");
 const commandPalette = document.getElementById("command-palette");
@@ -537,8 +536,7 @@ sessionStatus.bind({
   getSessionId: () => target.sessionId,
   hasPending: (sessionId) => extensionUi.hasPending(sessionId),
   sendButton,
-  statusIndicator,
-  statusText,
+  statusPill,
 });
 await extensionUi.setForegroundSession(target.sessionId, { flush: false });
 await extensionUi.flushForegroundQueue();

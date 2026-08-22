@@ -10,5 +10,5 @@
       "@earendil-works/pi-coding-agent": ["./src-tauri/resources/pi/dist/index.d.ts"]
     }
   },
-  "include": ["extensions/**/*.ts", "public/**/*.js"]
+  "include": ["extensions/**/*.ts", "public/**/*.js", "public/**/*.ts"]
 }
