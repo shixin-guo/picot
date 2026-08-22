@@ -42,6 +42,7 @@
 @import url("components/chat-settings-panel.css");
 @import url("native/settings/settings-panel.css");
 @import url("native/settings/settings-config.css");
+@import url("native/scheduled-tasks/scheduled-tasks-panel.css");
 
 * {
   margin: 0;

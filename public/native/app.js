@@ -827,6 +827,10 @@ const settingsPanel = setupSettingsPanel({
   onThinkingLevelChanged: (level, changedTarget) => {
     if (changedTarget?.sessionId === target.sessionId) updateComposerThinking(level);
   },
+  onOpenSession: (sessionId) => {
+    settingsPanel?.closeSettings();
+    void switchSession(sessionId);
+  },
 });
 setupAppUpdater({ settingsPanel });
 setupNewSessionButton({ workspaceId: target.workspaceId, onError: showError });

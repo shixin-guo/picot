@@ -260,6 +260,25 @@
           </button>
           <button
             type="button"
+            class="sidebar-primary-nav-item"
+            id="sidebar-scheduled-tasks-btn"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <g
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3.5 2" />
+              </g>
+            </svg>
+            <span data-i18n="scheduledTasks.title">Scheduled Tasks</span>
+          </button>
+          <button
+            type="button"
             class="sidebar-primary-nav-item hidden"
             id="sidebar-agent-inbox-btn"
           >
@@ -1413,6 +1432,13 @@
         >
           Agent Inbox
         </button>
+        <button
+          class="settings-nav-item"
+          data-settings-tab="scheduled-tasks"
+          data-i18n="scheduledTasks.title"
+        >
+          Scheduled Tasks
+        </button>
         <button class="settings-nav-back" id="settings-close">
           <span class="settings-nav-back-icon">‹</span>
           <span data-i18n="settings.backToChat">Back to chat</span>
@@ -2088,6 +2114,87 @@
           class="settings-tab"
           data-settings-panel="chat"
         ></chat-settings-panel>
+
+        <div class="settings-tab" data-settings-panel="scheduled-tasks">
+          <div class="settings-body">
+            <div class="settings-section">
+              <div
+                class="settings-section-title"
+                data-i18n="scheduledTasks.title"
+              >
+                Scheduled Tasks
+              </div>
+              <p class="settings-help" data-i18n="scheduledTasks.description">
+                Run a prompt in this workspace automatically, on a schedule. Each run creates a
+                normal session you can open from the list below.
+              </p>
+
+              <form id="scheduled-task-form" class="scheduled-task-form">
+                <label class="scheduled-task-field" for="scheduled-task-prompt">
+                  <span data-i18n="scheduledTasks.promptLabel">Prompt</span>
+                  <textarea
+                    id="scheduled-task-prompt"
+                    class="ui-textarea scheduled-task-prompt-input"
+                    placeholder="What should Picot do when this task runs?"
+                    data-i18n-ph="scheduledTasks.promptPlaceholder"
+                    rows="3"
+                    required
+                  ></textarea>
+                </label>
+                <div class="scheduled-task-field-row">
+                  <label class="scheduled-task-field" for="scheduled-task-frequency">
+                    <span data-i18n="scheduledTasks.frequencyLabel">Frequency</span>
+                    <select id="scheduled-task-frequency" class="scheduled-task-select">
+                      <option value="once" data-i18n="scheduledTasks.frequencyOnce">Once</option>
+                      <option value="hourly" data-i18n="scheduledTasks.frequencyHourly">Hourly</option>
+                      <option value="daily" data-i18n="scheduledTasks.frequencyDaily">Daily</option>
+                      <option value="weekly" data-i18n="scheduledTasks.frequencyWeekly">Weekly</option>
+                    </select>
+                  </label>
+                  <label class="scheduled-task-field" for="scheduled-task-when">
+                    <span id="scheduled-task-when-label" data-i18n="scheduledTasks.runAt">Run at</span>
+                    <input
+                      type="datetime-local"
+                      id="scheduled-task-when"
+                      class="scheduled-task-select"
+                      required
+                    />
+                  </label>
+                </div>
+                <div class="scheduled-task-field-row">
+                  <label class="scheduled-task-field" for="scheduled-task-model">
+                    <span data-i18n="scheduledTasks.modelLabel">Model</span>
+                    <select id="scheduled-task-model" class="scheduled-task-select">
+                      <option value="" data-i18n="scheduledTasks.modelDefault">Use workspace default</option>
+                    </select>
+                  </label>
+                  <label class="scheduled-task-field scheduled-task-enabled-field">
+                    <input type="checkbox" id="scheduled-task-enabled" checked />
+                    <span data-i18n="scheduledTasks.enabledLabel">Enabled</span>
+                  </label>
+                </div>
+                <div class="scheduled-task-form-actions">
+                  <span class="scheduled-task-form-error" id="scheduled-task-form-error"></span>
+                  <button type="submit" class="btn-primary" id="scheduled-task-submit" data-i18n="scheduledTasks.submit">
+                    Add scheduled task
+                  </button>
+                </div>
+              </form>
+
+              <div class="scheduled-task-list-header">
+                <div class="settings-section-title" data-i18n="scheduledTasks.tasksTitle">Tasks</div>
+                <button type="button" class="settings-value-btn" id="scheduled-task-refresh-btn" data-i18n="scheduledTasks.refresh">
+                  Refresh
+                </button>
+              </div>
+              <div id="scheduled-task-list" class="scheduled-task-list">
+                <div class="scheduled-task-empty" id="scheduled-task-empty" data-i18n="scheduledTasks.empty">
+                  No scheduled tasks yet.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
     </div>
 

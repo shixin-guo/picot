@@ -14,6 +14,7 @@ mod pi_launch;
 mod pi_rpc_bridge;
 mod remote_auth;
 mod runtime_coordinator;
+mod scheduler;
 mod session_ui_profile_store;
 mod settings_store;
 mod skill_install;
@@ -181,16 +182,31 @@ async fn show_task_completion_notification(
         .try_state::<HostServer>()
         .ok_or_else(|| "Host server is not ready".to_string())?;
     let cwd = host.workspace_root_path(&workspace_id)?;
+    show_completion_notification(&app, &title, &body, cwd, session_id)
+}
 
+/// Shared notify-rust plumbing behind `show_task_completion_notification`.
+/// Also called directly by the scheduled-task runner (`scheduler.rs`), which
+/// has no webview/`invoke()` to call the Tauri command through — headless
+/// runs already know their `cwd` (resolved via the host data plane), so this
+/// takes it directly instead of re-deriving it from a workspace id.
+pub(crate) fn show_completion_notification(
+    app: &AppHandle,
+    title: &str,
+    body: &str,
+    cwd: PathBuf,
+    session_id: String,
+) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let _ = notify_rust::set_application(&app.config().identifier);
 
     let notification = notify_rust::Notification::new()
-        .summary(&title)
-        .body(&body)
+        .summary(title)
+        .body(body)
         .show()
         .map_err(|error| format!("Cannot show task notification: {error}"))?;
 
+    let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         notification.wait_for_action(move |action| {
             if action == "__closed" {
@@ -837,6 +853,7 @@ fn setup_native_runtime(app: &mut tauri::App, static_dir: PathBuf) -> Result<(),
             remote_auth,
             std::collections::HashMap::from([(target.workspace_id.clone(), PathBuf::from(&cwd))]),
             Some(app.handle().clone()),
+            metadata.clone(),
         )
         .await?;
         runtimes.spawn(target.clone(), launch)?;
