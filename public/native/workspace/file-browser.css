@@ -208,3 +208,10 @@
 .file-git-badge[data-git-status="C"] {
   color: var(--accent-danger, #ef4444);
 }
+
+/* Sidebar header show-hidden toggle: pressed state stays visibly active
+   while dotfiles are included in the listing. */
+.file-sidebar-action[aria-pressed="true"] {
+  background: var(--bg-glass-hover);
+  color: var(--accent);
+}

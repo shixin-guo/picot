@@ -176,6 +176,49 @@ describe("NativeFileBrowser", () => {
     );
   });
 
+  it("refresh() reloads the current directory through the gateway", async () => {
+    const calls = [];
+    const gateway = fakeGateway(async (_workspaceId, path) => {
+      calls.push(path);
+      return {
+        entries: [{ name: "src", relativePath: path ? `${path}/src` : "src", kind: "directory" }],
+      };
+    });
+    const browser = new NativeFileBrowser(container, pathEl, gateway, "workspace-a");
+
+    await browser.load("");
+    await browser.load("src");
+    await browser.refresh();
+
+    expect(calls).toEqual(["", "src", "src"]);
+  });
+
+  it("setShowHidden forwards the flag to the gateway, notifies, and reloads only on change", async () => {
+    const calls = [];
+    const gateway = fakeGateway(async (_workspaceId, path, showHidden) => {
+      calls.push({ path, showHidden });
+      return { entries: [] };
+    });
+    const changes = [];
+    const browser = new NativeFileBrowser(container, pathEl, gateway, "workspace-a", {
+      onShowHiddenChange: (value) => changes.push(value),
+    });
+
+    expect(browser.showHidden).toBe(false);
+    await browser.load();
+    expect(calls[0]).toEqual({ path: "", showHidden: false });
+
+    // Same value: no reload, no notification.
+    await browser.setShowHidden(false);
+    expect(calls).toHaveLength(1);
+    expect(changes).toHaveLength(0);
+
+    await browser.setShowHidden(true);
+    expect(browser.showHidden).toBe(true);
+    expect(changes).toEqual([true]);
+    expect(calls[1]).toEqual({ path: "", showHidden: true });
+  });
+
   it("switches between file and diff views", async () => {
     vi.stubGlobal(
       "fetch",

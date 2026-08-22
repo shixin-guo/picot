@@ -22,6 +22,8 @@ export class NativeFileBrowser {
   #entries = [];
   #view = "files";
   #showViewSwitch = true;
+  #onShowHiddenChange;
+  showHidden = false;
   currentPath = null;
 
   /**
@@ -34,6 +36,7 @@ export class NativeFileBrowser {
    *   onFileSelect?: (entry: object) => void,
    *   onMention?: (entry: object) => void,
    *   onPathChange?: (path: string) => void,
+   *   onShowHiddenChange?: (showHidden: boolean) => void,
    * }} [options]
    */
   constructor(
@@ -46,6 +49,7 @@ export class NativeFileBrowser {
       onFileSelect,
       onMention,
       onPathChange,
+      onShowHiddenChange,
       initialView = "files",
       showViewSwitch = true,
     } = {},
@@ -58,6 +62,7 @@ export class NativeFileBrowser {
     this.#onFileSelect = onFileSelect ?? null;
     this.#onMention = onMention ?? null;
     this.#onPathChange = onPathChange ?? null;
+    this.#onShowHiddenChange = onShowHiddenChange ?? null;
     this.#view = initialView === "diff" ? "diff" : "files";
     this.#showViewSwitch = showViewSwitch;
   }
@@ -73,7 +78,7 @@ export class NativeFileBrowser {
 
     try {
       const [response] = await Promise.all([
-        this.#gateway.listFiles(this.#workspaceId, relativePath),
+        this.#gateway.listFiles(this.#workspaceId, relativePath, this.showHidden),
         this.#loadGitStatus(),
         this.#loadGitStat(),
       ]);
@@ -95,6 +100,20 @@ export class NativeFileBrowser {
     const parts = this.currentPath.split("/").filter(Boolean);
     parts.pop();
     return parts.join("/");
+  }
+
+  /** Reload the current directory (or the root when nothing is loaded yet). */
+  refresh() {
+    return this.currentPath === null ? this.load("") : this.load(this.currentPath);
+  }
+
+  /** Toggle dotfile visibility and reload the listing when it changed. */
+  setShowHidden(value) {
+    const next = Boolean(value);
+    if (next === this.showHidden) return undefined;
+    this.showHidden = next;
+    this.#onShowHiddenChange?.(this.showHidden);
+    return this.refresh();
   }
 
   #render() {

@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
@@ -215,6 +215,84 @@ describe("picot config models operations", () => {
       providers: { local: { models: [{ id: "qwen" }] } },
     });
   });
+
+  it("backs up the previous models.json before overwriting it", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    const modelsPath = join(home, ".pi", "agent", "models.json");
+    mkdirSync(dirname(modelsPath), { recursive: true });
+    writeFileSync(modelsPath, JSON.stringify({ providers: { old: {} } }), "utf8");
+    const content = JSON.stringify({ providers: { local: { models: [{ id: "qwen" }] } } });
+
+    await handlePicotConfig("write_models_config", { content }, {});
+
+    // The pre-save content is preserved as a rollback copy.
+    expect(JSON.parse(readFileSync(`${modelsPath}.bak`, "utf8"))).toEqual({
+      providers: { old: {} },
+    });
+    // The live file carries the new content.
+    expect(JSON.parse(readFileSync(modelsPath, "utf8"))).toEqual({
+      providers: { local: { models: [{ id: "qwen" }] } },
+    });
+  });
+});
+
+describe("picot config agent text file operations", () => {
+  it("reads a missing AGENTS.md as empty content and reports exists=false", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    const agentsMdPath = join(home, ".pi", "agent", "AGENTS.md");
+
+    await expect(handlePicotConfig("read_agents_md", {}, {})).resolves.toEqual({
+      ok: true,
+      data: { content: "", path: agentsMdPath, exists: false },
+    });
+  });
+
+  it("round-trips AGENTS.md content without JSON validation", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    const agentsMdPath = join(home, ".pi", "agent", "AGENTS.md");
+
+    await expect(
+      handlePicotConfig("write_agents_md", { content: "Not JSON: just markdown {" }, {}),
+    ).resolves.toEqual({ ok: true, data: { path: agentsMdPath } });
+
+    expect(readFileSync(agentsMdPath, "utf8")).toBe("Not JSON: just markdown {");
+    await expect(handlePicotConfig("read_agents_md", {}, {})).resolves.toEqual({
+      ok: true,
+      data: { content: "Not JSON: just markdown {", path: agentsMdPath, exists: true },
+    });
+  });
+
+  it("round-trips APPEND_SYSTEM.md content", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    const appendPath = join(home, ".pi", "agent", "APPEND_SYSTEM.md");
+
+    await expect(
+      handlePicotConfig("write_append_system_md", { content: "Always answer briefly." }, {}),
+    ).resolves.toEqual({ ok: true, data: { path: appendPath } });
+
+    expect(readFileSync(appendPath, "utf8")).toBe("Always answer briefly.");
+    await expect(handlePicotConfig("read_append_system_md", {}, {})).resolves.toEqual({
+      ok: true,
+      data: { content: "Always answer briefly.", path: appendPath, exists: true },
+    });
+  });
+
+  it("rejects non-string content for agent text files", async () => {
+    const { handlePicotConfig } = await loadConfigWithTempHome();
+
+    // The gateway contract resolves with { ok: false, error } for handler
+    // failures — it rejects only on transport/timeout errors.
+    await expect(handlePicotConfig("write_agents_md", { content: 42 }, {})).resolves.toEqual({
+      ok: false,
+      error: "content must be a string",
+    });
+    await expect(
+      handlePicotConfig("write_append_system_md", { content: null }, {}),
+    ).resolves.toEqual({
+      ok: false,
+      error: "content must be a string",
+    });
+  });
 });
 
 describe("picot config auth operations", () => {
@@ -243,8 +321,10 @@ describe("picot config auth operations", () => {
   it("updates the active registry credential store before refreshing", async () => {
     const { handlePicotConfig } = await loadConfigWithTempHome();
     const credentials = {
-      modify: vi.fn(async () => undefined),
-      delete: vi.fn(async () => undefined),
+      modify: vi.fn(
+        async (_provider: string, _mutate: (store: unknown) => Promise<unknown>) => undefined,
+      ),
+      delete: vi.fn(async (_provider: string) => undefined),
     };
     const registry = {
       runtime: { credentials },
@@ -255,19 +335,29 @@ describe("picot config auth operations", () => {
       handlePicotConfig(
         "set_api_key",
         { provider: "anthropic", apiKey: "sk-ant-test" },
-        { modelRegistry: registry },
+        {
+          modelRegistry: registry as never,
+        },
       ),
     ).resolves.toEqual({ ok: true, data: { provider: "anthropic" } });
 
     expect(credentials.modify).toHaveBeenCalledWith("anthropic", expect.any(Function));
-    await expect(credentials.modify.mock.calls[0][1](undefined)).resolves.toEqual({
+    const [, applyMutation] = credentials.modify.mock.calls[0] ?? [];
+    expect(applyMutation).toBeTypeOf("function");
+    await expect(applyMutation?.(undefined)).resolves.toEqual({
       type: "api_key",
       key: "sk-ant-test",
     });
     expect(registry.refresh).toHaveBeenCalledTimes(1);
 
     await expect(
-      handlePicotConfig("remove_api_key", { provider: "anthropic" }, { modelRegistry: registry }),
+      handlePicotConfig(
+        "remove_api_key",
+        { provider: "anthropic" },
+        {
+          modelRegistry: registry as never,
+        },
+      ),
     ).resolves.toEqual({ ok: true, data: { provider: "anthropic" } });
 
     expect(credentials.delete).toHaveBeenCalledWith("anthropic");

@@ -32,6 +32,7 @@
     "conflicted": "En conflicto",
     "refresh": "Actualizar estado de Git",
     "noStatus": "No se ha cargado el estado de Git",
+    "notGitRepo": "Este espacio de trabajo no es un repositorio Git",
     "discardWarning": "Esta acción no se puede deshacer",
     "writeUnavailable": "Autorización de escritura de Git no disponible",
     "stage": "Preparar",
@@ -102,7 +103,7 @@
   "models": {
     "searchPlaceholder": "Buscar modelos…",
     "emptyTitle": "No hay modelos disponibles",
-    "emptyHelp": "No hay claves API configuradas. Establece una clave en Ajustes → Proveedores.",
+    "emptyHelp": "No hay claves API configuradas. Establece una clave en Ajustes → Modelos.",
     "openSettings": "Abrir ajustes"
   },
   "queue": {
@@ -160,6 +161,10 @@
     "empty": "Directorio vacío",
     "failedLoad": "Error al cargar",
     "parentDirectory": "Directorio padre",
+    "refreshDirectory": "Actualizar directorio",
+    "refreshDirectoryAria": "Actualizar la lista del directorio actual",
+    "showHiddenFiles": "Mostrar archivos ocultos",
+    "showHiddenFilesAria": "Mostrar u ocultar archivos punto y directorios ignorados",
     "openInFileManager": "Abrir en el explorador de archivos",
     "close": "Cerrar explorador de archivos",
     "preview": {
@@ -473,6 +478,8 @@
     "pinWorkspace": "Fijar espacio de trabajo",
     "unpinWorkspace": "Desfijar espacio de trabajo",
     "archiveWorkspaceSessions": "Archivar sesiones",
+    "deleteWorkspaceSessions": "Eliminar todas las sesiones",
+    "deleteWorkspaceConfirm": "¿Eliminar {count} sesiones de forma permanente? Esto no se puede deshacer.",
     "openInFinder": "Abrir en Finder",
     "workspaceActions": "Acciones del espacio de trabajo",
     "sessionCountTotal": "{count} sesiones",
@@ -573,7 +580,7 @@
     "general": "General",
     "extensions": "Extensiones",
     "usage": "Uso",
-    "configuration": "Proveedores",
+    "configuration": "Configuración avanzada",
     "agentInbox": "Bandeja del agente",
     "backToChat": "Volver al chat",
     "appearance": "Apariencia",
@@ -597,6 +604,10 @@
     "protection": "Protección",
     "requireLogin": "Requerir inicio de sesión",
     "agentConfigFile": "Archivo de configuración del agente",
+    "agentsMd": "AGENTS.md",
+    "agentsContextFile": "Archivo de contexto del agente (AGENTS.md)",
+    "appendSystemMd": "APPEND_SYSTEM.md",
+    "appendSystemPromptFile": "Archivo de anexo al prompt del sistema (APPEND_SYSTEM.md)",
     "providersFile": "Archivo de proveedores",
     "llmProviders": "Proveedores LLM",
     "browseCommunityPackages": "Explorar paquetes de la comunidad",
@@ -635,6 +646,7 @@
       "configured": "Configurado"
     },
     "models": {
+      "title": "Modelos",
       "helpPre": "Edita",
       "helpPost1": "para añadir proveedores personalizados (Ollama, vLLM, LM Studio, proxies compatibles con OpenAI, anulaciones de enrutamiento de OpenRouter, etc). Consulta la",
       "docsLink": "documentación de models.json",

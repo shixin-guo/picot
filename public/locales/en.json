@@ -32,6 +32,7 @@
     "conflicted": "Conflicted",
     "refresh": "Refresh Git status",
     "noStatus": "No Git status loaded",
+    "notGitRepo": "This workspace is not a Git repository",
     "discardWarning": "This action cannot be undone",
     "writeUnavailable": "Git write authorization unavailable",
     "stage": "Stage",
@@ -102,7 +103,7 @@
   "models": {
     "searchPlaceholder": "Search models…",
     "emptyTitle": "No models available",
-    "emptyHelp": "No API keys configured. Set a key in Settings → Providers.",
+    "emptyHelp": "No API keys configured. Set a key in Settings → Models.",
     "openSettings": "Open Settings"
   },
   "queue": {
@@ -160,6 +161,10 @@
     "empty": "Empty directory",
     "failedLoad": "Failed to load",
     "parentDirectory": "Parent directory",
+    "refreshDirectory": "Refresh directory",
+    "refreshDirectoryAria": "Refresh current directory listing",
+    "showHiddenFiles": "Show hidden files",
+    "showHiddenFilesAria": "Show or hide dotfiles and ignored directories",
     "openInFileManager": "Open in file manager",
     "close": "Close file browser",
     "preview": {
@@ -473,6 +478,8 @@
     "pinWorkspace": "Pin workspace",
     "unpinWorkspace": "Unpin workspace",
     "archiveWorkspaceSessions": "Archive sessions",
+    "deleteWorkspaceSessions": "Delete all sessions",
+    "deleteWorkspaceConfirm": "Delete {count} sessions permanently? This cannot be undone.",
     "openInFinder": "Open in Finder",
     "workspaceActions": "Workspace actions",
     "sessionCountTotal": "{count} sessions",
@@ -573,7 +580,7 @@
     "general": "General",
     "extensions": "Extensions",
     "usage": "Usage",
-    "configuration": "Providers",
+    "configuration": "Advanced Configuration",
     "agentInbox": "Agent Inbox",
     "backToChat": "Back to chat",
     "appearance": "Appearance",
@@ -597,6 +604,10 @@
     "protection": "Protection",
     "requireLogin": "Require login",
     "agentConfigFile": "Agent config file",
+    "agentsMd": "AGENTS.md",
+    "agentsContextFile": "Agent context file (AGENTS.md)",
+    "appendSystemMd": "APPEND_SYSTEM.md",
+    "appendSystemPromptFile": "Append system prompt file (APPEND_SYSTEM.md)",
     "providersFile": "Providers file",
     "llmProviders": "LLM providers",
     "browseCommunityPackages": "Browse Community Packages",
@@ -635,6 +646,7 @@
       "configured": "Configured"
     },
     "models": {
+      "title": "Models",
       "helpPre": "Edit",
       "helpPost1": "to add custom providers (Ollama, vLLM, LM Studio, OpenAI-compatible proxies, OpenRouter routing overrides, etc). See the",
       "docsLink": "models.json docs",

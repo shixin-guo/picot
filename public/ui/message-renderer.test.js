@@ -244,6 +244,98 @@ describe("MessageRenderer streaming markdown preview", () => {
   });
 });
 
+describe("MessageRenderer message toolbar timestamps", () => {
+  let container;
+  let renderer;
+
+  beforeEach(async () => {
+    document.body.replaceChildren();
+    container = document.createElement("div");
+    document.body.append(container);
+    renderer = new MessageRenderer(container);
+  });
+
+  it("formats same-day times as HH:MM and cross-day as MM/DD HH:MM", async () => {
+    const { formatMessageTime } = await import("./message-renderer.js");
+    const now = new Date();
+    const sameDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 5).getTime();
+    expect(formatMessageTime(sameDay)).toBe("09:05");
+
+    // A fixed past date: guaranteed to be a different calendar day, so the
+    // assertion is deterministic regardless of the test run date.
+    const otherDay = new Date(2020, 0, 15, 14, 30).getTime();
+    expect(formatMessageTime(otherDay)).toBe("01/15 14:30");
+  });
+
+  it("returns an empty label for missing, invalid, or out-of-range timestamps", async () => {
+    const { formatMessageTime } = await import("./message-renderer.js");
+    expect(formatMessageTime(null)).toBe("");
+    expect(formatMessageTime(undefined)).toBe("");
+    expect(formatMessageTime("not-a-number")).toBe("");
+    expect(formatMessageTime(NaN)).toBe("");
+    expect(formatMessageTime(1e20)).toBe("");
+  });
+
+  it("renders the message time first in the user message footer", () => {
+    const ts = new Date(2020, 0, 15, 10, 30).getTime();
+    renderer.renderUserMessage({ content: "hello", timestamp: ts });
+
+    const footer = container.querySelector(".message.user .message-footer");
+    expect(footer).not.toBeNull();
+    const time = footer.querySelector(".message-time");
+    expect(time?.textContent).toBe("01/15 10:30");
+    expect(time?.title).toContain("2020-01-15 10:30");
+    // Order: time, then copy.
+    expect(footer.querySelector(".message-copy-btn")).not.toBeNull();
+    expect(footer.firstElementChild).toBe(time);
+  });
+
+  it("omits the time span when a user message carries no timestamp", () => {
+    renderer.renderUserMessage({ content: "hello" });
+    const footer = container.querySelector(".message.user .message-footer");
+    expect(footer?.querySelector(".message-time")).toBeNull();
+    expect(footer?.querySelector(".message-copy-btn")).not.toBeNull();
+  });
+
+  it("renders copy, time, then cost in the assistant footer", () => {
+    const ts = new Date(2020, 0, 15, 9, 5).getTime();
+    renderer.renderAssistantMessage({
+      content: [{ type: "text", text: "answer" }],
+      usage: { cost: { total: 0.0123 } },
+      timestamp: ts,
+    });
+
+    const footer = container.querySelector(".message.assistant .message-footer");
+    expect(footer?.querySelector(".message-copy-btn")).not.toBeNull();
+    const time = footer?.querySelector(".message-time");
+    expect(time?.textContent).toBe("01/15 09:05");
+    expect(footer?.querySelector(".message-usage")?.textContent).toBe("$0.0123");
+    const children = [...footer.children].map((el) => el.className);
+    expect(children.indexOf("message-copy-btn")).toBeLessThan(children.indexOf("message-time"));
+    expect(children.indexOf("message-time")).toBeLessThan(children.indexOf("message-usage"));
+  });
+
+  it("attaches the completion time when streaming finalizes", () => {
+    const el = renderer.renderAssistantMessage(
+      { content: [{ type: "text", text: "done" }], timestamp: 1 },
+      true,
+    );
+    expect(el.querySelector(".message-footer")).toBeNull();
+
+    renderer.finalizeStreamingMessage(el, { cost: { total: 0.01 } });
+    const footer = el.querySelector(".message-footer");
+    expect(footer?.querySelector(".message-time")).not.toBeNull();
+  });
+
+  it("reveals the user footer via the visible class on hover", () => {
+    const el = renderer.renderUserMessage({ content: "hello", timestamp: 1 });
+    const footer = el.querySelector(".message-footer");
+    expect(footer.classList.contains("visible")).toBe(false);
+    el.querySelector(".message-content").dispatchEvent(new MouseEvent("mouseenter"));
+    expect(footer.classList.contains("visible")).toBe(true);
+  });
+});
+
 describe("MessageRenderer locale change", () => {
   let container;
   let renderer;

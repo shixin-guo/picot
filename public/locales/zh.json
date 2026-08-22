@@ -32,6 +32,7 @@
     "conflicted": "冲突",
     "refresh": "刷新 Git 状态",
     "noStatus": "尚未加载 Git 状态",
+    "notGitRepo": "当前工作区不是 Git 仓库",
     "discardWarning": "此操作不可撤销",
     "writeUnavailable": "Git 写入授权不可用",
     "stage": "暂存",
@@ -102,7 +103,7 @@
   "models": {
     "searchPlaceholder": "搜索模型…",
     "emptyTitle": "无可用模型",
-    "emptyHelp": "未配置 API 密钥。请在设置 → 提供商中设置密钥。",
+    "emptyHelp": "未配置 API 密钥。请在设置 → 模型 中设置密钥。",
     "openSettings": "打开设置"
   },
   "queue": {
@@ -160,6 +161,10 @@
     "empty": "空目录",
     "failedLoad": "加载失败",
     "parentDirectory": "上级目录",
+    "refreshDirectory": "刷新目录",
+    "refreshDirectoryAria": "刷新当前目录列表",
+    "showHiddenFiles": "显示隐藏文件",
+    "showHiddenFilesAria": "显示或隐藏点文件及被忽略目录",
     "openInFileManager": "在文件管理器中打开",
     "close": "关闭文件浏览器",
     "preview": {
@@ -473,6 +478,8 @@
     "pinWorkspace": "固定工作区",
     "unpinWorkspace": "取消固定工作区",
     "archiveWorkspaceSessions": "归档会话",
+    "deleteWorkspaceSessions": "删除全部会话",
+    "deleteWorkspaceConfirm": "永久删除 {count} 个会话？此操作无法撤销。",
     "openInFinder": "在访达中打开",
     "workspaceActions": "工作区操作",
     "sessionCountTotal": "{count} 个会话",
@@ -573,7 +580,7 @@
     "general": "通用",
     "extensions": "扩展",
     "usage": "使用量",
-    "configuration": "提供商",
+    "configuration": "高级配置",
     "agentInbox": "智能体收件箱",
     "backToChat": "返回聊天",
     "appearance": "外观",
@@ -597,6 +604,10 @@
     "protection": "保护",
     "requireLogin": "需要登录",
     "agentConfigFile": "智能体配置文件",
+    "agentsMd": "AGENTS.md",
+    "agentsContextFile": "智能体上下文文件（AGENTS.md）",
+    "appendSystemMd": "APPEND_SYSTEM.md",
+    "appendSystemPromptFile": "追加系统提示文件（APPEND_SYSTEM.md）",
     "providersFile": "提供者文件",
     "llmProviders": "LLM 提供者",
     "browseCommunityPackages": "浏览社区包",
@@ -635,6 +646,7 @@
       "configured": "已配置"
     },
     "models": {
+      "title": "模型",
       "helpPre": "编辑",
       "helpPost1": "以添加自定义提供者（Ollama、vLLM、LM Studio、OpenAI 兼容代理、OpenRouter 路由覆盖等）。参见",
       "docsLink": "models.json 文档",

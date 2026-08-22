@@ -103,8 +103,8 @@ export class HostDataGateway {
     });
   }
 
-  listFiles(workspaceId, path = "") {
-    return this.request("list_files", { workspaceId, path });
+  listFiles(workspaceId, path = "", showHidden = false) {
+    return this.request("list_files", { workspaceId, path, showHidden });
   }
 
   listSessions(workspaceId) {

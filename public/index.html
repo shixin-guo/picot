@@ -38,7 +38,8 @@
         if (savedTheme === "dark") savedTheme = "night";
         if (savedTheme === "light") savedTheme = "terracotta";
         if (!supportedThemes.has(savedTheme)) {
-          savedTheme = window.matchMedia?.("(prefers-color-scheme: light)").matches
+          savedTheme = window.matchMedia?.("(prefers-color-scheme: light)")
+            .matches
             ? "terracotta"
             : "night";
         }
@@ -686,8 +687,16 @@
                   session from the sidebar.
                 </p>
                 <div class="shortcuts-hint">
-                  <span><kbd>/</kbd> <span data-i18n="shortcuts.focusInput">Focus input</span></span>
-                  <span><kbd>Esc</kbd> <span data-i18n="shortcuts.abort">Abort</span></span>
+                  <span
+                    ><kbd>/</kbd>
+                    <span data-i18n="shortcuts.focusInput"
+                      >Focus input</span
+                    ></span
+                  >
+                  <span
+                    ><kbd>Esc</kbd>
+                    <span data-i18n="shortcuts.abort">Abort</span></span
+                  >
                 </div>
               </div>
             </div>
@@ -1274,6 +1283,87 @@
                 </svg>
               </button>
               <button
+                class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn file-sidebar-action"
+                id="file-sidebar-refresh"
+                title="Refresh directory"
+                aria-label="Refresh current directory listing"
+                data-i18n-title="files.refreshDirectory"
+                data-i18n-aria-label="files.refreshDirectoryAria"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"
+                  />
+                  <path d="M21 3v5h-5" />
+                  <path
+                    d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"
+                  />
+                  <path d="M8 16H3v5" />
+                </svg>
+              </button>
+              <button
+                class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn file-sidebar-action"
+                id="file-sidebar-toggle-hidden"
+                title="Show hidden files"
+                aria-label="Show hidden files"
+                aria-pressed="false"
+                data-i18n-title="files.showHiddenFiles"
+                data-i18n-aria-label="files.showHiddenFilesAria"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"
+                  />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </button>
+              <button
+                class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn file-sidebar-action hidden"
+                id="git-panel-refresh"
+                title="Refresh Git status"
+                aria-label="Refresh Git status"
+                data-i18n-title="git.refresh"
+                data-i18n-aria-label="git.refresh"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"
+                  />
+                  <path d="M21 3v5h-5" />
+                  <path
+                    d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"
+                  />
+                  <path d="M8 16H3v5" />
+                </svg>
+              </button>
+              <button
                 class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
                 id="file-sidebar-finder"
                 title="Open in file manager"
@@ -1330,7 +1420,9 @@
             id="diff-sidebar"
           >
             <div class="file-sidebar-header app-side-panel-header">
-              <span class="file-sidebar-title" data-i18n="files.preview.diff">Diff</span>
+              <span class="file-sidebar-title" data-i18n="files.preview.diff"
+                >Diff</span
+              >
               <button
                 class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn app-side-panel-close-btn"
                 id="diff-sidebar-close"
@@ -1401,10 +1493,17 @@
         </button>
         <button
           class="settings-nav-item"
+          data-settings-tab="models"
+          data-i18n="settings.models.title"
+        >
+          Models
+        </button>
+        <button
+          class="settings-nav-item"
           data-settings-tab="configuration"
           data-i18n="settings.configuration"
         >
-          Providers
+          Advanced Configuration
         </button>
         <button
           class="settings-nav-item"
@@ -1676,8 +1775,8 @@
                 Installed Packages
               </div>
               <p class="settings-help" data-i18n="settings.installedHelp">
-                Manage the extension packages configured for this
-                installation: enable, disable, update, or remove.
+                Manage the extension packages configured for this installation:
+                enable, disable, update, or remove.
               </p>
               <div class="pkg-manager-shell">
                 <div class="pkg-manager-sidebar">
@@ -1889,7 +1988,10 @@
           </div>
         </div>
 
-        <div class="settings-tab" data-settings-panel="configuration">
+        <div class="settings-tab" data-settings-panel="models">
+          <div class="settings-header">
+            <h3 data-i18n="settings.models.title">Models</h3>
+          </div>
           <div class="settings-body">
             <div class="settings-section">
               <div
@@ -1919,94 +2021,6 @@
                 </div>
               </div>
             </div>
-            <div
-              class="settings-section"
-              id="settings-auth-section"
-              style="display: none"
-            >
-              <div
-                class="settings-section-title"
-                data-i18n="settings.protection"
-              >
-                Protection
-              </div>
-              <div class="settings-row">
-                <span class="settings-label" data-i18n="settings.requireLogin"
-                  >Require login</span
-                >
-                <button class="settings-toggle" id="toggle-auth"></button>
-              </div>
-            </div>
-
-            <div class="settings-section">
-              <div class="settings-section-title" data-i18n="settings.agent">
-                Agent
-              </div>
-              <div class="settings-config-meta">
-                <span class="settings-label" data-i18n="settings.agentConfigFile"
-                  >Agent config file</span
-                >
-                <span class="settings-config-path-row">
-                  <span
-                    class="settings-static-value settings-config-path"
-                    id="inline-config-path"
-                    title=""
-                  ></span>
-                  <button
-                    type="button"
-                    class="ui-icon-button ui-icon-button--xs ui-icon-button--ghost settings-config-path-copy"
-                    id="inline-config-path-copy"
-                    title="Copy path"
-                    data-i18n-title="settings.copyConfigPath"
-                    aria-label="Copy path"
-                    data-i18n-aria-label="settings.copyConfigPath"
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      aria-hidden="true"
-                    >
-                      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-                      <path
-                        d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"
-                      />
-                    </svg>
-                  </button>
-                </span>
-              </div>
-              <textarea
-                class="ui-textarea config-editor-textarea settings-config-textarea"
-                id="inline-config-textarea"
-                spellcheck="false"
-                autocomplete="off"
-                autocorrect="off"
-                autocapitalize="off"
-              ></textarea>
-              <div class="settings-config-actions">
-                <div
-                  class="config-editor-error settings-save-status hidden"
-                  id="inline-config-error"
-                  aria-live="polite"
-                  role="status"
-                ></div>
-                <div class="settings-config-button-group">
-                  <button
-                    class="ui-button ui-button--primary"
-                    id="inline-config-save"
-                    data-i18n="migrated.index.text.save"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            </div>
-
             <div class="settings-section">
               <div
                 class="settings-section-title"
@@ -2074,6 +2088,170 @@
                   <button
                     class="ui-button ui-button--primary"
                     id="inline-models-save"
+                    data-i18n="migrated.index.text.save"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="settings-tab" data-settings-panel="configuration">
+          <div class="settings-header">
+            <h3 data-i18n="settings.configuration">Advanced Configuration</h3>
+          </div>
+          <div class="settings-body">
+            <div class="settings-section">
+              <div class="settings-section-title" data-i18n="settings.agent">
+                Agent
+              </div>
+              <div class="settings-config-meta">
+                <span
+                  class="settings-label"
+                  data-i18n="settings.agentConfigFile"
+                  >Agent config file</span
+                >
+                <span class="settings-config-path-row">
+                  <span
+                    class="settings-static-value settings-config-path"
+                    id="inline-config-path"
+                    title=""
+                  ></span>
+                  <button
+                    type="button"
+                    class="ui-icon-button ui-icon-button--xs ui-icon-button--ghost settings-config-path-copy"
+                    id="inline-config-path-copy"
+                    title="Copy path"
+                    data-i18n-title="settings.copyConfigPath"
+                    aria-label="Copy path"
+                    data-i18n-aria-label="settings.copyConfigPath"
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                      <path
+                        d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"
+                      />
+                    </svg>
+                  </button>
+                </span>
+              </div>
+              <textarea
+                class="ui-textarea config-editor-textarea settings-config-textarea"
+                id="inline-config-textarea"
+                spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+              ></textarea>
+              <div class="settings-config-actions">
+                <div
+                  class="config-editor-error settings-save-status hidden"
+                  id="inline-config-error"
+                  aria-live="polite"
+                  role="status"
+                ></div>
+                <div class="settings-config-button-group">
+                  <button
+                    class="ui-button ui-button--primary"
+                    id="inline-config-save"
+                    data-i18n="migrated.index.text.save"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-section-title" data-i18n="settings.agentsMd">
+                AGENTS.md
+              </div>
+              <div class="settings-config-meta">
+                <span
+                  class="settings-label"
+                  data-i18n="settings.agentsContextFile"
+                  >Agent context file (AGENTS.md)</span
+                >
+                <span
+                  class="settings-static-value"
+                  id="agents-md-path"
+                  title=""
+                ></span>
+              </div>
+              <textarea
+                class="ui-textarea config-editor-textarea settings-config-textarea"
+                id="agents-md-textarea"
+                spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+              ></textarea>
+              <div class="settings-config-actions">
+                <div
+                  class="config-editor-error settings-save-status hidden"
+                  id="agents-md-error"
+                  aria-live="polite"
+                  role="status"
+                ></div>
+                <div class="settings-config-button-group">
+                  <button
+                    class="ui-button ui-button--primary"
+                    id="agents-md-save"
+                    data-i18n="migrated.index.text.save"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div
+                class="settings-section-title"
+                data-i18n="settings.appendSystemMd"
+              >
+                APPEND_SYSTEM.md
+              </div>
+              <div class="settings-config-meta">
+                <span
+                  class="settings-label"
+                  data-i18n="settings.appendSystemPromptFile"
+                  >Append system prompt file (APPEND_SYSTEM.md)</span
+                >
+                <span
+                  class="settings-static-value"
+                  id="append-system-md-path"
+                  title=""
+                ></span>
+              </div>
+              <textarea
+                class="ui-textarea config-editor-textarea settings-config-textarea"
+                id="append-system-md-textarea"
+                spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+              ></textarea>
+              <div class="settings-config-actions">
+                <div
+                  class="config-editor-error settings-save-status hidden"
+                  id="append-system-md-error"
+                  aria-live="polite"
+                  role="status"
+                ></div>
+                <div class="settings-config-button-group">
+                  <button
+                    class="ui-button ui-button--primary"
+                    id="append-system-md-save"
                     data-i18n="migrated.index.text.save"
                   >
                     Save

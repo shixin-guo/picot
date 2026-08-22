@@ -12,6 +12,9 @@ function setupDom() {
     "file-sidebar-git-tab": "button",
     "file-sidebar-path": "div",
     "file-sidebar-up": "button",
+    "file-sidebar-refresh": "button",
+    "file-sidebar-toggle-hidden": "button",
+    "git-panel-refresh": "button",
     "file-sidebar-finder": "button",
     "git-panel": "div",
     "file-list": "div",
@@ -87,5 +90,84 @@ describe("setupGitPanel integration", () => {
     const statusCommand = runtime.sent.find((m) => m.type === "status");
     expect(statusCommand).toBeDefined();
     expect(statusCommand.requestId).toMatch(/^git-\d+$/);
+  });
+
+  it("toggles sidebar header controls with the Files/Git tab", async () => {
+    const { setupGitPanel } = await import("./git-panel-integration.js");
+    const { container, fileList } = setupDom();
+    const runtime = createRuntime();
+
+    const result = setupGitPanel({
+      runtime,
+      getTarget: () => ({ workspaceId: "ws-1" }),
+      container,
+      fileList,
+      filePreviewPanel: { openDiff: vi.fn() },
+      onError: vi.fn(),
+    });
+
+    const refresh = document.getElementById("file-sidebar-refresh");
+    const toggleHidden = document.getElementById("file-sidebar-toggle-hidden");
+    const gitRefresh = document.getElementById("git-panel-refresh");
+    // Files tab: file controls visible, git refresh hidden.
+    expect(refresh.classList.contains("hidden")).toBe(false);
+    expect(toggleHidden.classList.contains("hidden")).toBe(false);
+    expect(gitRefresh.classList.contains("hidden")).toBe(true);
+
+    result.setTab("git");
+    expect(refresh.classList.contains("hidden")).toBe(true);
+    expect(toggleHidden.classList.contains("hidden")).toBe(true);
+    expect(gitRefresh.classList.contains("hidden")).toBe(false);
+
+    result.setTab("files");
+    expect(refresh.classList.contains("hidden")).toBe(false);
+    expect(gitRefresh.classList.contains("hidden")).toBe(true);
+  });
+
+  it("marks the panel not-a-repo when the status probe fails with git's not-a-repository error", async () => {
+    const { setupGitPanel } = await import("./git-panel-integration.js");
+    const { container, fileList } = setupDom();
+    const runtime = createRuntime();
+    runtime.git = vi.fn(async () => ({
+      type: "git_command_failed",
+      error: "fatal: not a git repository (or any of the parent directories): .git",
+    }));
+
+    const result = setupGitPanel({
+      runtime,
+      getTarget: () => ({ workspaceId: "ws-1" }),
+      container,
+      fileList,
+      filePreviewPanel: { openDiff: vi.fn() },
+      onError: vi.fn(),
+    });
+
+    result.setTab("git");
+    await vi.waitFor(() => expect(result.panel.notGitRepo).toBe(true));
+    // The commit-failure path must NOT run for a status-probe failure.
+    expect(result.panel.aiError).toBeNull();
+  });
+
+  it("routes non-repository status failures to commit failure handling, not not-a-repo", async () => {
+    const { setupGitPanel } = await import("./git-panel-integration.js");
+    const { container, fileList } = setupDom();
+    const runtime = createRuntime();
+    runtime.git = vi.fn(async () => ({
+      type: "git_command_failed",
+      error: "git binary not found",
+    }));
+
+    const result = setupGitPanel({
+      runtime,
+      getTarget: () => ({ workspaceId: "ws-1" }),
+      container,
+      fileList,
+      filePreviewPanel: { openDiff: vi.fn() },
+      onError: vi.fn(),
+    });
+
+    result.setTab("git");
+    await vi.waitFor(() => expect(result.panel.aiError).toBe("git binary not found"));
+    expect(result.panel.notGitRepo).toBe(false);
   });
 });

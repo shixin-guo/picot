@@ -191,6 +191,8 @@ const HOME_DIR = resolveHomeDir();
 const PI_AGENT_ROOT = resolvePiAgentRoot();
 const MODELS_PREFS_PATH = path.join(PI_AGENT_ROOT, "picot-models.json");
 const AGENT_CONFIG_PATH = path.join(PI_AGENT_ROOT, "settings.json");
+const AGENTS_MD_PATH = path.join(PI_AGENT_ROOT, "AGENTS.md");
+const APPEND_SYSTEM_MD_PATH = path.join(PI_AGENT_ROOT, "APPEND_SYSTEM.md");
 const MODELS_CONFIG_PATH = path.join(PI_AGENT_ROOT, "models.json");
 const CHAT_CONFIG_PATH = path.join(PI_AGENT_ROOT, "chat", "config.json");
 const AUTH_CONFIG_PATH = path.join(PI_AGENT_ROOT, "auth.json");
@@ -440,6 +442,31 @@ function writeConfigFile(filePath: string, content: unknown): void {
   }
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content, "utf8");
+}
+
+// Plain-text counterpart of readConfigFile/writeConfigFile for agent-root
+// markdown files (AGENTS.md / APPEND_SYSTEM.md). A missing file is not an
+// error — it reads as empty content so the editor starts from a blank file.
+function readTextFile(filePath: string): { content: string; path: string; exists: boolean } {
+  const exists = fs.existsSync(filePath);
+  const content = exists ? fs.readFileSync(filePath, "utf8") : "";
+  return { content, path: filePath, exists };
+}
+
+function writeTextFile(filePath: string, content: unknown): void {
+  if (typeof content !== "string") throw new Error("content must be a string");
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, "utf8");
+}
+
+/**
+ * Copy the current config file to `<path>.bak` before an overwrite, so a bad
+ * save can be rolled back. No-op when the file does not exist yet.
+ */
+function backupConfigFile(configPath: string): void {
+  if (fs.existsSync(configPath)) {
+    fs.copyFileSync(configPath, `${configPath}.bak`);
+  }
 }
 
 async function refreshRegistryBestEffort(registry?: CatalogRegistry): Promise<boolean> {
@@ -854,6 +881,28 @@ export async function handlePicotConfig(
         return { ok: true, data: { path: AGENT_CONFIG_PATH } };
       }
 
+      // Global agent context / system-prompt append file read/write. AGENTS.md
+      // is injected as global context instructions and APPEND_SYSTEM.md is
+      // appended to the system prompt without replacing it (pi docs "System
+      // Prompt Files"); project-level .pi/ files are workspace files and are
+      // edited through the workspace file browser instead. Markdown is plain
+      // text, so no JSON validation applies.
+      case "read_agents_md":
+        return { ok: true, data: readTextFile(AGENTS_MD_PATH) };
+
+      case "write_agents_md": {
+        writeTextFile(AGENTS_MD_PATH, params.content);
+        return { ok: true, data: { path: AGENTS_MD_PATH } };
+      }
+
+      case "read_append_system_md":
+        return { ok: true, data: readTextFile(APPEND_SYSTEM_MD_PATH) };
+
+      case "write_append_system_md": {
+        writeTextFile(APPEND_SYSTEM_MD_PATH, params.content);
+        return { ok: true, data: { path: APPEND_SYSTEM_MD_PATH } };
+      }
+
       case "get_default_thinking_level":
         return { ok: true, data: getDefaultThinkingLevel(params.scope, ctx) };
 
@@ -882,6 +931,9 @@ export async function handlePicotConfig(
         ) {
           throw new Error("'providers' must be an object");
         }
+        // Keep a safety copy of the previous models.json so a bad save can be
+        // rolled back; the frontend can restore it if the new content breaks.
+        backupConfigFile(MODELS_CONFIG_PATH);
         writeConfigFile(MODELS_CONFIG_PATH, content);
         const refreshed = await refreshRegistryBestEffort(registry);
         return { ok: true, data: { path: MODELS_CONFIG_PATH, refreshed } };

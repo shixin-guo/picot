@@ -1442,9 +1442,13 @@ async fn dispatch(
                     .get("path")
                     .and_then(Value::as_str)
                     .unwrap_or_default();
+                let show_hidden = frame
+                    .get("showHidden")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
                 let entries = state
                     .data
-                    .list_files(workspace_id, relative_path)
+                    .list_files(workspace_id, relative_path, show_hidden)
                     .map_err(host_data_error)?;
                 Ok(json!({
                     "type": "data_response",

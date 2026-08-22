@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { setupSettingsConfig } from "./settings-config.js";
+import { setupModelsPage } from "./models-page.js";
 
 describe("models provider editor", () => {
   let dom;
@@ -81,7 +81,7 @@ describe("models provider editor", () => {
   });
 
   test("opens the advanced JSON editor in a modal dialog", async () => {
-    const editor = setupSettingsConfig({ configGateway: { call } });
+    const editor = setupModelsPage({ configGateway: { call } });
     await editor.loadInlineModelsEditor();
 
     const trigger = document.querySelector(".models-config-source-button");
@@ -98,7 +98,7 @@ describe("models provider editor", () => {
   });
 
   test("switches providers without removing siblings from models.json", async () => {
-    const editor = setupSettingsConfig({ configGateway: { call } });
+    const editor = setupModelsPage({ configGateway: { call } });
     await editor.loadInlineModelsEditor();
 
     const providerButtons = document.querySelectorAll(".models-provider-item");
@@ -118,7 +118,7 @@ describe("models provider editor", () => {
   });
 
   test("combines stored API-key and custom providers in one master-detail layout", async () => {
-    const editor = setupSettingsConfig({ configGateway: { call } });
+    const editor = setupModelsPage({ configGateway: { call } });
     await editor.loadInlineModelsEditor();
     await editor.loadApiKeysPanel();
 
@@ -180,7 +180,7 @@ describe("models provider editor", () => {
       }
       throw new Error(`Unexpected operation: ${operation}`);
     });
-    const editor = setupSettingsConfig({ configGateway: { call: customCall } });
+    const editor = setupModelsPage({ configGateway: { call: customCall } });
     await editor.loadInlineModelsEditor();
     await editor.loadApiKeysPanel();
 
@@ -207,7 +207,7 @@ describe("models provider editor", () => {
       if (operation === "read_models_config") return pendingModelsConfig;
       return call(operation);
     });
-    const editor = setupSettingsConfig({ configGateway: { call: delayedCall } });
+    const editor = setupModelsPage({ configGateway: { call: delayedCall } });
     const modelsLoad = editor.loadInlineModelsEditor();
 
     await editor.loadApiKeysPanel();
@@ -225,7 +225,7 @@ describe("models provider editor", () => {
 
   test("adds a model and saves the complete provider configuration", async () => {
     const onModelConfigurationChanged = vi.fn();
-    const editor = setupSettingsConfig({
+    const editor = setupModelsPage({
       configGateway: { call },
       onModelConfigurationChanged,
     });
@@ -249,7 +249,7 @@ describe("models provider editor", () => {
   });
 
   test("add-provider dialog uses themed overlay primitives", async () => {
-    const editor = setupSettingsConfig({ configGateway: { call } });
+    const editor = setupModelsPage({ configGateway: { call } });
     await editor.loadInlineModelsEditor();
 
     document.querySelector(".models-provider-add").click();

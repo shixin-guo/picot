@@ -45,6 +45,48 @@ const BRAIN_ICON =
   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px" aria-hidden="true"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 5v13"/><path d="M6.5 9h11"/><path d="M7 13h10"/></svg>';
 const AUTO_SCROLL_BOTTOM_TOLERANCE = 1;
 
+/**
+ * Format a message timestamp for a chat log.
+ *
+ * Same calendar day (local time) → "HH:MM". A different day → "MM/DD HH:MM"
+ * (no i18n — the numeric form reads the same across locales). Invalid or
+ * missing input → "" so callers can render unconditionally and omit the
+ * span when there is nothing to show. Intentionally does NOT reuse the
+ * sidebar's relative-time `formatSessionTime`; chat logs want absolute
+ * clock times, not "2h ago".
+ */
+export function formatMessageTime(timestampMs) {
+  // null / undefined must short-circuit before Number(): Number(null) === 0
+  // is a finite value and would otherwise render the epoch as a real time.
+  if (timestampMs == null) return "";
+  const ms = Number(timestampMs);
+  if (!Number.isFinite(ms)) return "";
+  const date = new Date(ms);
+  // Number.isFinite(1e20) passes, but new Date(1e20) is invalid (getTime → NaN).
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  const pad = (n) => String(n).padStart(2, "0");
+  const hhmm = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  if (sameDay) return hhmm;
+  return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${hhmm}`;
+}
+
+/** Full timestamp for the hover `title` (screen-reader / exact reference). */
+function fullTimestampTitle(timestampMs) {
+  const ms = Number(timestampMs);
+  if (!Number.isFinite(ms)) return "";
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
+    d.getHours(),
+  )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 export class MessageRenderer {
   constructor(container) {
     this.container = container;
@@ -202,6 +244,8 @@ export class MessageRenderer {
 
     const footer = document.createElement("div");
     footer.className = "message-footer";
+    const timeSpan = this._createTimeSpan(message.timestamp);
+    if (timeSpan) footer.appendChild(timeSpan);
     footer.appendChild(this._createCopyButton());
     const forkEntryId = entryId ?? message.entryId ?? message.entry_id ?? null;
     if (forkEntryId) {
@@ -209,6 +253,7 @@ export class MessageRenderer {
       footer.appendChild(this._createForkButton());
     }
     div.appendChild(footer);
+    this._setupFooterHover(content, footer);
 
     this.container.appendChild(div);
     this._setupCodeCopyButtons(div);
@@ -262,6 +307,10 @@ export class MessageRenderer {
         usageHtml = `<span class="message-usage">$${cost.toFixed(4)}</span>`;
       }
     }
+    const timeLabel = formatMessageTime(message.timestamp);
+    const timeHtml = timeLabel
+      ? `<span class="message-time" title="${this.escapeHtml(fullTimestampTitle(message.timestamp))}">${timeLabel}</span>`
+      : "";
 
     const streamingClass = isStreaming ? " streaming" : "";
 
@@ -269,7 +318,7 @@ export class MessageRenderer {
 
     const showFooter = !isStreaming && !isProcessMessage && (hasText || usageHtml);
     const footerHtml = showFooter
-      ? `<div class="message-footer">${hasText ? `<button class="message-copy-btn" aria-label="${this.escapeHtml(t("messages.copyMessage"))}" title="${this.escapeHtml(t("messages.copyMessage"))}">${COPY_ICON}</button>` : ""}${usageHtml}</div>`
+      ? `<div class="message-footer">${hasText ? `<button class="message-copy-btn" aria-label="${this.escapeHtml(t("messages.copyMessage"))}" title="${this.escapeHtml(t("messages.copyMessage"))}">${COPY_ICON}</button>` : ""}${timeHtml}${usageHtml}</div>`
       : "";
 
     this._replaceMarkup(
@@ -423,6 +472,9 @@ export class MessageRenderer {
 
       if (copyableText) footer.appendChild(this._createCopyButton());
 
+      const timeSpan = this._createTimeSpan(Date.now());
+      if (timeSpan) footer.appendChild(timeSpan);
+
       if (hasUsage) {
         const span = document.createElement("span");
         span.className = "message-usage";
@@ -509,8 +561,54 @@ export class MessageRenderer {
     return element;
   }
 
+  /** Timestamp span for the message footer; null when there is no valid time. */
+  _createTimeSpan(timestampMs) {
+    const label = formatMessageTime(timestampMs);
+    if (!label) return null;
+    const span = document.createElement("span");
+    span.className = "message-time";
+    span.textContent = label;
+    const title = fullTimestampTitle(timestampMs);
+    if (title) span.title = title;
+    return span;
+  }
+
+  /**
+   * Show/hide the user message footer on hover. Footer visibility is
+   * JS-driven (not pure CSS :hover) because a long user message fills the
+   * row width, so `:hover` on the message block never actually ends when
+   * the pointer moves to the empty side — the footer would never hide. Here
+   * we scope the hover to the bubble (.message-content) and the footer
+   * itself, with a tiny grace timer so moving between the two does not
+   * flicker. `:focus-within` still reveals the footer via CSS for keyboard
+   * users.
+   */
+  _setupFooterHover(contentEl, footerEl) {
+    if (!contentEl || !footerEl) return;
+    let hideTimer = 0;
+    const show = () => {
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = 0;
+      }
+      footerEl.classList.add("visible");
+    };
+    const hideSoon = () => {
+      if (hideTimer) clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => {
+        hideTimer = 0;
+        footerEl.classList.remove("visible");
+      }, 80);
+    };
+    for (const el of [contentEl, footerEl]) {
+      el.addEventListener("mouseenter", show);
+      el.addEventListener("mouseleave", hideSoon);
+    }
+  }
+
   _createCopyButton() {
     const button = document.createElement("button");
+    button.type = "button";
     button.className = "message-copy-btn";
     button.setAttribute("aria-label", t("messages.copyMessage"));
     button.title = t("messages.copyMessage");

@@ -42,7 +42,41 @@ describe("GitPanel", () => {
     expect(panel.container.querySelector("script")).toBeNull();
   });
 
-  it("renders a compact status toolbar with primary commit and secondary refresh actions", () => {
+  it("shows the not-a-repository message instead of no-status when setNotGitRepo is set", () => {
+    const panel = new GitPanel({
+      container: document.querySelector("#panel"),
+      client: { command: vi.fn() },
+    });
+    panel.setNotGitRepo(true);
+    expect(panel.container.textContent).toContain("This workspace is not a Git repository");
+    expect(panel.container.textContent).not.toContain("No Git status loaded");
+
+    // A successful snapshot clears the not-git state and renders groups again.
+    panel.setSnapshot({ entries: [{ entryKind: "ordinary", xy: ".M", displayPath: "app.js" }] });
+    expect(panel.container.textContent).toContain("app.js");
+    expect(panel.container.textContent).not.toContain("This workspace is not a Git repository");
+  });
+
+  it("only treats the most recent status probe failure as not-a-repository", () => {
+    const command = vi.fn().mockReturnValue("git-7");
+    const panel = new GitPanel({
+      container: document.querySelector("#panel"),
+      client: { command },
+    });
+    void panel.refresh();
+    expect(panel.isStatusFailure("git-7")).toBe(true);
+    // Stale / concurrent non-status failures must not match.
+    expect(panel.isStatusFailure("git-6")).toBe(false);
+    expect(panel.isStatusFailure(null)).toBe(false);
+    expect(panel.isStatusFailure(undefined)).toBe(false);
+
+    // A successful snapshot retires the status probe so later failures of
+    // the same requestId cannot flip the panel back into not-a-repository.
+    panel.setSnapshot({ entries: [] });
+    expect(panel.isStatusFailure("git-7")).toBe(false);
+  });
+
+  it("renders commit controls but leaves status refresh to the shared sidebar header", () => {
     const command = vi.fn();
     const panel = new GitPanel({
       container: document.querySelector("#panel"),
@@ -60,7 +94,7 @@ describe("GitPanel", () => {
 
     const toolbar = panel.container.querySelector(".git-panel-toolbar");
     expect(toolbar?.querySelector(".git-panel-summary")?.textContent).toContain("feature/panel");
-    expect(toolbar?.querySelector(".git-panel-refresh")).not.toBeNull();
+    expect(toolbar?.querySelector(".git-panel-refresh")).toBeNull();
     expect(panel.container.querySelector(".git-panel-commit")).not.toBeNull();
     expect(panel.container.querySelector(".git-panel-stats")).not.toBeNull();
   });

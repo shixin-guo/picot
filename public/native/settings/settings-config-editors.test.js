@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { JSDOM } from "jsdom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { initI18n, setLocale } from "../../i18n.js";
-import { setupSettingsConfig } from "./settings-config.js";
+import { setupModelsPage } from "./models-page.js";
 
 function makeCatalogResponse(providers) {
   return { ok: true, data: { providers } };
@@ -81,7 +81,7 @@ describe("settings API key model refresh", () => {
       throw new Error(`Unexpected operation: ${operation}`);
     });
 
-    const { loadApiKeysPanel } = setupSettingsConfig({
+    const { loadApiKeysPanel } = setupModelsPage({
       configGateway: { call },
       onModelConfigurationChanged,
     });
@@ -117,7 +117,7 @@ describe("settings API key model refresh", () => {
       throw new Error(`Unexpected operation: ${operation}`);
     });
 
-    const { loadApiKeysPanel } = setupSettingsConfig({
+    const { loadApiKeysPanel } = setupModelsPage({
       configGateway: { call },
       onModelConfigurationChanged: vi.fn(),
     });
@@ -156,7 +156,7 @@ describe("settings API key model refresh", () => {
       throw new Error(`Unexpected operation: ${operation}`);
     });
 
-    const { loadApiKeysPanel } = setupSettingsConfig({
+    const { loadApiKeysPanel } = setupModelsPage({
       configGateway: { call },
       onModelConfigurationChanged: vi.fn(),
     });
@@ -194,7 +194,7 @@ describe("settings API key model refresh", () => {
       throw new Error(`Unexpected operation: ${operation}`);
     });
 
-    const { loadApiKeysPanel } = setupSettingsConfig({
+    const { loadApiKeysPanel } = setupModelsPage({
       configGateway: { call },
       onModelConfigurationChanged: vi.fn(),
     });
@@ -252,7 +252,7 @@ describe("settings API key model refresh", () => {
       throw new Error(`Unexpected operation: ${operation}`);
     });
 
-    const { loadApiKeysPanel } = setupSettingsConfig({
+    const { loadApiKeysPanel } = setupModelsPage({
       configGateway: { call },
       onModelConfigurationChanged: vi.fn(),
     });
@@ -290,7 +290,7 @@ describe("settings API key model refresh", () => {
       throw new Error(`Unexpected operation: ${operation}`);
     });
 
-    const { loadApiKeysPanel } = setupSettingsConfig({
+    const { loadApiKeysPanel } = setupModelsPage({
       configGateway: { call },
       onModelConfigurationChanged: vi.fn(),
     });
@@ -331,7 +331,7 @@ describe("settings API key model refresh", () => {
       throw new Error(`Unexpected operation: ${operation}`);
     });
 
-    const { loadApiKeysPanel } = setupSettingsConfig({
+    const { loadApiKeysPanel } = setupModelsPage({
       configGateway: { call },
       onModelConfigurationChanged,
     });
@@ -378,7 +378,7 @@ describe("settings API key model refresh", () => {
       throw new Error(`Unexpected operation: ${operation}`);
     });
 
-    const { loadApiKeysPanel } = setupSettingsConfig({
+    const { loadApiKeysPanel } = setupModelsPage({
       configGateway: { call },
       onModelConfigurationChanged,
     });
@@ -434,7 +434,7 @@ describe("settings API key model refresh", () => {
       throw new Error(`Unexpected operation: ${operation}`);
     });
 
-    const { loadApiKeysPanel } = setupSettingsConfig({
+    const { loadApiKeysPanel } = setupModelsPage({
       configGateway: { call },
       onModelConfigurationChanged: vi.fn(),
     });
@@ -476,7 +476,7 @@ describe("settings API key model refresh", () => {
       throw new Error(`Unexpected operation: ${operation}`);
     });
 
-    const { loadApiKeysPanel } = setupSettingsConfig({
+    const { loadApiKeysPanel } = setupModelsPage({
       configGateway: { call },
       onModelConfigurationChanged: vi.fn(),
     });
@@ -556,7 +556,7 @@ describe("settings API key model refresh", () => {
       throw new Error(`Unexpected operation: ${operation}`);
     });
 
-    const { loadApiKeysPanel } = setupSettingsConfig({
+    const { loadApiKeysPanel } = setupModelsPage({
       configGateway: { call },
       onModelConfigurationChanged: vi.fn(),
     });

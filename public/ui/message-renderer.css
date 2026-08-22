@@ -107,11 +107,38 @@
 .message.assistant {
   align-self: flex-start;
 }
+
+/* Timestamp + cost share one styling: same font size, colour, tabular numerals. */
+.message-time,
 .message-usage {
-  display: inline-block;
   font-size: var(--font-size-sm);
   color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.message-usage {
+  display: inline-block;
   opacity: 0.5;
+}
+
+/* User footer: hidden until hover/focus. Visibility is JS-driven via a
+   `.visible` class (see _setupFooterHover), because a long user message
+   fills the row width and a CSS :hover on the block never ends. Touch
+   devices have no hover, so the footer stays visible there. */
+.message.user .message-footer {
+  opacity: 0;
+  transition: opacity 0.15s var(--ease);
+}
+
+.message.user .message-footer.visible,
+.message.user:focus-within .message-footer {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .message.user .message-footer {
+    opacity: 1;
+  }
 }
 
 /* biome-ignore lint/style/noDescendingSpecificity: base styles defined after scoped overrides intentionally */
@@ -421,6 +448,7 @@ body.hide-thinking .thinking-block {
    Message footer: cost + copy button (inline row)
    ═══════════════════════════════════════════════════════ */
 
+/* biome-ignore lint/style/noDescendingSpecificity: base styles defined after scoped overrides intentionally */
 .message-footer {
   display: flex;
   flex-direction: row;

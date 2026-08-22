@@ -279,6 +279,33 @@ fn message_with_entry_id(mut message: serde_json::Value, entry_id: &str) -> serd
     message
 }
 
+/// Remove a session file trash-first: move it to the OS trash via the
+/// `trash` CLI when available (matching Pi TUI's deleteSessionFile policy),
+/// falling back to a permanent unlink otherwise. A missing `trash` binary
+/// (e.g. Windows) simply fails the spawn and falls back to unlink.
+fn remove_session_file_trash_first_with(
+    path: &std::path::Path,
+    spawn_trash: impl Fn(&std::path::Path) -> bool,
+) -> std::io::Result<()> {
+    // Trash reports success, or the file is already gone — both are success.
+    if spawn_trash(path) || !path.exists() {
+        return Ok(());
+    }
+    std::fs::remove_file(path)
+}
+
+fn remove_session_file_trash_first(path: &std::path::Path) -> std::io::Result<()> {
+    remove_session_file_trash_first_with(path, |target| {
+        std::process::Command::new("trash")
+            .arg(target)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    })
+}
+
 /// Parse a number from `git diff --shortstat` output for a given keyword.
 /// e.g. `parse_shortstat_num("3 files changed, 10 insertions(+)", "insertion")` → 10
 fn parse_shortstat_num(line: &str, keyword: &str) -> u32 {
@@ -361,6 +388,7 @@ impl HostDataPlane {
         &self,
         workspace_id: &str,
         relative_path: &str,
+        show_hidden: bool,
     ) -> Result<Vec<FileEntry>, HostDataError> {
         let root = self.workspace_root(workspace_id)?;
         let root = root.as_path();
@@ -371,6 +399,9 @@ impl HostDataPlane {
         let mut entries = std::fs::read_dir(&requested)
             .map_err(|error| HostDataError::Io(error.to_string()))?
             .filter_map(Result::ok)
+            // Dotfiles stay hidden unless the caller explicitly opts in via
+            // the File panel's show-hidden toggle (same default as Pi TUI).
+            .filter(|entry| show_hidden || !entry.file_name().to_string_lossy().starts_with('.'))
             .filter_map(|entry| {
                 let file_type = entry.file_type().ok()?;
                 let kind = if file_type.is_dir() {
@@ -1133,7 +1164,7 @@ impl HostDataPlane {
                 if !requested.contains(session_id.as_str()) {
                     continue;
                 }
-                match std::fs::remove_file(&path) {
+                match remove_session_file_trash_first(&path) {
                     Ok(()) => {
                         deleted.insert(session_id);
                     }
@@ -2177,22 +2208,54 @@ mod tests {
         let workspace = temp.join("workspace");
         fs::create_dir_all(workspace.join("src")).unwrap();
         fs::write(workspace.join("README.md"), "read me").unwrap();
+        fs::write(workspace.join(".hidden"), "dotfile").unwrap();
         fs::write(temp.join("secret.txt"), "secret").unwrap();
         let data =
             HostDataPlane::new(HashMap::from([("workspace-a".into(), workspace.clone())])).unwrap();
 
-        let entries = data.list_files("workspace-a", "").unwrap();
+        let entries = data.list_files("workspace-a", "", false).unwrap();
         assert_eq!(entries[0].name, "src");
         assert_eq!(entries[0].kind, FileKind::Directory);
         assert_eq!(entries[1].relative_path, "README.md");
         assert_eq!(
-            data.list_files("workspace-a", "../"),
+            data.list_files("workspace-a", "../", false),
             Err(HostDataError::InvalidRelativePath)
         );
         assert_eq!(
-            data.list_files("missing", ""),
+            data.list_files("missing", "", false),
             Err(HostDataError::UnknownWorkspace)
         );
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn list_files_hides_dotfiles_by_default_and_shows_them_when_opted_in() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp = std::env::temp_dir().join(format!("picot-host-hidden-{nonce}"));
+        let workspace = temp.join("workspace");
+        fs::create_dir_all(workspace.join(".git")).unwrap();
+        fs::write(workspace.join(".env"), "dotfile").unwrap();
+        fs::write(workspace.join("visible.txt"), "visible").unwrap();
+        let data = HostDataPlane::new(HashMap::from([("workspace-a".into(), workspace)])).unwrap();
+
+        let hidden = data
+            .list_files("workspace-a", "", false)
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect::<Vec<_>>();
+        assert_eq!(hidden, vec!["visible.txt"]);
+
+        let shown = data
+            .list_files("workspace-a", "", true)
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect::<Vec<_>>();
+        assert_eq!(shown, vec![".git", ".env", "visible.txt"]);
         fs::remove_dir_all(temp).unwrap();
     }
 
@@ -2251,7 +2314,7 @@ mod tests {
         symlink(&outside, workspace.join("escape")).unwrap();
         let data = HostDataPlane::new(HashMap::from([("workspace-a".into(), workspace)])).unwrap();
         assert_eq!(
-            data.list_files("workspace-a", "escape"),
+            data.list_files("workspace-a", "escape", false),
             Err(HostDataError::OutsideWorkspace)
         );
         fs::remove_dir_all(temp).unwrap();
@@ -2448,6 +2511,32 @@ mod tests {
         let all = data.list_all_sessions("workspace-a").unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].id, "session-a");
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn remove_session_file_trash_first_prefers_trash_and_falls_back_to_unlink() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp = std::env::temp_dir().join(format!("picot-host-trash-first-{nonce}"));
+        fs::create_dir_all(&temp).unwrap();
+        let file = temp.join("session.jsonl");
+        fs::write(&file, "{}").unwrap();
+
+        // Trash succeeds → Ok, and the fallback unlink is never attempted
+        // (proven by a second call on the same still-present file below).
+        assert!(super::remove_session_file_trash_first_with(&file, |_| true).is_ok());
+        assert!(file.exists());
+
+        // Trash fails → permanent unlink fallback removes the file.
+        assert!(super::remove_session_file_trash_first_with(&file, |_| false).is_ok());
+        assert!(!file.exists());
+
+        // Trash fails but the file is already gone → still Ok.
+        assert!(super::remove_session_file_trash_first_with(&file, |_| false).is_ok());
+
         fs::remove_dir_all(temp).unwrap();
     }
 

@@ -45,15 +45,6 @@ export function setupSettingsToggles({ configGateway, onError } = {}) {
       defaultValue: true,
     },
     {
-      id: "toggle-auth",
-      key: "auth-enabled",
-      defaultValue: false,
-      onChange: (enabled) => {
-        // Auth toggle state (actual auth logic is handled by the host)
-        document.body.dataset.authEnabled = enabled ? "on" : "off";
-      },
-    },
-    {
       id: "toggle-beta-updates",
       key: "beta-updates",
       defaultValue: false,

@@ -32,6 +32,7 @@
     "conflicted": "競合",
     "refresh": "Git状態を更新",
     "noStatus": "Gitステータスが読み込まれていません",
+    "notGitRepo": "このワークスペースは Git リポジトリではありません",
     "discardWarning": "この操作は元に戻せません",
     "writeUnavailable": "Git書き込み認証が利用できません",
     "stage": "ステージ",
@@ -102,7 +103,7 @@
   "models": {
     "searchPlaceholder": "モデルを検索…",
     "emptyTitle": "利用可能なモデルがありません",
-    "emptyHelp": "APIキーが設定されていません。設定 → プロバイダーでキーを設定してください。",
+    "emptyHelp": "APIキーが設定されていません。設定 → モデル でキーを設定してください。",
     "openSettings": "設定を開く"
   },
   "queue": {
@@ -160,6 +161,10 @@
     "empty": "空のディレクトリ",
     "failedLoad": "読み込み失敗",
     "parentDirectory": "親ディレクトリ",
+    "refreshDirectory": "ディレクトリを更新",
+    "refreshDirectoryAria": "現在のディレクトリ一覧を更新",
+    "showHiddenFiles": "隠しファイルを表示",
+    "showHiddenFilesAria": "ドットファイルや無視されたディレクトリの表示/非表示",
     "openInFileManager": "ファイルマネージャーで開く",
     "close": "ファイルブラウザを閉じる",
     "preview": {
@@ -473,6 +478,8 @@
     "pinWorkspace": "ワークスペースをピン留め",
     "unpinWorkspace": "ワークスペースのピン留めを解除",
     "archiveWorkspaceSessions": "セッションをアーカイブ",
+    "deleteWorkspaceSessions": "すべてのセッションを削除",
+    "deleteWorkspaceConfirm": "{count} 件のセッションを完全に削除します。この操作は取り消せません。",
     "openInFinder": "Finderで開く",
     "workspaceActions": "ワークスペースの操作",
     "sessionCountTotal": "{count}件のセッション",
@@ -573,7 +580,7 @@
     "general": "一般",
     "extensions": "拡張機能",
     "usage": "使用量",
-    "configuration": "プロバイダー",
+    "configuration": "詳細設定",
     "agentInbox": "エージェント受信箱",
     "backToChat": "チャットに戻る",
     "appearance": "外観",
@@ -597,6 +604,10 @@
     "protection": "保護",
     "requireLogin": "ログインを要求",
     "agentConfigFile": "エージェント設定ファイル",
+    "agentsMd": "AGENTS.md",
+    "agentsContextFile": "エージェントコンテキストファイル（AGENTS.md）",
+    "appendSystemMd": "APPEND_SYSTEM.md",
+    "appendSystemPromptFile": "システムプロンプト追記ファイル（APPEND_SYSTEM.md）",
     "providersFile": "プロバイダーファイル",
     "llmProviders": "LLMプロバイダー",
     "browseCommunityPackages": "コミュニティパッケージを閲覧",
@@ -635,6 +646,7 @@
       "configured": "設定済み"
     },
     "models": {
+      "title": "モデル",
       "helpPre": "編集",
       "helpPost1": "でカスタムプロバイダーを追加できます（Ollama、vLLM、LM Studio、OpenAI互換プロキシ、OpenRouterルーティングオーバーライドなど）。完全なスキーマは",
       "docsLink": "models.jsonドキュメント",
