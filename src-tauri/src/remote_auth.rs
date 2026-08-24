@@ -14,7 +14,7 @@ const PAIRING_LIFETIME_SECONDS: u64 = 5 * 60;
 pub const DEVICE_REQUEST_LIFETIME_SECONDS: u64 = 5 * 60;
 pub const MAX_DEVICE_REQUESTS: usize = 64;
 pub const MAX_DEVICE_ID_BYTES: usize = 128;
-pub const MAX_DEVICE_NAME_BYTES: usize = 128;
+pub const MAX_DEVICE_NAME_CHARS: usize = 128;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pairing {
@@ -311,7 +311,7 @@ fn validate_device_request_fields(
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
         || device_name.is_empty()
-        || device_name.len() > MAX_DEVICE_NAME_BYTES
+        || device_name.chars().count() > MAX_DEVICE_NAME_CHARS
         || device_name.chars().any(|ch| ch.is_control())
         || claim_secret.len() != 64
         || !claim_secret
@@ -424,6 +424,9 @@ mod tests {
             auth.create_device_request("device-phone", &"N".repeat(129), &"a".repeat(64), 1),
             Err(DeviceRequestError::Invalid)
         );
+        assert!(auth
+            .create_device_request("device-unicode", &"📱".repeat(128), &"a".repeat(64), 1)
+            .is_ok());
         let request = auth
             .create_device_request("device-phone", "Phone", &"a".repeat(64), 2)
             .unwrap();

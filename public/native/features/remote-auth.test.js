@@ -3,6 +3,7 @@ import {
   claimDeviceAccess,
   createClaimSecret,
   createDeviceAccessRequest,
+  deviceLabel,
   isLoopbackHost,
   pendingDeviceRequest,
   remoteDeviceId,
@@ -73,6 +74,14 @@ describe("remote auth", () => {
     expect(remoteDeviceId(localStorage)).toBe(first);
   });
 
+  it("bounds long iPhone labels to the Host character limit", () => {
+    const label = deviceLabel({
+      navigatorImpl: { platform: "iPhone", userAgent: "Safari".repeat(40) },
+    });
+    expect([...label]).toHaveLength(128);
+    expect(label).toMatch(/^iPhone - Safari/);
+  });
+
   it("creates a bounded proof-of-possession request and persists only its pending state", async () => {
     const localStorage = storage();
     const random = { getRandomValues: (bytes) => bytes.fill(7) };
@@ -91,7 +100,7 @@ describe("remote auth", () => {
       "/v2/auth/device-requests",
       expect.objectContaining({
         method: "POST",
-        body: expect.stringContaining('"deviceName":"iPhone · Safari"'),
+        body: expect.stringContaining('"deviceName":"iPhone - Safari"'),
       }),
     );
     expect(pendingDeviceRequest(localStorage)).toMatchObject({

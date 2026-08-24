@@ -22,7 +22,7 @@ export function remoteDeviceId(storage = globalThis.localStorage) {
 export function deviceLabel({ navigatorImpl = globalThis.navigator } = {}) {
   const platform = navigatorImpl?.platform || navigatorImpl?.userAgentData?.platform || "browser";
   const userAgent = navigatorImpl?.userAgent || "web browser";
-  const clean = `${platform} · ${userAgent}`.replace(/\p{Cc}/gu, "");
+  const clean = `${platform} - ${userAgent}`.replace(/\p{Cc}/gu, "");
   return clean.slice(0, MAX_DEVICE_NAME_LENGTH) || "Web browser";
 }
 
