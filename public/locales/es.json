@@ -8,11 +8,14 @@
     "title": "Proyectos",
     "hint": "Elige un proyecto o una sesión guardada en la barra lateral.",
     "invalidSession": "No se puede abrir esta sesión guardada.",
-    "pairingRequired": "Vincula este dispositivo para cargar los proyectos.",
-    "pairingHelp": "Pega un enlace de vinculación nuevo generado por Picot en el escritorio. Solo se requiere una vez para la app instalada.",
-    "pairingInput": "Pega el enlace o token de vinculación",
-    "pairDevice": "Vincular dispositivo",
-    "invalidPairing": "Introduce un enlace de vinculación de Picot válido y sin usar.",
+    "accessHint": "Solicita acceso desde la aplicación Picot de escritorio para cargar proyectos y sesiones.",
+    "requestAccess": "Solicitar acceso",
+    "requestingAccess": "Solicitando acceso…",
+    "waitingApproval": "Esperando la aprobación en Picot de escritorio…",
+    "accessApproved": "Acceso aprobado. Abriendo Picot…",
+    "accessDenied": "Acceso denegado. Solicítalo de nuevo para reintentar.",
+    "accessExpired": "La solicitud de acceso caducó. Solicítalo de nuevo.",
+    "accessNetworkError": "No se pudo conectar con la solicitud de acceso. Seguiremos reintentando.",
     "composerHint": "Selecciona una sesión guardada para comenzar a chatear"
   },
   "shortcuts": {
@@ -1092,5 +1095,13 @@
     "chooseProjectBeforeApproval": "Elige un proyecto antes de aprobar.",
     "loadingProjects": "Cargando proyectos…",
     "projectRunning": "{name} · en ejecución"
+  },
+  "remoteApproval": {
+    "title": "Solicitud de acceso remoto",
+    "unknownDevice": "Navegador desconocido",
+    "warning": "Al aprobar, este dispositivo tendrá acceso a los proyectos, indicaciones, herramientas y archivos disponibles en Picot.",
+    "deny": "Denegar",
+    "approve": "Aprobar",
+    "error": "No se pudo gestionar la solicitud. Es posible que ya se haya decidido."
   }
 }

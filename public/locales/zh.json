@@ -6,14 +6,17 @@
   },
   "launcher": {
     "title": "项目",
-    "hint": "请从侧边栏选择一个项目或已保存的会话。",
+    "hint": "从侧边栏选择项目或已保存的会话。",
     "invalidSession": "无法打开此已保存的会话。",
-    "pairingRequired": "配对此设备以加载项目。",
-    "pairingHelp": "粘贴桌面端生成的新 Picot 配对链接。安装到主屏幕后只需执行一次。",
-    "pairingInput": "粘贴配对链接或令牌",
-    "pairDevice": "配对设备",
-    "invalidPairing": "请输入有效且未使用的 Picot 配对链接。",
-    "composerHint": "选择一个已保存的会话以开始聊天"
+    "accessHint": "请从桌面 Picot 请求访问，以加载项目和会话。",
+    "requestAccess": "请求访问",
+    "requestingAccess": "正在请求访问…",
+    "waitingApproval": "等待桌面 Picot 批准…",
+    "accessApproved": "访问已批准。正在打开 Picot…",
+    "accessDenied": "访问被拒绝。再次请求以重试。",
+    "accessExpired": "访问请求已过期。请再次请求。",
+    "accessNetworkError": "无法连接访问请求。我们将继续重试。",
+    "composerHint": "选择已保存的会话以开始聊天"
   },
   "shortcuts": {
     "focusInput": "聚焦输入框",
@@ -1092,5 +1095,13 @@
     "chooseProjectBeforeApproval": "批准前请先选择项目。",
     "loadingProjects": "正在加载项目…",
     "projectRunning": "{name} · 运行中"
+  },
+  "remoteApproval": {
+    "title": "远程访问请求",
+    "unknownDevice": "未知浏览器",
+    "warning": "批准后，此设备将可以访问 Picot 中可用的项目、提示、工具和文件。",
+    "deny": "拒绝",
+    "approve": "批准",
+    "error": "无法处理该请求。它可能已经被处理。"
   }
 }

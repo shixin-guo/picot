@@ -78,6 +78,25 @@ impl HostRouter {
     }
 
     pub fn connect(&mut self, client_id: &str, hello: &Value) -> Result<(), RouterError> {
+        let kind = match hello.get("clientType").and_then(Value::as_str) {
+            Some("desktop") => ClientKind::Desktop,
+            Some("remote") => ClientKind::Remote,
+            _ => {
+                return Err(RouterError::new(
+                    "invalid_client_type",
+                    "Unsupported client type",
+                ))
+            }
+        };
+        self.connect_as(client_id, hello, kind)
+    }
+
+    pub fn connect_as(
+        &mut self,
+        client_id: &str,
+        hello: &Value,
+        kind: ClientKind,
+    ) -> Result<(), RouterError> {
         if hello.get("type").and_then(Value::as_str) != Some("hello") {
             return Err(RouterError::new(
                 "handshake_required",
@@ -92,16 +111,6 @@ impl HostRouter {
                 ),
             ));
         }
-        let kind = match hello.get("clientType").and_then(Value::as_str) {
-            Some("desktop") => ClientKind::Desktop,
-            Some("remote") => ClientKind::Remote,
-            _ => {
-                return Err(RouterError::new(
-                    "invalid_client_type",
-                    "Unsupported client type",
-                ))
-            }
-        };
         if client_id.is_empty() {
             return Err(RouterError::new(
                 "invalid_client_id",
@@ -117,7 +126,7 @@ impl HostRouter {
     }
 
     pub fn route(&self, client_id: &str, frame: &Value) -> Result<RoutedAction, RouterError> {
-        self.client_kind(client_id).ok_or_else(|| {
+        let kind = self.client_kind(client_id).ok_or_else(|| {
             RouterError::new("unauthorized_client", "Client has not completed handshake")
         })?;
         let frame_type = frame
@@ -130,6 +139,13 @@ impl HostRouter {
             .filter(|value| !value.is_empty())
             .ok_or_else(|| RouterError::new("invalid_frame", "requestId is required"))?
             .to_owned();
+
+        if frame_type == "auth_request" && kind == ClientKind::Remote {
+            return Err(RouterError::new(
+                "auth_forbidden",
+                "Remote clients cannot mint desktop pairing credentials",
+            ));
+        }
 
         match frame_type {
             "git_command" | "git_ai_commit_message" => {
@@ -299,6 +315,46 @@ mod tests {
             )
             .is_ok());
         assert_eq!(router.client_kind("client-a"), Some(ClientKind::Desktop));
+    }
+
+    #[test]
+    fn effective_remote_clients_cannot_self_declare_desktop_or_mint_pairings() {
+        let mut router = HostRouter::new();
+        let desktop_hello = json!({
+            "type": "hello",
+            "protocolVersion": PROTOCOL_VERSION,
+            "clientType": "desktop",
+        });
+        router
+            .connect_as("remote", &desktop_hello, ClientKind::Remote)
+            .unwrap();
+        assert_eq!(router.client_kind("remote"), Some(ClientKind::Remote));
+        let error = router
+            .route(
+                "remote",
+                &json!({
+                    "type": "auth_request",
+                    "requestId": "auth-1",
+                    "operation": "create_pairing",
+                }),
+            )
+            .unwrap_err();
+        assert_eq!(error.code, "auth_forbidden");
+
+        router
+            .connect_as("desktop", &desktop_hello, ClientKind::Desktop)
+            .unwrap();
+        assert!(matches!(
+            router.route(
+                "desktop",
+                &json!({
+                    "type": "auth_request",
+                    "requestId": "auth-2",
+                    "operation": "create_pairing",
+                }),
+            ),
+            Ok(RoutedAction::Auth { .. })
+        ));
     }
 
     #[test]

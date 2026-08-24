@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { isLoopbackHost, remoteDeviceId, resolveRemoteAuth } from "./remote-auth.js";
+import {
+  claimDeviceAccess,
+  createClaimSecret,
+  createDeviceAccessRequest,
+  isLoopbackHost,
+  pendingDeviceRequest,
+  remoteDeviceId,
+  resolveRemoteAuth,
+} from "./remote-auth.js";
 
 function storage() {
   const values = new Map();
@@ -63,5 +71,50 @@ describe("remote auth", () => {
     const localStorage = storage();
     const first = remoteDeviceId(localStorage);
     expect(remoteDeviceId(localStorage)).toBe(first);
+  });
+
+  it("creates a bounded proof-of-possession request and persists only its pending state", async () => {
+    const localStorage = storage();
+    const random = { getRandomValues: (bytes) => bytes.fill(7) };
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ requestId: "request-1", expiresAt: 4_000_000_000, pollAfterMs: 1200 }),
+    }));
+    const pending = await createDeviceAccessRequest({
+      storage: localStorage,
+      cryptoImpl: random,
+      navigatorImpl: { platform: "iPhone", userAgent: "Safari" },
+      fetchImpl,
+    });
+    expect(pending.claimSecret).toHaveLength(64);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/v2/auth/device-requests",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"deviceName":"iPhone · Safari"'),
+      }),
+    );
+    expect(pendingDeviceRequest(localStorage)).toMatchObject({
+      requestId: "request-1",
+      deviceId: pending.deviceId,
+    });
+  });
+
+  it("fails closed without Web Crypto and posts claims to only the claim endpoint", async () => {
+    expect(() => createClaimSecret({})).toThrow("Secure device approval");
+    const fetchImpl = vi.fn(async () => ({
+      status: 202,
+      ok: false,
+      json: async () => ({ status: "pending" }),
+    }));
+    await expect(
+      claimDeviceAccess({
+        requestId: "request-1",
+        deviceId: "device-1",
+        claimSecret: "a".repeat(64),
+        fetchImpl,
+      }),
+    ).resolves.toEqual({ status: 202, body: { status: "pending" } });
+    expect(fetchImpl.mock.calls[0][0]).toBe("/v2/auth/device-requests/request-1/claim");
   });
 });

@@ -1,0 +1,35 @@
+.remote-access-approval-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.remote-access-approval-dialog {
+  display: grid;
+  gap: var(--space-3);
+  width: min(calc(100vw - var(--space-6)), 32rem);
+  padding: var(--space-5);
+}
+
+.remote-access-approval-device {
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+  overflow-wrap: anywhere;
+}
+
+.remote-access-approval-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+
+.remote-access-approval-error {
+  color: var(--error);
+}
+
+.remote-access-approval-error:empty {
+  display: none;
+}

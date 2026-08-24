@@ -8,11 +8,14 @@
     "title": "Projects",
     "hint": "Choose a project or saved session from the sidebar.",
     "invalidSession": "This saved session cannot be opened.",
-    "pairingRequired": "Pair this device to load projects.",
-    "pairingHelp": "Paste a fresh Picot pairing link from the desktop. This is required once for an installed home-screen app.",
-    "pairingInput": "Paste pairing link or token",
-    "pairDevice": "Pair device",
-    "invalidPairing": "Enter a valid, unused Picot pairing link.",
+    "accessHint": "Request access from your desktop Picot app to load projects and sessions.",
+    "requestAccess": "Request access",
+    "requestingAccess": "Requesting access…",
+    "waitingApproval": "Waiting for approval in desktop Picot…",
+    "accessApproved": "Access approved. Opening Picot…",
+    "accessDenied": "Access was denied. Request again to retry.",
+    "accessExpired": "This access request expired. Request again.",
+    "accessNetworkError": "The access request could not be reached. We’ll keep retrying.",
     "composerHint": "Select a saved session to start chatting"
   },
   "shortcuts": {
@@ -1092,5 +1095,13 @@
     "chooseProjectBeforeApproval": "Choose a project before approval.",
     "loadingProjects": "Loading projects…",
     "projectRunning": "{name} · running"
+  },
+  "remoteApproval": {
+    "title": "Remote access request",
+    "unknownDevice": "Unknown browser",
+    "warning": "Approving grants this device access to projects, prompts, tools, and files available through Picot.",
+    "deny": "Deny",
+    "approve": "Approve",
+    "error": "That request could not be handled. It may already have been decided."
   }
 }

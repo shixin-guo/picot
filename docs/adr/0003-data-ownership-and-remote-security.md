@@ -19,8 +19,10 @@ Project Trust is a blocking, default-deny startup gate before project resources 
 settings use native RPC; project and global defaults atomically merge into Pi settings while preserving
 unknown keys.
 
-Remote pairing is QR-only. A single-use pairing token expires after five minutes and exchanges for a
-revocable long-term device token; only its hash is persisted. A device that completes QR pairing is
+Remote authorization uses an explicit Request access → Approve on desktop flow. Pending requests are
+short-lived proof-of-possession claims, and desktop approval endpoints are loopback-only. Only the hash
+of the resulting revocable long-term device token is persisted. The existing QR deep link remains an
+optional single-use convenience for same-browser authorization. A device that completes authorization is
 trusted to the same degree as the desktop app: as of 2026-08, the Host router no longer distinguishes
 `ClientKind::Remote` from `ClientKind::Desktop` for authorization purposes, so a paired mobile/LAN
 client has parity with desktop for Host operations (folder picking, app launching, package and Pi

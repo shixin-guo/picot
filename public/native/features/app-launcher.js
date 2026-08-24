@@ -7,7 +7,14 @@ import { HostRuntimeAdapter, resolveHostWebSocketUrl } from "../transport/runtim
 import { sessionScopedClientId } from "../utils/random-id.js";
 import { appRoutePath } from "../utils/router.js";
 import { setupOpenFolderButton } from "../workspace/workspace-actions.js";
-import { resolveRemoteAuth } from "./remote-auth.js";
+import {
+  claimDeviceAccess,
+  clearPendingDeviceRequest,
+  createDeviceAccessRequest,
+  DEVICE_TOKEN_KEY,
+  pendingDeviceRequest,
+  resolveRemoteAuth,
+} from "./remote-auth.js";
 
 document.body.dataset.runtime = "native";
 document.body.classList.add("app-launcher");
@@ -26,12 +33,13 @@ try {
 async function startLauncher() {
   const remoteAuth = await resolveRemoteAuth();
   setupSidebarToggle();
-  setupOpenFolderButton({ onError: showLauncherError });
 
   if (remoteAuth.clientType === "remote" && !remoteAuth.deviceToken) {
-    showPairingRequired();
+    setupRemoteAccessLauncher();
     return;
   }
+
+  setupOpenFolderButton({ onError: showLauncherError });
 
   const adapter = new HostRuntimeAdapter({
     url: resolveHostWebSocketUrl(window),
@@ -39,7 +47,7 @@ async function startLauncher() {
     clientType: remoteAuth.clientType,
     deviceToken: remoteAuth.deviceToken,
   });
-  const data = new HostDataGateway(adapter);
+  const data = new HostDataGateway(adapter, { deviceToken: remoteAuth.deviceToken });
   const control = new HostControlGateway(adapter);
   const sidebar = new SessionSidebar(document.getElementById("session-list"), {
     data,
@@ -112,65 +120,129 @@ function prepareLauncherShell() {
   if (messageInput) messageInput.placeholder = t("launcher.composerHint");
 }
 
-function showPairingRequired() {
-  const message = t("launcher.pairingRequired");
+function setupRemoteAccessLauncher({
+  fetchImpl = globalThis.fetch,
+  storage = globalThis.localStorage,
+  reload = () => window.location.reload(),
+} = {}) {
   const sessionList = document.getElementById("session-list");
-  if (sessionList) {
-    const status = document.createElement("div");
-    status.className = "session-loading";
-    status.textContent = message;
-    sessionList.replaceChildren(status);
-  }
-
+  sessionList?.replaceChildren();
   const welcome = document.querySelector("#messages .welcome");
-  if (!welcome) return;
-  const form = document.createElement("form");
-  form.className = "launcher-pairing";
-  const help = document.createElement("p");
-  help.textContent = t("launcher.pairingHelp");
-  const input = document.createElement("input");
-  input.className = "ui-input";
-  input.placeholder = t("launcher.pairingInput");
-  input.setAttribute("aria-label", t("launcher.pairingInput"));
-  const button = document.createElement("button");
-  button.type = "submit";
-  button.className = "ui-button ui-button--primary";
-  button.textContent = t("launcher.pairDevice");
+  if (!welcome) return () => {};
+  const existing = welcome.querySelector(".launcher-access");
+  existing?.remove();
+  const container = document.createElement("section");
+  container.className = "launcher-access";
+  const copy = document.createElement("p");
+  copy.className = "launcher-access-copy";
+  copy.textContent = t("launcher.accessHint");
+  const status = document.createElement("p");
+  status.className = "launcher-access-status";
+  status.setAttribute("role", "status");
   const error = document.createElement("p");
-  error.className = "launcher-pairing-error";
+  error.className = "launcher-error";
   error.setAttribute("role", "alert");
-  form.append(help, input, button, error);
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const path = pairingPathFromInput(input.value);
-    if (!path) {
-      error.textContent = t("launcher.invalidPairing");
-      input.focus();
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ui-button ui-button--primary launcher-access-button";
+  container.append(copy, status, error, button);
+  welcome.appendChild(container);
+
+  let stopped = false;
+  let timer = null;
+  let request = pendingDeviceRequest(storage);
+  let backoff = request?.pollAfterMs || 1500;
+
+  const setState = (state, message = "") => {
+    button.textContent =
+      state === "waiting" ? t("launcher.waitingApproval") : t("launcher.requestAccess");
+    button.disabled = state === "waiting" || state === "requesting";
+    button.setAttribute(
+      "aria-busy",
+      state === "requesting" || state === "waiting" ? "true" : "false",
+    );
+    status.textContent = message;
+    error.textContent = "";
+  };
+  const schedule = (delay = backoff) => {
+    if (stopped || document.visibilityState === "hidden" || navigator.onLine === false) return;
+    clearTimeout(timer);
+    timer = setTimeout(poll, delay);
+  };
+  const poll = async () => {
+    if (stopped || !request || document.visibilityState === "hidden" || navigator.onLine === false)
       return;
+    try {
+      const result = await claimDeviceAccess({ ...request, fetchImpl });
+      if (stopped) return;
+      if (result.status === 200 && result.body?.deviceToken) {
+        storage.setItem(DEVICE_TOKEN_KEY, result.body.deviceToken);
+        clearPendingDeviceRequest(storage);
+        request = null;
+        status.textContent = t("launcher.accessApproved");
+        reload();
+        return;
+      }
+      if (result.status === 202) {
+        backoff = request.pollAfterMs || 1500;
+        setState("waiting", t("launcher.waitingApproval"));
+        schedule(backoff);
+        return;
+      }
+      if (result.status === 403 || result.status === 404 || result.status === 410) {
+        clearPendingDeviceRequest(storage);
+        request = null;
+        setState(
+          "retry",
+          result.status === 403 ? t("launcher.accessDenied") : t("launcher.accessExpired"),
+        );
+        return;
+      }
+      throw new Error("claim failed");
+    } catch {
+      if (stopped) return;
+      backoff = Math.min(backoff * 2, 15000);
+      error.textContent = t("launcher.accessNetworkError");
+      schedule(backoff);
     }
-    window.location.assign(path);
-  });
-  welcome.appendChild(form);
+  };
+  const begin = async () => {
+    if (button.disabled) return;
+    setState("requesting", t("launcher.requestingAccess"));
+    try {
+      request = await createDeviceAccessRequest({ fetchImpl, storage });
+      backoff = request.pollAfterMs || 1500;
+      setState("waiting", t("launcher.waitingApproval"));
+      schedule(0);
+    } catch (requestError) {
+      setState("retry");
+      error.textContent =
+        requestError instanceof Error ? requestError.message : t("launcher.accessNetworkError");
+    }
+  };
+  button.addEventListener("click", begin);
+  const resume = () => request && schedule(0);
+  const cleanup = () => {
+    stopped = true;
+    clearTimeout(timer);
+    button.removeEventListener("click", begin);
+    window.removeEventListener("online", resume);
+    document.removeEventListener("visibilitychange", resume);
+    window.removeEventListener("pagehide", cleanup);
+  };
+  window.addEventListener("online", resume);
+  document.addEventListener("visibilitychange", resume);
+  window.addEventListener("pagehide", cleanup);
+  if (request) {
+    setState("waiting", t("launcher.waitingApproval"));
+    schedule(0);
+  } else {
+    setState("idle");
+  }
+  return cleanup;
 }
 
-export function pairingPathFromInput(value, origin = window.location.origin) {
-  const input = String(value ?? "").trim();
-  if (!input) return null;
-  let token = input;
-  try {
-    token = new URL(input).searchParams.get("pairingToken") ?? "";
-  } catch {
-    try {
-      token = decodeURIComponent(input);
-    } catch {
-      return null;
-    }
-  }
-  if (!token.startsWith("picot_pair_")) return null;
-  const target = new URL("/app", origin);
-  target.searchParams.set("pairingToken", token);
-  return `${target.pathname}${target.search}`;
-}
+export { setupRemoteAccessLauncher };
 
 function setupSidebarToggle() {
   const sidebar = document.getElementById("sidebar");

@@ -2,7 +2,7 @@
 
 use crate::host_data::{HostDataError, HostDataPlane, WriteFileResult};
 use crate::host_git;
-use crate::host_router::{HostRouter, RoutedAction, PROTOCOL_VERSION};
+use crate::host_router::{ClientKind, HostRouter, RoutedAction, PROTOCOL_VERSION};
 use crate::markitdown_preview::{
     ConversionOutcome, DependencyReason, MarkitdownPreviewService, INPUT_BYTE_CAP,
 };
@@ -20,12 +20,13 @@ use crate::window_owner::OwnerId;
 use axum::body::Body;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::Query;
-use axum::extract::{DefaultBodyLimit, Json, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Json, State};
 use axum::http::header::{
     CACHE_CONTROL, CONTENT_LENGTH, CONTENT_SECURITY_POLICY, CONTENT_TYPE, PRAGMA,
 };
-use axum::http::HeaderValue;
 use axum::http::StatusCode;
+use axum::http::{HeaderMap, HeaderValue, Uri};
+use axum::middleware;
 use axum::response::{Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
@@ -38,6 +39,7 @@ use std::collections::HashSet;
 use std::convert::Infallible;
 use std::fs;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri_plugin_dialog::DialogExt;
@@ -296,6 +298,22 @@ impl HostServer {
             .route("/v2/bootstrap", get(bootstrap_target))
             .route("/v2/sessions", get(list_all_sessions_http))
             .route("/v2/auth/exchange", post(exchange_pairing))
+            .route(
+                "/v2/auth/device-requests",
+                post(create_device_request).get(list_device_requests),
+            )
+            .route(
+                "/v2/auth/device-requests/{request_id}/claim",
+                post(claim_device_request),
+            )
+            .route(
+                "/v2/auth/device-requests/{request_id}/approve",
+                post(approve_device_request),
+            )
+            .route(
+                "/v2/auth/device-requests/{request_id}/deny",
+                post(deny_device_request),
+            )
             .route("/v2/lan-qr", get(lan_qr))
             .route(
                 "/api/files/content",
@@ -313,13 +331,62 @@ impl HostServer {
             .fallback_service(static_service)
             .layer(DefaultBodyLimit::max(MAX_HTTP_BODY_BYTES))
             .with_state(state.clone());
+        let auth_for_http = state.auth.clone();
+        let app = app.layer(middleware::from_fn(
+            move |request: axum::extract::Request, next: middleware::Next| {
+                let auth = auth_for_http.clone();
+                async move {
+                    let path = request.uri().path();
+                    let public = path == "/"
+                        || path == "/health"
+                        || path == "/v2/ws"
+                        || path == "/v2/auth/exchange"
+                        || path == "/v2/auth/device-requests"
+                        || path.ends_with("/claim")
+                        || path.starts_with("/v/")
+                        || path == "/app"
+                        || path.starts_with("/app/");
+                    if public {
+                        return next.run(request).await;
+                    }
+                    let loopback = request
+                        .extensions()
+                        .get::<ConnectInfo<std::net::SocketAddr>>()
+                        .copied()
+                        .map(|peer| {
+                            trusted_loopback_request(peer, request.headers(), request.uri())
+                        })
+                        .unwrap_or(false);
+                    let authorized = loopback
+                        || request
+                            .headers()
+                            .get(axum::http::header::AUTHORIZATION)
+                            .and_then(|value| value.to_str().ok())
+                            .and_then(|value| value.strip_prefix("Bearer "))
+                            .and_then(|token| auth.lock().ok()?.authorize(token).ok())
+                            .unwrap_or(false);
+                    if authorized {
+                        next.run(request).await
+                    } else {
+                        Response::builder()
+                            .status(StatusCode::UNAUTHORIZED)
+                            .header(CONTENT_TYPE, "application/json")
+                            .body(Body::from(r#"{"error":{"code":"unauthorized_device"}}"#))
+                            .expect("authorization response is valid")
+                    }
+                }
+            },
+        ));
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
         tokio::spawn(async move {
-            if let Err(error) = axum::serve(listener, app)
-                .with_graceful_shutdown(async {
-                    let _ = shutdown_rx.await;
-                })
-                .await
+            if let Err(error) = axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+            )
+            .with_graceful_shutdown(async {
+                let _ = shutdown_rx.await;
+            })
+            .await
             {
                 log::error!("[picot-host] server stopped unexpectedly: {error}");
             }
@@ -498,7 +565,13 @@ struct LanQrQuery {
 async fn lan_qr(
     State(state): State<Arc<HostState>>,
     Query(query): Query<LanQrQuery>,
+    peer: ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    uri: Uri,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if !trusted_loopback_request(peer, &headers, &uri) {
+        return Err(api_error(StatusCode::FORBIDDEN, "loopback_required"));
+    }
     let port = state.port;
     let base_url = local_lan_url_with_port(port).unwrap_or_default();
     if base_url.is_empty() {
@@ -928,14 +1001,18 @@ async fn resolve_workspace(
 
 async fn websocket_upgrade(
     State(state): State<Arc<HostState>>,
+    peer: ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    uri: Uri,
     websocket: WebSocketUpgrade,
 ) -> Response {
+    let loopback = trusted_loopback_request(peer, &headers, &uri);
     websocket
         .max_message_size(MAX_WS_MESSAGE_BYTES)
-        .on_upgrade(move |socket| handle_websocket(socket, state))
+        .on_upgrade(move |socket| handle_websocket(socket, state, loopback))
 }
 
-async fn handle_websocket(mut socket: WebSocket, state: Arc<HostState>) {
+async fn handle_websocket(mut socket: WebSocket, state: Arc<HostState>, loopback_peer: bool) {
     let Some(Ok(Message::Text(first))) = socket.next().await else {
         return;
     };
@@ -959,7 +1036,7 @@ async fn handle_websocket(mut socket: WebSocket, state: Arc<HostState>) {
             return;
         }
     };
-    if hello.get("clientType").and_then(Value::as_str) == Some("remote") {
+    if !loopback_peer {
         let authorized = hello
             .get("deviceToken")
             .and_then(Value::as_str)
@@ -982,7 +1059,15 @@ async fn handle_websocket(mut socket: WebSocket, state: Arc<HostState>) {
         .map_err(|_| "Host router unavailable".to_string())
         .and_then(|mut router| {
             router
-                .connect(&client_id, &hello)
+                .connect_as(
+                    &client_id,
+                    &hello,
+                    if loopback_peer {
+                        ClientKind::Desktop
+                    } else {
+                        ClientKind::Remote
+                    },
+                )
                 .map_err(|error| error.message)
         });
     if let Err(message) = handshake {
@@ -2213,6 +2298,237 @@ async fn exchange_pairing(
     }))
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceRequestBody {
+    device_id: String,
+    device_name: String,
+    claim_secret: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceClaimBody {
+    device_id: String,
+    claim_secret: String,
+}
+
+fn loopback_peer(peer: ConnectInfo<std::net::SocketAddr>) -> bool {
+    peer.0.ip().is_loopback()
+}
+
+fn loopback_authority(headers: &HeaderMap, uri: &Uri) -> bool {
+    let authority = headers
+        .get(axum::http::header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .or_else(|| uri.authority().map(|authority| authority.as_str()));
+    let Some(authority) = authority else {
+        return false;
+    };
+    let Ok(authority) = axum::http::uri::Authority::from_str(authority) else {
+        return false;
+    };
+    let host = authority.host().trim_matches(['[', ']']);
+    host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1" || host == "::1"
+}
+
+fn trusted_loopback_request(
+    peer: ConnectInfo<std::net::SocketAddr>,
+    headers: &HeaderMap,
+    uri: &Uri,
+) -> bool {
+    loopback_peer(peer) && loopback_authority(headers, uri)
+}
+
+fn no_store_json(status: StatusCode, value: Value) -> Response {
+    Response::builder()
+        .status(status)
+        .header(CONTENT_TYPE, "application/json")
+        .header(CACHE_CONTROL, "no-store")
+        .body(Body::from(value.to_string()))
+        .expect("JSON response is valid")
+}
+
+async fn create_device_request(
+    State(state): State<Arc<HostState>>,
+    Json(body): Json<DeviceRequestBody>,
+) -> Response {
+    let result = state
+        .auth
+        .lock()
+        .map_err(|_| "auth_unavailable")
+        .and_then(|mut auth| {
+            auth.create_device_request(
+                &body.device_id,
+                &body.device_name,
+                &body.claim_secret,
+                now_seconds(),
+            )
+            .map_err(|error| match error {
+                crate::remote_auth::DeviceRequestError::Capacity => "request_capacity",
+                crate::remote_auth::DeviceRequestError::RateLimited => "rate_limited",
+                crate::remote_auth::DeviceRequestError::Invalid => "invalid_request",
+                _ => "request_rejected",
+            })
+        });
+    match result {
+        Ok(created) => no_store_json(
+            StatusCode::CREATED,
+            json!({
+                "requestId": created.request_id,
+                "expiresAt": created.expires_at,
+                "pollAfterMs": 1500,
+            }),
+        ),
+        Err(code) => no_store_json(
+            if code == "invalid_request" {
+                StatusCode::BAD_REQUEST
+            } else if code == "rate_limited" {
+                StatusCode::TOO_MANY_REQUESTS
+            } else {
+                StatusCode::SERVICE_UNAVAILABLE
+            },
+            json!({ "error": { "code": code } }),
+        ),
+    }
+}
+
+async fn list_device_requests(
+    State(state): State<Arc<HostState>>,
+    peer: ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> Response {
+    if !trusted_loopback_request(peer, &headers, &uri) {
+        return no_store_json(
+            StatusCode::FORBIDDEN,
+            json!({ "error": { "code": "loopback_required" } }),
+        );
+    }
+    match state.auth.lock() {
+        Ok(mut auth) => no_store_json(
+            StatusCode::OK,
+            json!({ "requests": auth.list_device_requests(now_seconds()) }),
+        ),
+        Err(_) => no_store_json(
+            StatusCode::SERVICE_UNAVAILABLE,
+            json!({ "error": { "code": "auth_unavailable" } }),
+        ),
+    }
+}
+
+async fn decide_device_request(
+    State(state): State<Arc<HostState>>,
+    peer: ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    uri: Uri,
+    request_id: axum::extract::Path<String>,
+    approve: bool,
+) -> Response {
+    if !trusted_loopback_request(peer, &headers, &uri) {
+        return no_store_json(
+            StatusCode::FORBIDDEN,
+            json!({ "error": { "code": "loopback_required" } }),
+        );
+    }
+    let result = state
+        .auth
+        .lock()
+        .map_err(|_| crate::remote_auth::DeviceRequestError::Storage("auth unavailable".into()))
+        .and_then(|mut auth| auth.decide_device_request(&request_id, approve, now_seconds()));
+    match result {
+        Ok(()) => no_store_json(
+            StatusCode::OK,
+            json!({ "status": if approve { "approved" } else { "denied" } }),
+        ),
+        Err(
+            crate::remote_auth::DeviceRequestError::NotFound
+            | crate::remote_auth::DeviceRequestError::Denied
+            | crate::remote_auth::DeviceRequestError::Expired,
+        ) => no_store_json(
+            StatusCode::GONE,
+            json!({ "error": { "code": "already_handled" } }),
+        ),
+        Err(_) => no_store_json(
+            StatusCode::SERVICE_UNAVAILABLE,
+            json!({ "error": { "code": "auth_unavailable" } }),
+        ),
+    }
+}
+
+async fn approve_device_request(
+    state: State<Arc<HostState>>,
+    peer: ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    uri: Uri,
+    request_id: axum::extract::Path<String>,
+) -> Response {
+    decide_device_request(state, peer, headers, uri, request_id, true).await
+}
+
+async fn deny_device_request(
+    state: State<Arc<HostState>>,
+    peer: ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    uri: Uri,
+    request_id: axum::extract::Path<String>,
+) -> Response {
+    decide_device_request(state, peer, headers, uri, request_id, false).await
+}
+
+async fn claim_device_request(
+    State(state): State<Arc<HostState>>,
+    axum::extract::Path(request_id): axum::extract::Path<String>,
+    Json(body): Json<DeviceClaimBody>,
+) -> Response {
+    let result = state
+        .auth
+        .lock()
+        .map_err(|_| crate::remote_auth::DeviceRequestError::Storage("auth unavailable".into()))
+        .and_then(|mut auth| {
+            auth.claim_device_request(
+                &request_id,
+                &body.device_id,
+                &body.claim_secret,
+                now_seconds(),
+            )
+        });
+    match result {
+        Ok(crate::remote_auth::DeviceClaim::Pending) => {
+            no_store_json(StatusCode::ACCEPTED, json!({ "status": "pending" }))
+        }
+        Ok(crate::remote_auth::DeviceClaim::Approved(token)) => no_store_json(
+            StatusCode::OK,
+            json!({ "status": "approved", "deviceToken": token }),
+        ),
+        Err(crate::remote_auth::DeviceRequestError::Denied) => {
+            no_store_json(StatusCode::FORBIDDEN, json!({ "status": "denied" }))
+        }
+        Err(
+            crate::remote_auth::DeviceRequestError::Expired
+            | crate::remote_auth::DeviceRequestError::NotFound,
+        ) => no_store_json(
+            StatusCode::GONE,
+            json!({ "error": { "code": "request_expired" } }),
+        ),
+        Err(
+            crate::remote_auth::DeviceRequestError::WrongSecret
+            | crate::remote_auth::DeviceRequestError::WrongDevice,
+        ) => no_store_json(
+            StatusCode::UNAUTHORIZED,
+            json!({ "error": { "code": "claim_rejected" } }),
+        ),
+        Err(crate::remote_auth::DeviceRequestError::Invalid) => no_store_json(
+            StatusCode::BAD_REQUEST,
+            json!({ "error": { "code": "invalid_request" } }),
+        ),
+        Err(_) => no_store_json(
+            StatusCode::SERVICE_UNAVAILABLE,
+            json!({ "error": { "code": "auth_unavailable" } }),
+        ),
+    }
+}
+
 fn api_error(status: StatusCode, code: &'static str) -> (StatusCode, Json<Value>) {
     (status, Json(json!({ "error": { "code": code } })))
 }
@@ -2262,7 +2578,7 @@ fn now_seconds() -> u64 {
 mod tests {
     use super::{
         append_pairing_token, extension_ui_requires_owner, messages_from_entries_response,
-        HostServer,
+        now_seconds, trusted_loopback_request, HostServer,
     };
     use crate::metadata_store::MetadataStore;
     use crate::native_pi_manager::NativePiManager;
@@ -2290,6 +2606,46 @@ mod tests {
             with_query,
             "http://192.168.1.10:9000/app/workspaces/a/sessions/b?tab=settings&pairingToken=token"
         );
+    }
+
+    #[test]
+    fn loopback_authority_requires_actual_peer_and_accepts_supported_hosts() {
+        use axum::extract::connect_info::ConnectInfo;
+        use axum::http::{HeaderMap, HeaderValue, Uri};
+        use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+
+        let peer = ConnectInfo(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1));
+        let uri = Uri::from_static("/health");
+        for host in [
+            "localhost",
+            "localhost:57620",
+            "127.0.0.1:57620",
+            "[::1]:57620",
+        ] {
+            let mut headers = HeaderMap::new();
+            headers.insert("host", HeaderValue::from_static(host));
+            assert!(trusted_loopback_request(peer, &headers, &uri), "{host}");
+        }
+        assert!(trusted_loopback_request(
+            peer,
+            &HeaderMap::new(),
+            &Uri::from_static("http://localhost:57620/health"),
+        ));
+        let mut external = HeaderMap::new();
+        external.insert("host", HeaderValue::from_static("remote.example"));
+        assert!(!trusted_loopback_request(peer, &external, &uri));
+        let non_loopback = ConnectInfo(SocketAddr::new(
+            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)),
+            1,
+        ));
+        let mut spoofed = HeaderMap::new();
+        spoofed.insert("host", HeaderValue::from_static("127.0.0.1:57620"));
+        assert!(!trusted_loopback_request(non_loopback, &spoofed, &uri));
+        let ipv6_peer = ConnectInfo(SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 1));
+        assert!(!trusted_loopback_request(ipv6_peer, &external, &uri));
+        let mut ipv6_headers = HeaderMap::new();
+        ipv6_headers.insert("host", HeaderValue::from_static("[::1]:57620"));
+        assert!(trusted_loopback_request(ipv6_peer, &ipv6_headers, &uri));
     }
 
     #[test]
@@ -2406,6 +2762,96 @@ mod tests {
             .await
             .unwrap();
         assert!(index.contains("Picot native host"));
+
+        host.stop();
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[tokio::test]
+    async fn protects_http_data_and_legacy_qr_by_authority_and_bearer() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp = std::env::temp_dir().join(format!("picot-host-auth-boundary-{nonce}"));
+        let public = temp.join("public");
+        fs::create_dir_all(&public).unwrap();
+        fs::write(public.join("index.html"), "Picot").unwrap();
+        let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
+        let host = HostServer::start(public, NativePiManager::new(32), auth, None)
+            .await
+            .unwrap();
+        let client = reqwest::Client::new();
+        let runtime_url = format!("{}/health/runtime", host.origin());
+
+        let loopback = client.get(&runtime_url).send().await.unwrap();
+        assert!(loopback.status().is_success());
+
+        let external_authority = client
+            .get(&runtime_url)
+            .header("host", "remote.example")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            external_authority.status(),
+            reqwest::StatusCode::UNAUTHORIZED
+        );
+
+        let invalid_bearer = client
+            .get(&runtime_url)
+            .header("host", "remote.example")
+            .bearer_auth("invalid-token")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(invalid_bearer.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+        let pairing = host
+            .state
+            .auth
+            .lock()
+            .unwrap()
+            .create_pairing(now_seconds());
+        let device_token = host
+            .state
+            .auth
+            .lock()
+            .unwrap()
+            .exchange(&pairing.token, "integration-device", now_seconds())
+            .unwrap();
+        let bearer = client
+            .get(&runtime_url)
+            .header("host", "remote.example")
+            .bearer_auth(&device_token)
+            .send()
+            .await
+            .unwrap();
+        assert!(bearer.status().is_success());
+
+        let lan_qr = client
+            .get(format!("{}/v2/lan-qr", host.origin()))
+            .header("host", "remote.example")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(lan_qr.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+        host.state
+            .auth
+            .lock()
+            .unwrap()
+            .revoke("integration-device")
+            .unwrap();
+        let revoked = client
+            .get(&runtime_url)
+            .header("host", "remote.example")
+            .bearer_auth(&device_token)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(revoked.status(), reqwest::StatusCode::UNAUTHORIZED);
 
         host.stop();
         fs::remove_dir_all(temp).unwrap();
@@ -2560,6 +3006,83 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+
+        host.stop();
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[tokio::test]
+    async fn bearer_authenticated_external_authority_cannot_mint_pairings_or_claim_desktop() {
+        use axum::http::header::{AUTHORIZATION, HOST};
+        use axum::http::HeaderValue;
+        use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp = std::env::temp_dir().join(format!("picot-host-ws-auth-boundary-{nonce}"));
+        let public = temp.join("public");
+        fs::create_dir_all(&public).unwrap();
+        fs::write(public.join("index.html"), "Picot").unwrap();
+        let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
+        let host = HostServer::start(public, NativePiManager::new(32), auth, None)
+            .await
+            .unwrap();
+        let pairing = host
+            .state
+            .auth
+            .lock()
+            .unwrap()
+            .create_pairing(now_seconds());
+        let token = host
+            .state
+            .auth
+            .lock()
+            .unwrap()
+            .exchange(&pairing.token, "ws-remote", now_seconds())
+            .unwrap();
+        let ws_url = host.origin().replace("http://", "ws://") + "/v2/ws";
+        let mut request = ws_url.into_client_request().unwrap();
+        request
+            .headers_mut()
+            .insert(HOST, HeaderValue::from_static("remote.example"));
+        request.headers_mut().insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+        );
+        let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+        socket
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                json!({
+                    "type": "hello",
+                    "protocolVersion": 2,
+                    "clientType": "desktop",
+                    "clientId": "remote-self-declared-desktop",
+                    "deviceToken": token,
+                })
+                .to_string(),
+            ))
+            .await
+            .unwrap();
+        let hello_ack = socket.next().await.unwrap().unwrap();
+        assert!(hello_ack.to_text().unwrap().contains("hello_ack"));
+        socket
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                json!({
+                    "type": "auth_request",
+                    "requestId": "auth-remote",
+                    "operation": "create_pairing",
+                })
+                .to_string(),
+            ))
+            .await
+            .unwrap();
+        let response = socket.next().await.unwrap().unwrap();
+        let response: serde_json::Value =
+            serde_json::from_str(response.to_text().unwrap()).unwrap();
+        assert_eq!(response["error"]["code"], "auth_forbidden");
 
         host.stop();
         fs::remove_dir_all(temp).unwrap();

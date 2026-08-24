@@ -6,14 +6,17 @@
   },
   "launcher": {
     "title": "プロジェクト",
-    "hint": "サイドバーからプロジェクトまたは保存済みセッションを選択してください。",
+    "hint": "サイドバーからプロジェクトまたは保存済みセッションを選択します。",
     "invalidSession": "この保存済みセッションを開けません。",
-    "pairingRequired": "プロジェクトを読み込むにはこの端末をペアリングしてください。",
-    "pairingHelp": "デスクトップで生成した新しい Picot ペアリングリンクを貼り付けてください。ホーム画面アプリでは一度だけ必要です。",
-    "pairingInput": "ペアリングリンクまたはトークンを貼り付け",
-    "pairDevice": "端末をペアリング",
-    "invalidPairing": "有効で未使用の Picot ペアリングリンクを入力してください。",
-    "composerHint": "チャットを開始するには保存済みセッションを選択してください"
+    "accessHint": "プロジェクトとセッションを読み込むには、デスクトップ Picot からアクセスをリクエストしてください。",
+    "requestAccess": "アクセスをリクエスト",
+    "requestingAccess": "アクセスをリクエスト中…",
+    "waitingApproval": "デスクトップ Picot の承認を待っています…",
+    "accessApproved": "アクセスが承認されました。Picot を開いています…",
+    "accessDenied": "アクセスが拒否されました。もう一度リクエストしてください。",
+    "accessExpired": "アクセスリクエストの期限が切れました。もう一度リクエストしてください。",
+    "accessNetworkError": "アクセスリクエストに接続できません。再試行します。",
+    "composerHint": "保存済みセッションを選択してチャットを開始"
   },
   "shortcuts": {
     "focusInput": "入力欄にフォーカス",
@@ -1092,5 +1095,13 @@
     "chooseProjectBeforeApproval": "承認する前にプロジェクトを選んでください。",
     "loadingProjects": "プロジェクトを読み込み中…",
     "projectRunning": "{name} · 実行中"
+  },
+  "remoteApproval": {
+    "title": "リモートアクセスのリクエスト",
+    "unknownDevice": "不明なブラウザー",
+    "warning": "承認すると、このデバイスは Picot で利用できるプロジェクト、プロンプト、ツール、ファイルにアクセスできます。",
+    "deny": "拒否",
+    "approve": "承認",
+    "error": "リクエストを処理できませんでした。すでに処理済みの可能性があります。"
   }
 }
