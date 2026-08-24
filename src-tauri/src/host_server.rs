@@ -24,8 +24,8 @@ use axum::extract::{ConnectInfo, DefaultBodyLimit, Json, State};
 use axum::http::header::{
     CACHE_CONTROL, CONTENT_LENGTH, CONTENT_SECURITY_POLICY, CONTENT_TYPE, PRAGMA,
 };
-use axum::http::StatusCode;
 use axum::http::{HeaderMap, HeaderValue, Uri};
+use axum::http::{Method, StatusCode};
 use axum::middleware;
 use axum::response::{Redirect, Response};
 use axum::routing::{get, post};
@@ -337,16 +337,7 @@ impl HostServer {
                 let auth = auth_for_http.clone();
                 async move {
                     let path = request.uri().path();
-                    let public = path == "/"
-                        || path == "/health"
-                        || path == "/v2/ws"
-                        || path == "/v2/auth/exchange"
-                        || path == "/v2/auth/device-requests"
-                        || path.ends_with("/claim")
-                        || path.starts_with("/v/")
-                        || path == "/app"
-                        || path.starts_with("/app/");
-                    if public {
+                    if is_public_http_request(request.method(), path) {
                         return next.run(request).await;
                     }
                     let loopback = request
@@ -2313,6 +2304,16 @@ struct DeviceClaimBody {
     claim_secret: String,
 }
 
+fn is_public_http_request(method: &Method, path: &str) -> bool {
+    if !path.starts_with("/v2/") && !path.starts_with("/api/") && !path.starts_with("/health/") {
+        return true;
+    }
+    (method == Method::GET && matches!(path, "/health" | "/v2/ws"))
+        || (method == Method::POST
+            && (matches!(path, "/v2/auth/exchange" | "/v2/auth/device-requests")
+                || (path.starts_with("/v2/auth/device-requests/") && path.ends_with("/claim"))))
+}
+
 fn loopback_peer(peer: ConnectInfo<std::net::SocketAddr>) -> bool {
     peer.0.ip().is_loopback()
 }
@@ -2577,8 +2578,8 @@ fn now_seconds() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_pairing_token, extension_ui_requires_owner, messages_from_entries_response,
-        now_seconds, trusted_loopback_request, HostServer,
+        append_pairing_token, extension_ui_requires_owner, is_public_http_request,
+        messages_from_entries_response, now_seconds, trusted_loopback_request, HostServer,
     };
     use crate::metadata_store::MetadataStore;
     use crate::native_pi_manager::NativePiManager;
@@ -2606,6 +2607,42 @@ mod tests {
             with_query,
             "http://192.168.1.10:9000/app/workspaces/a/sessions/b?tab=settings&pairingToken=token"
         );
+    }
+
+    #[test]
+    fn exposes_static_assets_and_only_the_minimum_unauthenticated_protocol_routes() {
+        use axum::http::Method;
+
+        for path in [
+            "/",
+            "/app",
+            "/manifest.json",
+            "/locales/en.json",
+            "/icons/logo-dark.svg",
+            "/v/build/style.css",
+        ] {
+            assert!(is_public_http_request(&Method::GET, path), "{path}");
+        }
+        assert!(is_public_http_request(&Method::GET, "/v2/ws"));
+        assert!(is_public_http_request(&Method::POST, "/v2/auth/exchange"));
+        assert!(is_public_http_request(
+            &Method::POST,
+            "/v2/auth/device-requests"
+        ));
+        assert!(is_public_http_request(
+            &Method::POST,
+            "/v2/auth/device-requests/request-1/claim"
+        ));
+
+        for (method, path) in [
+            (Method::GET, "/v2/auth/device-requests"),
+            (Method::POST, "/v2/auth/device-requests/request-1/approve"),
+            (Method::GET, "/v2/sessions"),
+            (Method::GET, "/api/files/content"),
+            (Method::GET, "/health/runtime"),
+        ] {
+            assert!(!is_public_http_request(&method, path), "{path}");
+        }
     }
 
     #[test]
