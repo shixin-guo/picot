@@ -7,7 +7,7 @@ function render() {
       <span id="remote-access-url"></span>
       <button id="remote-access-copy" type="button">Copy URL</button>
       <span id="remote-access-copy-status" role="status"></span>
-      <button id="remote-access-show-qr" type="button">Show QR</button>
+      <button id="remote-access-refresh-qr" type="button">Refresh QR</button>
       <img id="remote-access-qr" hidden alt="QR" />
       <p id="remote-access-error"></p>
     </section>
@@ -39,6 +39,8 @@ describe("Remote Access settings", () => {
       "http://192.168.1.10:57620/app",
     );
     expect(fetchImpl).toHaveBeenCalledWith("/v2/remote-access", { cache: "no-store" });
+    expect(document.getElementById("remote-access-qr").hidden).toBe(false);
+    expect(document.getElementById("remote-access-qr").src).toContain("base64,qr");
     expect(document.body.textContent).not.toContain("pairingToken");
   });
 
@@ -59,13 +61,18 @@ describe("Remote Access settings", () => {
     expect(document.getElementById("remote-access-error").textContent).not.toBe("");
   });
 
-  it("copies the URL with accessible status feedback and reveals the QR on demand", async () => {
-    const panel = setupRemoteAccessPanel({
-      fetchImpl: vi.fn().mockResolvedValue({
+  it("copies the URL and refreshes the QR with accessible status feedback", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ url: "http://192.168.1.10:57620/app", dataUrl: "qr-data" }),
-      }),
-    });
+        json: async () => ({ url: "http://192.168.1.10:57620/app", dataUrl: "qr-old" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ url: "http://192.168.1.11:57620/app", dataUrl: "qr-new" }),
+      });
+    const panel = setupRemoteAccessPanel({ fetchImpl });
     await panel.load();
 
     document.getElementById("remote-access-copy").click();
@@ -74,8 +81,14 @@ describe("Remote Access settings", () => {
     );
     expect(document.getElementById("remote-access-copy-status").textContent).not.toBe("");
 
-    document.getElementById("remote-access-show-qr").click();
-    await vi.waitFor(() => expect(document.getElementById("remote-access-qr").hidden).toBe(false));
-    expect(document.getElementById("remote-access-qr").src).toContain("qr-data");
+    document.getElementById("remote-access-refresh-qr").click();
+    await vi.waitFor(() =>
+      expect(document.getElementById("remote-access-url").textContent).toBe(
+        "http://192.168.1.11:57620/app",
+      ),
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(document.getElementById("remote-access-qr").src).toContain("qr-new");
+    expect(document.getElementById("remote-access-copy-status").textContent).not.toBe("");
   });
 });

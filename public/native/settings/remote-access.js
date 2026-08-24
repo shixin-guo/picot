@@ -25,7 +25,7 @@ export function setupRemoteAccessPanel({ fetchImpl = globalThis.fetch } = {}) {
   const urlValue = document.getElementById("remote-access-url");
   const copyButton = document.getElementById("remote-access-copy");
   const copyStatus = document.getElementById("remote-access-copy-status");
-  const qrButton = document.getElementById("remote-access-show-qr");
+  const qrButton = document.getElementById("remote-access-refresh-qr");
   const qrImage = document.getElementById("remote-access-qr");
   const error = document.getElementById("remote-access-error");
   if (!urlValue || !copyButton || !qrButton || !qrImage) return { load: async () => {} };
@@ -41,9 +41,10 @@ export function setupRemoteAccessPanel({ fetchImpl = globalThis.fetch } = {}) {
     copyStatus.classList.toggle("remote-access-status--error", isError);
   };
 
-  async function load() {
-    if (loaded) return;
+  async function load({ force = false } = {}) {
+    if (loaded && !force) return;
     if (loading) return loading;
+    qrButton.disabled = true;
     loading = (async () => {
       try {
         const response = await fetchImpl("/v2/remote-access", { cache: "no-store" });
@@ -54,12 +55,17 @@ export function setupRemoteAccessPanel({ fetchImpl = globalThis.fetch } = {}) {
         remoteUrl = body.url;
         qrDataUrl = typeof body.dataUrl === "string" ? body.dataUrl : "";
         urlValue.textContent = remoteUrl;
-        if (error) error.textContent = "";
         urlValue.title = remoteUrl;
+        qrImage.src = qrDataUrl;
+        qrImage.hidden = !qrDataUrl;
+        if (error) error.textContent = "";
         loaded = true;
+        return true;
       } catch {
         if (error) error.textContent = t("settings.remoteAccessUnavailable");
+        return false;
       } finally {
+        qrButton.disabled = false;
         loading = null;
       }
     })();
@@ -78,11 +84,8 @@ export function setupRemoteAccessPanel({ fetchImpl = globalThis.fetch } = {}) {
   });
 
   qrButton.addEventListener("click", async () => {
-    if (!remoteUrl) await load();
-    if (!qrDataUrl) return;
-    qrImage.src = qrDataUrl;
-    qrImage.hidden = false;
-    qrButton.hidden = true;
+    setStatus("");
+    if (await load({ force: true })) setStatus(t("settings.remoteAccessQrRefreshed"));
   });
 
   return { load };
