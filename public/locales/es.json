@@ -25,7 +25,6 @@
   "nav": {
     "chat": "Chat",
     "toggleSidebar": "Alternar barra lateral",
-    "showMobileQR": "Mostrar código QR móvil",
     "openWorkspace": "Abrir espacio de trabajo",
     "openWorkspaceInApp": "Abrir espacio de trabajo en la app",
     "chooseApp": "Elegir app para abrir el espacio de trabajo",
@@ -392,7 +391,6 @@
     "modelRequestFailed": "La solicitud al modelo falló",
     "modelRequestFailedDetail": "[{provider}/{model}] {message}",
     "newSessionCancelled": "La nueva sesión fue cancelada",
-    "mobileBrokerRequired": "Iniciar un nuevo chat en otro proyecto requiere el broker de escritorio. Vuelve a abrir el código QR móvil.",
     "abortedByUser": "Cancelado por el usuario",
     "invalidJson": "JSON inválido: {detail}",
     "modelsMustBeObject": "models.json debe ser un objeto JSON.",
@@ -588,6 +586,16 @@
     "extensions": "Extensiones",
     "usage": "Uso",
     "configuration": "Proveedores",
+    "remoteAccess": "Acceso remoto",
+    "remoteAccessHelp": "Abre o escanea esta URL en un dispositivo de la misma red. Pulsa Solicitar acceso y apruébalo en Picot de escritorio.",
+    "remoteAccessUrl": "URL del lanzador LAN",
+    "remoteAccessCopy": "Copiar URL",
+    "remoteAccessShowQr": "Mostrar QR",
+    "remoteAccessCopied": "URL copiada",
+    "remoteAccessCopyFailed": "No se pudo copiar",
+    "remoteAccessQrAlt": "Código QR del lanzador de Picot",
+    "remoteAccessNote": "Este QR solo abre la URL /app. No autoriza dispositivos. El acceso local usa http://<LAN-IP>:57620/app; el tráfico no está cifrado, por lo que los prompts y el código fuente podrían ser observables en la red.",
+    "remoteAccessUnavailable": "La URL del lanzador de red local no está disponible.",
     "agentInbox": "Bandeja del agente",
     "backToChat": "Volver al chat",
     "appearance": "Apariencia",
@@ -756,15 +764,6 @@
     "copyConfigPath": "Copiar ruta",
     "configPathCopied": "Copiado",
     "configPathCopyFailed": "Error al copiar"
-  },
-  "lanQr": {
-    "modalAriaLabel": "Código QR móvil",
-    "title": "Abrir en móvil",
-    "closeAriaLabel": "Cerrar",
-    "generating": "Generando código QR…",
-    "qrAlt": "Código QR para acceso móvil",
-    "hint": "Escanea con tu teléfono para abrir Picot en la misma red",
-    "openLink": "Abrir enlace"
   },
   "cost": {
     "documentTitle": "Picot - Uso",

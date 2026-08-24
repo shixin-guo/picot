@@ -8,7 +8,7 @@
 
 The Rust Host serves the SPA document for `/`, `/app`, and deep application URLs, but the browser entry always imports the session application. `public/native/app.js` requires a `/app/workspaces/{workspaceId}/sessions/{sessionId}` route and throws before initializing the sidebar when that route is absent. A browser opened at the bare Host origin therefore remains on static welcome/loading markup.
 
-Mobile QR links currently avoid this problem by deep-linking to the active session. Those links are useful and must remain unchanged, but Picot also needs a stable bookmark and home-screen entry that is not coupled to one session.
+The previous mobile QR flow deep-linked to the active session and mixed navigation with authorization. Picot now needs a stable bookmark and home-screen entry that is not coupled to one session, while keeping authorization in the explicit device-approval flow.
 
 ## Decision
 
@@ -16,7 +16,7 @@ Mobile QR links currently avoid this problem by deep-linking to the active sessi
 
 The launcher renders the existing application shell and session sidebar without selecting or starting a Pi runtime. Its main area tells the user to choose a project or saved session. Selecting a session resolves its project to a stable workspace ID and navigates to the existing canonical session route. Runtime bootstrap remains deferred until that session route loads.
 
-The existing mobile button continues to generate a paired deep link for the active session. The launcher complements that behavior; it does not replace it.
+Settings → Remote Access is the only QR entry point. It shows the trusted desktop's plain LAN `/app` launcher URL; scanning navigates to the launcher, and a fresh device requests access there for explicit desktop approval.
 
 ## Routes
 
@@ -68,13 +68,11 @@ Session-only controls are not active on the launcher:
 
 The main area shows the Picot welcome mark and an instruction to choose a project or session. On narrow screens the sidebar starts collapsed and is opened with the existing sidebar button.
 
-## Mobile and pairing
+## Remote Access
 
-The active-session mobile button keeps calling `/v2/lan-qr?path={currentSessionPath}`. Scanning it still opens the current workspace/session directly and exchanges the single-use pairing token.
+The session header has no mobile or QR authorization control. Settings → Remote Access displays the automatically detected local-network launcher URL (`http://<LAN-IP>:57620/app`), supports Copy URL, and can show a QR encoding only the plain `/app` URL. The QR never includes a session path, pairing credential, or device token.
 
-A previously authorized phone may later open `/app` directly because the device token is stored for the same origin and port. A fresh unpaired browser or installed PWA requests access from its launcher and waits for explicit approval in desktop Picot; the resulting token is stored in that browser context.
-
-The active-session QR deep link remains an optional same-browser convenience. It is not required for an installed PWA and does not replace explicit desktop approval.
+A previously authorized browser/PWA may open `/app` directly because the device token is stored for the same origin and port. A fresh unpaired browser or installed PWA requests access from its launcher and waits for explicit approval in desktop Picot; the resulting token is stored in that browser context.
 
 The launcher catalog and workspace resolution use the authenticated WebSocket protocol rather than adding another unauthenticated LAN catalog endpoint. Broader consistency of existing HTTP-route authorization remains a separate security concern.
 
@@ -97,7 +95,8 @@ The existing one-time reload guard remains limited to failures while importing/e
 - Project paths come only from Host-produced session summaries and are re-canonicalized before workspace registration.
 - Navigation is built with `appRoutePath()` and remains same-origin.
 - Catalog reads do not start runtimes or mutate Pi session files.
-- Mobile QR deep links and optional pairing-token cleanup remain unchanged.
+- Remote Access QR is launcher navigation only; it does not authorize devices or deep-link to sessions.
+- Local-network access remains plain HTTP; installed-PWA HTTPS limitations are explained but not solved here.
 
 ## Acceptance criteria
 
@@ -107,8 +106,8 @@ The existing one-time reload guard remains limited to failures while importing/e
 4. Projects with saved sessions are grouped and sorted using current sidebar behavior.
 5. Selecting a session from any project reaches its canonical session URL and resumes it normally.
 6. A missing project produces a visible error without leaving the launcher.
-7. Existing active-session mobile QR links still include the active deep path and pairing token.
-8. A paired mobile client can later open `/app` and browse the launcher.
+7. Settings Remote Access shows a stable `/app` URL and QR without a pairing token or session path.
+8. A previously authorized browser/PWA can later open `/app` and browse the launcher.
 9. An isolated installed PWA can request access, resume a pending request, and transition after desktop approval within its own storage context.
 10. `/app/workspaces/{workspaceId}/launcher` converges to `/app`.
 11. Unknown routes converge on `/app` instead of reloading and hanging.

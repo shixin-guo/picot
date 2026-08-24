@@ -6,6 +6,7 @@ import { setupLanguageSelector } from "./language-selector.js";
 import { setupPackageBrowse } from "./package-browse.js";
 import { setupPackageManager } from "./package-manager.js";
 import { setupPackageSkillsTab } from "./package-skills-tab.js";
+import { setupRemoteAccessPanel } from "./remote-access.js";
 import { setupSettingsConfig } from "./settings-config.js";
 import { setupSettingsToggles } from "./settings-toggles.js";
 import { setupDiscoveredSkillsTab } from "./skills-discovered-tab.js";
@@ -116,6 +117,7 @@ export function setupSettingsPanel({
         showError: showSkillsError,
       })
     : null;
+  const remoteAccess = setupRemoteAccessPanel();
   const packageTab = setupPackageSkillsTab({
     container: document.getElementById("settings-package-skills"),
     rpcCommand: skillsRpc,
@@ -193,6 +195,7 @@ export function setupSettingsPanel({
     }
     if (target === "skills") void skillsPage.activate();
     if (target === "configuration") loadConfiguration();
+    if (target === "remote-access") void remoteAccess.load();
   }
 
   function buildThemeGrid() {

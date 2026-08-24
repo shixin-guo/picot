@@ -25,7 +25,6 @@
   "nav": {
     "chat": "聊天",
     "toggleSidebar": "切换侧边栏",
-    "showMobileQR": "显示移动端二维码",
     "openWorkspace": "打开工作区",
     "openWorkspaceInApp": "在应用中打开工作区",
     "chooseApp": "选择打开工作区的应用",
@@ -392,7 +391,6 @@
     "modelRequestFailed": "模型请求失败",
     "modelRequestFailedDetail": "[{provider}/{model}] {message}",
     "newSessionCancelled": "新会话已取消",
-    "mobileBrokerRequired": "在另一个项目中发起新聊天需要桌面端代理。请重新打开移动端二维码。",
     "abortedByUser": "已被用户中止",
     "invalidJson": "无效的 JSON：{detail}",
     "modelsMustBeObject": "models.json 必须是 JSON 对象。",
@@ -588,6 +586,16 @@
     "extensions": "扩展",
     "usage": "使用量",
     "configuration": "提供商",
+    "remoteAccess": "远程访问",
+    "remoteAccessHelp": "在同一网络的设备上打开或扫描此启动器 URL。点击请求访问，然后在桌面 Picot 中批准。",
+    "remoteAccessUrl": "局域网启动器 URL",
+    "remoteAccessCopy": "复制 URL",
+    "remoteAccessShowQr": "显示 QR",
+    "remoteAccessCopied": "URL 已复制",
+    "remoteAccessCopyFailed": "复制失败",
+    "remoteAccessQrAlt": "Picot 启动器二维码",
+    "remoteAccessNote": "此 QR 仅打开 /app 启动器 URL，不会授权设备。本地访问使用 http://<LAN-IP>:57620/app；通信未加密，因此提示词和源代码可能在网络中被观察到。",
+    "remoteAccessUnavailable": "本地网络启动器 URL 不可用。",
     "agentInbox": "智能体收件箱",
     "backToChat": "返回聊天",
     "appearance": "外观",
@@ -756,15 +764,6 @@
     "copyConfigPath": "复制路径",
     "configPathCopied": "已复制",
     "configPathCopyFailed": "复制失败"
-  },
-  "lanQr": {
-    "modalAriaLabel": "移动端二维码",
-    "title": "在手机上打开",
-    "closeAriaLabel": "关闭",
-    "generating": "正在生成二维码…",
-    "qrAlt": "用于手机访问的二维码",
-    "hint": "用手机扫描以在同一网络中打开 Picot",
-    "openLink": "打开链接"
   },
   "cost": {
     "documentTitle": "Picot - 使用量",

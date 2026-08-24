@@ -26,6 +26,8 @@ describe("sa-chat-header", () => {
 
     expect(header.textContent).toContain("Telegram");
     expect(header.querySelector('[data-action="simulate"]')).toBeNull();
+    expect(header.querySelector('[data-action="lan-qr"]')).toBeNull();
+    expect(header.querySelector(".lan-qr-btn")).toBeNull();
 
     const taskToggle = header.querySelector('[data-action="runtime"]');
     expect(taskToggle).not.toBeNull();
@@ -34,37 +36,6 @@ describe("sa-chat-header", () => {
 
     expect(document.querySelector("super-agent-runtime").classList.contains("collapsed")).toBe(
       false,
-    );
-  });
-
-  it("uses the regular header layout contract and exposes the mobile QR affordance", async () => {
-    document.body.innerHTML = `
-      <button id="lan-qr-btn" class="hidden"></button>
-      <super-agent-runtime class="super-agent-runtime collapsed"></super-agent-runtime>
-    `;
-    const Header = customElements.get("sa-chat-header");
-    const header = new Header();
-    header.id = "super-agent-chat-header";
-    document.body.appendChild(header);
-
-    expect(header.classList.contains("header")).toBe(true);
-    expect(header.classList.contains("super-agent-chat-header")).toBe(true);
-    expect(header.querySelector(".header-left")).not.toBeNull();
-    expect(header.querySelector(".header-right")).not.toBeNull();
-
-    const qrButton = header.querySelector('[data-action="lan-qr"]');
-    expect(qrButton).not.toBeNull();
-    expect(qrButton.classList.contains("lan-qr-btn")).toBe(true);
-    expect(qrButton.classList.contains("hidden")).toBe(true);
-
-    document.getElementById("lan-qr-btn").classList.remove("hidden");
-    await Promise.resolve();
-    expect(qrButton.classList.contains("hidden")).toBe(false);
-
-    const leftControls = [...header.querySelector(".header-left").children];
-    expect(header.querySelector(".header-left").contains(qrButton)).toBe(true);
-    expect(leftControls.indexOf(qrButton)).toBeLessThan(
-      leftControls.indexOf(header.querySelector(".status")),
     );
   });
 

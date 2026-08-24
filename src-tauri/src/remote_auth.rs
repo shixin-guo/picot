@@ -10,24 +10,10 @@ use std::sync::{Arc, Mutex};
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
-const PAIRING_LIFETIME_SECONDS: u64 = 5 * 60;
 pub const DEVICE_REQUEST_LIFETIME_SECONDS: u64 = 5 * 60;
 pub const MAX_DEVICE_REQUESTS: usize = 64;
 pub const MAX_DEVICE_ID_BYTES: usize = 128;
 pub const MAX_DEVICE_NAME_CHARS: usize = 128;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Pairing {
-    pub token: String,
-    pub expires_at: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PairingError {
-    InvalidOrUsed,
-    Expired,
-    Storage(String),
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceRequestCreated {
@@ -82,7 +68,6 @@ struct PendingDeviceRequest {
 
 pub struct RemoteAuth {
     store: Arc<Mutex<MetadataStore>>,
-    pending: HashMap<Vec<u8>, u64>,
     device_requests: HashMap<String, PendingDeviceRequest>,
     create_attempts: VecDeque<u64>,
 }
@@ -91,7 +76,6 @@ impl RemoteAuth {
     pub fn new(store: Arc<Mutex<MetadataStore>>) -> Self {
         Self {
             store,
-            pending: HashMap::new(),
             device_requests: HashMap::new(),
             create_attempts: VecDeque::new(),
         }
@@ -106,37 +90,6 @@ impl RemoteAuth {
             .lock()
             .map_err(|_| "metadata store poisoned".to_string())?
             .workspace_id_for_path(path)
-    }
-
-    pub fn create_pairing(&mut self, now: u64) -> Pairing {
-        self.pending.retain(|_, expires_at| *expires_at > now);
-        let token = format!("picot_pair_{}", Uuid::new_v4().simple());
-        let expires_at = now + PAIRING_LIFETIME_SECONDS;
-        self.pending.insert(hash(&token), expires_at);
-        Pairing { token, expires_at }
-    }
-
-    pub fn exchange(
-        &mut self,
-        pairing_token: &str,
-        device_id: &str,
-        now: u64,
-    ) -> Result<String, PairingError> {
-        let token_hash = hash(pairing_token);
-        let expires_at = self
-            .pending
-            .remove(&token_hash)
-            .ok_or(PairingError::InvalidOrUsed)?;
-        if now > expires_at {
-            return Err(PairingError::Expired);
-        }
-        let device_token = new_device_token();
-        self.store
-            .lock()
-            .map_err(|_| PairingError::Storage("metadata store poisoned".into()))?
-            .store_device_token(device_id, &device_token)
-            .map_err(PairingError::Storage)?;
-        Ok(device_token)
     }
 
     pub fn create_device_request(
@@ -335,7 +288,7 @@ fn hash(token: &str) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DeviceClaim, DeviceRequestError, PairingError, RemoteAuth};
+    use super::{DeviceClaim, DeviceRequestError, RemoteAuth};
     use crate::metadata_store::MetadataStore;
     use std::fs;
     use std::sync::{Arc, Mutex};
@@ -350,24 +303,6 @@ mod tests {
         fs::create_dir_all(&temp).unwrap();
         let store = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
         (RemoteAuth::new(Arc::new(Mutex::new(store))), temp)
-    }
-
-    #[test]
-    fn exchanges_a_five_minute_single_use_pairing_token_for_a_device_token() {
-        let (mut auth, temp) = auth();
-        let pairing = auth.create_pairing(1_000);
-        assert_eq!(pairing.expires_at, 1_300);
-        let device_token = auth.exchange(&pairing.token, "phone", 1_001).unwrap();
-        assert!(auth.authorize(&device_token).unwrap());
-        assert_eq!(
-            auth.exchange(&pairing.token, "second-phone", 1_002),
-            Err(PairingError::InvalidOrUsed)
-        );
-        assert!(
-            !String::from_utf8_lossy(&fs::read(temp.join("picot.sqlite3")).unwrap())
-                .contains(&device_token)
-        );
-        fs::remove_dir_all(temp).unwrap();
     }
 
     #[test]
@@ -398,6 +333,31 @@ mod tests {
             auth.claim_device_request(&created.request_id, "device-phone", &"a".repeat(64), 14),
             Err(DeviceRequestError::NotFound)
         );
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn persisted_device_tokens_survive_auth_restart_and_revoke() {
+        let (mut auth, temp) = auth();
+        let request = auth
+            .create_device_request("device-phone", "Phone", &"a".repeat(64), 10)
+            .unwrap();
+        auth.decide_device_request(&request.request_id, true, 11)
+            .unwrap();
+        let token = match auth
+            .claim_device_request(&request.request_id, "device-phone", &"a".repeat(64), 12)
+            .unwrap()
+        {
+            DeviceClaim::Approved(token) => token,
+            _ => panic!("approved request did not issue a token"),
+        };
+        drop(auth);
+
+        let reopened_store = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
+        let mut restarted = RemoteAuth::new(Arc::new(Mutex::new(reopened_store)));
+        assert!(restarted.authorize(&token).unwrap());
+        restarted.revoke("device-phone").unwrap();
+        assert!(!restarted.authorize(&token).unwrap());
         fs::remove_dir_all(temp).unwrap();
     }
 

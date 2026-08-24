@@ -1,4 +1,4 @@
-# ADR 0003: Separate Picot metadata and use QR device authorization
+# ADR 0003: Separate Picot metadata and use device approval authorization
 
 - Status: Accepted
 - Date: 2026-07-14
@@ -21,9 +21,10 @@ unknown keys.
 
 Remote authorization uses an explicit Request access → Approve on desktop flow. Pending requests are
 short-lived proof-of-possession claims, and desktop approval endpoints are loopback-only. Only the hash
-of the resulting revocable long-term device token is persisted. The existing QR deep link remains an
-optional single-use convenience for same-browser authorization. A device that completes authorization is
-trusted to the same degree as the desktop app: as of 2026-08, the Host router no longer distinguishes
+of the resulting revocable long-term device token is persisted. QR is navigation only: Settings exposes
+the trusted desktop's plain LAN `/app` launcher URL and a QR encoding that URL, never a credential,
+session path, or pairing secret. A device that completes authorization is trusted to the same degree as
+the desktop app: as of 2026-08, the Host router no longer distinguishes
 `ClientKind::Remote` from `ClientKind::Desktop` for authorization purposes, so a paired mobile/LAN
 client has parity with desktop for Host operations (folder picking, app launching, package and Pi
 package changes, updates, workspace deletion, `/picot-config`) and for local Git operations. The
@@ -50,4 +51,6 @@ with the frontend's converted-document sanitizer and remote-image blocking polic
 - Import, sharing, encrypted transport, session indexing/FTS, and arbitrary TUI rendering remain
   deferred.
 - Authorization is enforced by the Host route family, not by hiding frontend controls.
-- Credentials, pairing secrets, prompt content, and command content must not appear in diagnostics.
+- Credentials, claim secrets, prompt content, and command content must not appear in diagnostics.
+- There is one authorization model: Request access → Approve on desktop. Legacy pairing creation and
+  exchange routes are removed; persisted device tokens remain valid and revocable.

@@ -3,7 +3,6 @@ import { randomId } from "../utils/random-id.js";
 const DEVICE_ID_KEY = "picot-remote-device-id";
 export const DEVICE_TOKEN_KEY = "picot-remote-device-token";
 export const PENDING_DEVICE_REQUEST_KEY = "picot-remote-pending-device-request";
-const PAIRING_QUERY_KEY = "pairingToken";
 const MAX_DEVICE_NAME_LENGTH = 128;
 
 export function isLoopbackHost(hostname = globalThis.location?.hostname) {
@@ -149,26 +148,9 @@ export function installRemoteAuthFetch(
 
 export async function resolveRemoteAuth({
   location = globalThis.location,
-  history = globalThis.history,
   storage = globalThis.localStorage,
-  fetchImpl = globalThis.fetch,
 } = {}) {
   const url = new URL(location.href);
-  const pairingToken = url.searchParams.get(PAIRING_QUERY_KEY);
-  if (pairingToken) {
-    const response = await fetchImpl("/v2/auth/exchange", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ pairingToken, deviceId: remoteDeviceId(storage) }),
-    });
-    if (!response.ok) throw new Error("LAN pairing expired. Generate a new QR code from Picot.");
-    const body = await response.json();
-    if (!body?.deviceToken) throw new Error("LAN pairing did not return a device token.");
-    storage.setItem(DEVICE_TOKEN_KEY, body.deviceToken);
-    url.searchParams.delete(PAIRING_QUERY_KEY);
-    history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
-  }
-
   const deviceToken = storage.getItem(DEVICE_TOKEN_KEY) || "";
   if (isLoopbackHost(url.hostname)) return { clientType: "desktop", deviceToken: "" };
   return { clientType: "remote", deviceToken };

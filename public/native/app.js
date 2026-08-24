@@ -40,7 +40,6 @@ import { showInlineExtensionPrompt } from "./extensions/inline-extension-prompt.
 import { setupAppUpdater } from "./features/app-updater.js";
 import { createFilePreviewFollow } from "./features/file-preview-follow.js";
 import { setupGitPanel } from "./features/git-panel-integration.js";
-import { refreshLanQrButton, setupLanQr } from "./features/lan-qr.js";
 import { setupRemoteAccessApproval } from "./features/remote-access-approval.js";
 import { installRemoteAuthFetch, resolveRemoteAuth } from "./features/remote-auth.js";
 import {
@@ -900,7 +899,6 @@ window.addEventListener("picot:session-created", (event) => {
 });
 
 setupOpenFolderButton({ onError: showError });
-setupLanQr({ control });
 setupAppKeyboardShortcuts({
   input,
   abort: abortCurrentRun,
@@ -997,9 +995,6 @@ try {
       setupHeaderOpenApp({ data, control, workspaceId: target.workspaceId, onError: showError }),
     ).catch((error) => {
       console.warn("[Native] Failed to set up app launcher:", error);
-    }),
-    refreshLanQrButton().catch((error) => {
-      console.warn("[Native] Failed to refresh LAN QR button:", error);
     }),
     loadAvailableModels().catch((error) => {
       console.warn("[Native] Failed to load available models:", error);

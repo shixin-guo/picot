@@ -11,7 +11,6 @@ function overlayOwnsEscape() {
   return (
     isVisible(document.getElementById("settings-panel")) ||
     isVisible(document.getElementById("model-dropdown-menu")) ||
-    isVisible(document.getElementById("lan-qr-modal")) ||
     document.querySelector(".image-lightbox.open")
   );
 }

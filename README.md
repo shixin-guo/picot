@@ -114,7 +114,7 @@ Provide your model credentials via `pi /login` inside any workspace, or by writi
   <img width="360" alt="Picot on mobile" src="docs/images/mobile.webp" />
 </p>
 
-- **LAN QR code** — scan to open Picot on any device on the same network
+- **Settings → Remote Access** — scan the plain `/app` launcher URL on the same network; new devices request access and require desktop approval
 - Mobile-optimised URL handling and App Launcher support (installable as PWA on iOS/Android)
 
 </details>

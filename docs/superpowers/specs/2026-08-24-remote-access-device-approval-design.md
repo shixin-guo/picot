@@ -23,7 +23,7 @@ An unpaired browser or installed PWA can create one bounded pending request. The
 
 No project/session data, runtime operation, file access, or settings operation is available before approval.
 
-The existing QR deep link remains an optional convenience for opening the active session, but it is no longer required to authorize an installed PWA. Remove the launcher paste-token form and its parsing/helper code, styles, translations, and tests.
+The Settings → Remote Access panel is the only QR entry point. It displays the automatically detected local-network launcher URL (`http://<LAN-IP>:57620/app`) and can render a QR encoding only that plain `/app` URL. QR is navigation, never authorization: it contains no session path, pairing credential, or device token. It is no longer required to authorize an installed PWA. Remove the launcher paste-token form and its parsing/helper code, styles, translations, and tests.
 
 ## User flow
 
@@ -151,14 +151,15 @@ Delete code made obsolete by this flow:
 - the launcher paste-pairing form;
 - `pairingPathFromInput` and its tests;
 - paste-link/token translations and CSS;
+- the session-scoped mobile header button, QR modal, `/v2/lan-qr`, and pairing-token URL exchange;
+- `RemoteAuth` pairing pending/create/exchange state and WebSocket auth routing;
 - documentation instructing users to copy or rewrite pairing links.
 
 Keep:
 
 - existing long-lived device-token storage and WebSocket authentication;
-- existing QR/deep-link exchange as an optional same-browser convenience;
 - launcher behavior for already authorized browsers;
-- mobile QR path deep-linking to the active session.
+- device-request creation, claim, approval, denial, and revocation authority.
 
 Do not retain two primary PWA authorization flows.
 
@@ -184,7 +185,9 @@ Do not retain two primary PWA authorization flows.
 
 - Launcher tests cover request creation, waiting state, approved claim/token storage/reload, denial, expiration, retry, and removal of paste-token UI.
 - Desktop approval tests cover escaped/bounded device labels, approve, deny, duplicate/already-handled convergence, modal accessibility, and polling cleanup.
-- Existing QR, remote-auth, session launcher, and PWA manifest tests remain green.
+- Remote Access settings, remote-auth, session launcher, and PWA manifest tests remain green.
+- Trusted desktop Remote Access endpoint tests prove `/app` QR output contains no credential and reject
+  remote/bearer callers.
 
 ### User-flow validation
 

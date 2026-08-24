@@ -25,7 +25,6 @@ grep -n 'class="icon-btn\|role="button"' public/index.html
 | index.html:116 | `.icon-btn` (#sidebar-toggle) | toggle sidebar | inline svg | action-registry (preserve current chevron) |
 | index.html:141 | `.icon-btn.hidden` (#side-chat-btn) | open Side Chat | inline svg | preserve-brand/text/status |
 | index.html:164 | `.icon-btn` (#refresh-sessions-btn) | refresh sessions | inline static svg (refresh) | action-registry; static (no spin) — uses disabled + aria-busy |
-| index.html:265 | `.icon-btn.lan-qr-btn` | show LAN QR | inline svg | preserve-brand/text/status |
 | index.html:383 | `.icon-btn.panel-toggle-btn` (#file-sidebar-toggle) | toggle file browser | inline svg (folder) | action-registry |
 | index.html:406 | `.icon-btn.hidden` (#terminal-toggle mount) | mount terminal toggle | dynamic (terminal-panel.js) | action-registry (sliders) |
 | index.html:763,792 | `.icon-btn` (open-app menu) | open workspace / choose app | brand logo + chevron | preserve-brand/text/status |
@@ -55,7 +54,6 @@ grep -n 'class="icon-btn\|role="button"' public/index.html
 | app.js (sidebar header) | `#refresh-sessions-btn` | refresh sessions | setButtonIcon("refresh-cw") | action-registry; static (disabled + aria-busy) |
 | app.js (header) | `#settings-btn` | settings | setButtonIcon("settings") | action-registry |
 | app.js (header) | `#sidebar-toggle` | toggle sidebar | setButtonIcon("menu") | action-registry |
-| app.js (header) | `#lan-qr-btn` | LAN QR | setButtonIcon("smartphone") | action-registry |
 | app.js (header) | `#header-open-app-toggle` | choose desktop app | setButtonIcon("chevron-down") | action-registry |
 | app.js (header) | `#file-sidebar-toggle` | toggle file browser | setButtonIcon("panel-right") | action-registry |
 | app.js (header) | `#side-chat-btn` | Side Chat | setButtonIcon("message-square") | action-registry |
@@ -111,7 +109,7 @@ This pass closes controls found outside the first inventory. The scope is limite
 | surface | control / glyph | disposition | implementation rule |
 | --- | --- | --- | --- |
 | `public/ephemeral-chat-view.js` | attach, commands, model chevron, mic, send, local SVG builders | `migrate-icons.js` | use the shared registry; preserve scoped DOM and labels |
-| `public/components/sa-chat-header.js` | sidebar, LAN QR, runtime task-board inline SVG | `migrate-icons.js` | build controls imperatively with the shared registry DOM icons |
+| `public/components/sa-chat-header.js` | sidebar, runtime task-board inline SVG | `migrate-icons.js` | build controls imperatively with the shared registry DOM icons |
 | `public/components/super-agent-runtime.js` | close inline SVG; dismiss `✕`; session `→` | `migrate-icons.js` | build task controls imperatively with the shared registry DOM icons; keep text action labels unchanged |
 | `public/terminal-panel.js` | terminal restart `↻` | `migrate-icons.js` | use `rotate-cw`; retain restart hit target and title |
 | `public/composer-image-attachments.js` | pending-image remove `✕` | `migrate-icons.js` | use `x`; keep image-preview behavior unchanged |

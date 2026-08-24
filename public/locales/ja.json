@@ -25,7 +25,6 @@
   "nav": {
     "chat": "チャット",
     "toggleSidebar": "サイドバーを切り替え",
-    "showMobileQR": "モバイルQRコードを表示",
     "openWorkspace": "ワークスペースを開く",
     "openWorkspaceInApp": "アプリでワークスペースを開く",
     "chooseApp": "ワークスペースを開くアプリを選択",
@@ -392,7 +391,6 @@
     "modelRequestFailed": "モデルリクエストが失敗しました",
     "modelRequestFailedDetail": "[{provider}/{model}] {message}",
     "newSessionCancelled": "新しいセッションがキャンセルされました",
-    "mobileBrokerRequired": "別のプロジェクトで新しいチャットを開始するにはデスクトップブローカーが必要です。モバイルQRコードを再度開いてください。",
     "abortedByUser": "ユーザーによって中止されました",
     "invalidJson": "無効なJSON：{detail}",
     "modelsMustBeObject": "models.jsonはJSONオブジェクトである必要があります。",
@@ -588,6 +586,16 @@
     "extensions": "拡張機能",
     "usage": "使用量",
     "configuration": "プロバイダー",
+    "remoteAccess": "リモートアクセス",
+    "remoteAccessHelp": "同じネットワーク上の端末でこのランチャーURLを開くかスキャンしてください。アクセスをリクエストし、デスクトップPicotで承認します。",
+    "remoteAccessUrl": "LANランチャーURL",
+    "remoteAccessCopy": "URLをコピー",
+    "remoteAccessShowQr": "QRを表示",
+    "remoteAccessCopied": "URLをコピーしました",
+    "remoteAccessCopyFailed": "コピーに失敗しました",
+    "remoteAccessQrAlt": "PicotランチャーのQRコード",
+    "remoteAccessNote": "このQRは /app ランチャーURLのみを開き、端末を認証しません。ローカルアクセスは http://<LAN-IP>:57620/app を使います。通信は暗号化されないため、プロンプトやソースコードがネットワーク上で見られる可能性があります。",
+    "remoteAccessUnavailable": "ローカルネットワークのランチャーURLを利用できません。",
     "agentInbox": "エージェント受信箱",
     "backToChat": "チャットに戻る",
     "appearance": "外観",
@@ -756,15 +764,6 @@
     "copyConfigPath": "パスをコピー",
     "configPathCopied": "コピーしました",
     "configPathCopyFailed": "コピーに失敗しました"
-  },
-  "lanQr": {
-    "modalAriaLabel": "モバイルQRコード",
-    "title": "モバイルで開く",
-    "closeAriaLabel": "閉じる",
-    "generating": "QRコードを生成中…",
-    "qrAlt": "モバイルアクセス用QRコード",
-    "hint": "スマートフォンでスキャンして同じネットワーク上でPicotを開く",
-    "openLink": "リンクを開く"
   },
   "cost": {
     "documentTitle": "Picot - 使用量",

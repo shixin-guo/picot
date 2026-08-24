@@ -83,20 +83,6 @@ beforeEach(() => {
 });
 
 describe("app launcher startup", () => {
-  it("clears the swap overlay and renders pairing failures without reloading", async () => {
-    mocks.resolveRemoteAuth.mockRejectedValue(new Error("LAN pairing expired"));
-
-    await import("./app-launcher.js?pairing-failure");
-
-    expect(document.body.classList.contains("swapping-instance")).toBe(false);
-    expect(document.getElementById("instance-swap-overlay").hasAttribute("data-visible")).toBe(
-      false,
-    );
-    expect(sessionStorage.getItem("pi-studio:swapping-instance")).toBeNull();
-    expect(document.querySelector(".launcher-error")?.textContent).toBe("LAN pairing expired");
-    expect(document.getElementById("message-input").disabled).toBe(true);
-  });
-
   it("shows Request access without creating a runtime or paste form", async () => {
     mocks.resolveRemoteAuth.mockResolvedValue({ clientType: "remote", deviceToken: "" });
 

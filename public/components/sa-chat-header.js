@@ -22,12 +22,6 @@ class SAChatHeader extends HTMLElement {
             <line x1="3" y1="18" x2="21" y2="18"/>
           </svg>
         </button>
-        <button class="icon-btn lan-qr-btn hidden" data-action="lan-qr" title="Show mobile QR code" data-i18n-title="nav.showMobileQR" aria-label="Show mobile QR code" data-i18n-aria-label="nav.showMobileQR">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
-            <line x1="12" y1="18" x2="12.01" y2="18"/>
-          </svg>
-        </button>
         <div class="status">
           <span class="status-indicator connected" id="sa-status-indicator"></span>
           <span class="status-text" id="sa-status-text" data-i18n="inbox.listening">Listening</span>
@@ -60,12 +54,10 @@ class SAChatHeader extends HTMLElement {
       if (!btn) return;
       if (btn.disabled) return;
       const action = btn.dataset.action;
-      if (action === "lan-qr") document.getElementById("lan-qr-btn")?.click();
       if (action === "telegram") window.__saOpenSettings?.(action);
       if (action === "runtime") this._toggleRuntime(btn);
     });
 
-    this._syncLanQrButton();
     this._handleChatConfigUpdated = () => this._loadServiceStatus();
     this._handleConfigGatewayReady = () => this._loadServiceStatus();
     window.addEventListener("picot-chat-config-updated", this._handleChatConfigUpdated);
@@ -75,7 +67,6 @@ class SAChatHeader extends HTMLElement {
   }
 
   disconnectedCallback() {
-    this._lanQrObserver?.disconnect();
     this._unsubscribeLocale?.();
     if (this._handleChatConfigUpdated) {
       window.removeEventListener("picot-chat-config-updated", this._handleChatConfigUpdated);
@@ -83,22 +74,6 @@ class SAChatHeader extends HTMLElement {
     if (this._handleConfigGatewayReady) {
       window.removeEventListener("picot-config-gateway-ready", this._handleConfigGatewayReady);
     }
-  }
-
-  _syncLanQrButton() {
-    const source = document.getElementById("lan-qr-btn");
-    const target = this.querySelector('[data-action="lan-qr"]');
-    if (!source || !target) return;
-
-    const sync = () => target.classList.toggle("hidden", source.classList.contains("hidden"));
-    sync();
-
-    this._lanQrObserver?.disconnect();
-    this._lanQrObserver = new MutationObserver(sync);
-    this._lanQrObserver.observe(source, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
   }
 
   async _loadServiceStatus() {

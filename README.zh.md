@@ -114,7 +114,7 @@ Picot 将 `pi` 运行时**直接打包进 .app**，无需单独安装 `pi`，无
   <img width="360" alt="移动端上的 Picot" src="docs/images/mobile.webp" />
 </p>
 
-- **局域网二维码** — 扫码即可在同网络的任意设备上访问 Picot
+- **设置 → 远程访问** — 扫描纯 `/app` 启动器 URL 即可在同网络设备上打开；新设备需请求访问并在桌面端批准
 - 移动端 URL 优化处理，支持 PWA 安装（iOS/Android 可添加到主屏幕）
 
 </details>

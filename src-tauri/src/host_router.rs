@@ -29,11 +29,6 @@ pub enum RoutedAction {
         request_id: String,
         frame: Value,
     },
-    Auth {
-        client_id: String,
-        request_id: String,
-        frame: Value,
-    },
     Subscribe {
         client_id: String,
         request_id: String,
@@ -126,7 +121,7 @@ impl HostRouter {
     }
 
     pub fn route(&self, client_id: &str, frame: &Value) -> Result<RoutedAction, RouterError> {
-        let kind = self.client_kind(client_id).ok_or_else(|| {
+        let _kind = self.client_kind(client_id).ok_or_else(|| {
             RouterError::new("unauthorized_client", "Client has not completed handshake")
         })?;
         let frame_type = frame
@@ -139,13 +134,6 @@ impl HostRouter {
             .filter(|value| !value.is_empty())
             .ok_or_else(|| RouterError::new("invalid_frame", "requestId is required"))?
             .to_owned();
-
-        if frame_type == "auth_request" && kind == ClientKind::Remote {
-            return Err(RouterError::new(
-                "auth_forbidden",
-                "Remote clients cannot mint desktop pairing credentials",
-            ));
-        }
 
         match frame_type {
             "git_command" | "git_ai_commit_message" => {
@@ -213,11 +201,6 @@ impl HostRouter {
                 })
             }
             "data_request" => Ok(RoutedAction::Data {
-                client_id: client_id.to_owned(),
-                request_id,
-                frame: frame.clone(),
-            }),
-            "auth_request" => Ok(RoutedAction::Auth {
                 client_id: client_id.to_owned(),
                 request_id,
                 frame: frame.clone(),
@@ -318,43 +301,24 @@ mod tests {
     }
 
     #[test]
-    fn effective_remote_clients_cannot_self_declare_desktop_or_mint_pairings() {
+    fn legacy_auth_frames_are_not_routable() {
         let mut router = HostRouter::new();
-        let desktop_hello = json!({
-            "type": "hello",
-            "protocolVersion": PROTOCOL_VERSION,
-            "clientType": "desktop",
-        });
         router
-            .connect_as("remote", &desktop_hello, ClientKind::Remote)
+            .connect(
+                "desktop",
+                &json!({ "type": "hello", "protocolVersion": 2, "clientType": "desktop" }),
+            )
             .unwrap();
-        assert_eq!(router.client_kind("remote"), Some(ClientKind::Remote));
         let error = router
             .route(
-                "remote",
-                &json!({
-                    "type": "auth_request",
-                    "requestId": "auth-1",
-                    "operation": "create_pairing",
-                }),
-            )
-            .unwrap_err();
-        assert_eq!(error.code, "auth_forbidden");
-
-        router
-            .connect_as("desktop", &desktop_hello, ClientKind::Desktop)
-            .unwrap();
-        assert!(matches!(
-            router.route(
                 "desktop",
                 &json!({
                     "type": "auth_request",
-                    "requestId": "auth-2",
-                    "operation": "create_pairing",
+                    "requestId": "auth-1",
                 }),
-            ),
-            Ok(RoutedAction::Auth { .. })
-        ));
+            )
+            .unwrap_err();
+        assert_eq!(error.code, "unknown_frame_type");
     }
 
     #[test]

@@ -492,28 +492,6 @@
                 </dl>
               </section>
             </span>
-            <button
-              class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn lan-qr-btn hidden"
-              id="lan-qr-btn"
-              title="Show mobile QR code"
-              data-i18n-title="nav.showMobileQR"
-              aria-label="Show mobile QR code"
-              data-i18n-aria-label="nav.showMobileQR"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
-                <line x1="12" y1="18" x2="12.01" y2="18" />
-              </svg>
-            </button>
             <div class="status">
               <span class="status-indicator" id="status-indicator"></span>
               <span class="status-text" id="status-text">Connecting...</span>
@@ -1387,6 +1365,13 @@
         </button>
         <button
           class="settings-nav-item"
+          data-settings-tab="remote-access"
+          data-i18n="settings.remoteAccess"
+        >
+          Remote Access
+        </button>
+        <button
+          class="settings-nav-item"
           data-settings-tab="chat"
           data-i18n="settings.agentInbox"
         >
@@ -1662,6 +1647,35 @@
                   aria-checked="false"
                 ></button>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-tab" data-settings-panel="remote-access">
+          <div class="settings-body">
+            <div class="settings-section remote-access-panel">
+              <div class="settings-section-title" id="remote-access-title" data-i18n="settings.remoteAccess">
+                Remote Access
+              </div>
+              <p class="settings-help" data-i18n="settings.remoteAccessHelp">
+                Open or scan this launcher URL on a device on the same network. Tap Request access, then approve it in desktop Picot.
+              </p>
+              <div class="settings-row remote-access-url-row">
+                <span class="settings-label settings-label-stack">
+                  <span class="settings-label-main" data-i18n="settings.remoteAccessUrl">LAN launcher URL</span>
+                  <code class="settings-static-value remote-access-url" id="remote-access-url">Loading…</code>
+                </span>
+                <button type="button" class="ui-button ui-button--secondary" id="remote-access-copy" data-i18n="settings.remoteAccessCopy">Copy URL</button>
+              </div>
+              <div class="remote-access-actions">
+                <button type="button" class="ui-button ui-button--secondary" id="remote-access-show-qr" data-i18n="settings.remoteAccessShowQr">Show QR</button>
+                <span class="settings-save-status" id="remote-access-copy-status" role="status" aria-live="polite"></span>
+              </div>
+              <img class="remote-access-qr" id="remote-access-qr" hidden alt="QR code for the Picot launcher" data-i18n-alt="settings.remoteAccessQrAlt" />
+              <p class="settings-help remote-access-note" data-i18n="settings.remoteAccessNote">
+                This QR only opens the plain /app launcher URL. It does not authorize a device. Local-network access uses http://&lt;LAN-IP&gt;:57620/app; traffic is unencrypted, so prompts and source may be observable on the network. Installed-PWA HTTPS requirements are not changed here.
+              </p>
+              <p class="settings-save-status remote-access-error" id="remote-access-error" role="status" aria-live="polite"></p>
             </div>
           </div>
         </div>
@@ -2218,89 +2232,6 @@
 
     <!-- Dialog Container -->
     <div id="dialog-container" class="hidden"></div>
-
-    <!-- LAN QR Code Modal -->
-    <div
-      class="lan-qr-modal hidden"
-      id="lan-qr-modal"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Mobile QR code"
-      data-i18n-aria-label="lanQr.modalAriaLabel"
-    >
-      <div class="lan-qr-modal-backdrop" id="lan-qr-modal-backdrop"></div>
-      <div class="lan-qr-modal-content">
-        <div class="lan-qr-modal-header">
-          <span class="lan-qr-modal-title" data-i18n="lanQr.title"
-            >Open on Mobile</span
-          >
-          <button
-            class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost lan-qr-modal-close icon-btn"
-            id="lan-qr-modal-close"
-            aria-label="Close"
-            data-i18n-aria-label="migrated.index.title.close"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-        <div class="lan-qr-modal-body">
-          <div
-            class="lan-qr-loading ui-loading"
-            id="lan-qr-loading"
-            role="status"
-            aria-live="polite"
-            aria-busy="true"
-            data-i18n="lanQr.generating"
-          >
-            Generating QR code…
-          </div>
-          <img
-            class="lan-qr-image hidden"
-            id="lan-qr-image"
-            alt="QR code for mobile access"
-            data-i18n-alt="lanQr.qrAlt"
-          />
-          <div class="lan-qr-hint" data-i18n="lanQr.hint">
-            Scan with your phone to open Picot on the same network
-          </div>
-          <button
-            class="lan-qr-open-link hidden"
-            id="lan-qr-open-link"
-            type="button"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path
-                d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
-              />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
-            <span data-i18n="migrated.index.text.openLink">Open Link</span>
-          </button>
-        </div>
-      </div>
-    </div>
 
     <!-- Scripts -->
     <!-- Import map: redirects browser-only package specifiers to the

@@ -14,6 +14,7 @@ function renderSettingsDom() {
         <button class="settings-nav-item" data-settings-tab="skills">Skills</button>
         <button class="settings-nav-item" data-settings-tab="usage">Usage</button>
         <button class="settings-nav-item" data-settings-tab="configuration">Configuration</button>
+        <button class="settings-nav-item" data-settings-tab="remote-access">Remote Access</button>
         <button class="settings-nav-back" id="settings-close">Back</button>
       </aside>
       <section class="settings-content">
@@ -25,6 +26,7 @@ function renderSettingsDom() {
         <div class="settings-tab" data-settings-panel="skills"><div id="settings-skills"></div></div>
         <div class="settings-tab" data-settings-panel="usage"></div>
         <div class="settings-tab" data-settings-panel="configuration"></div>
+        <div class="settings-tab" data-settings-panel="remote-access"></div>
       </section>
     </div>
   `;
@@ -47,6 +49,19 @@ describe("settings panel hash routing", () => {
 
     expect(window.location.hash).toBe("#/settings/usage");
     expect(document.getElementById("settings-panel").classList.contains("hidden")).toBe(false);
+  });
+
+  it("opens the Remote Access tab through the settings composition root", () => {
+    const panel = setupSettingsPanel();
+    panel.openSettings("remote-access");
+
+    expect(
+      document.querySelector('[data-settings-tab="remote-access"]').classList.contains("active"),
+    ).toBe(true);
+    expect(
+      document.querySelector('[data-settings-panel="remote-access"]').classList.contains("active"),
+    ).toBe(true);
+    expect(window.location.hash).toBe("#/settings/remote-access");
   });
 
   it("clears the hash when settings is closed", () => {

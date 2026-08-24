@@ -25,7 +25,6 @@
   "nav": {
     "chat": "Chat",
     "toggleSidebar": "Toggle sidebar",
-    "showMobileQR": "Show mobile QR code",
     "openWorkspace": "Open workspace",
     "openWorkspaceInApp": "Open workspace in app",
     "chooseApp": "Choose app to open workspace",
@@ -392,7 +391,6 @@
     "modelRequestFailed": "Model request failed",
     "modelRequestFailedDetail": "[{provider}/{model}] {message}",
     "newSessionCancelled": "New session was cancelled",
-    "mobileBrokerRequired": "Starting a new chat in another project requires the desktop broker. Reopen the mobile QR code.",
     "abortedByUser": "Aborted by user",
     "invalidJson": "Invalid JSON: {detail}",
     "modelsMustBeObject": "models.json must be a JSON object.",
@@ -588,6 +586,16 @@
     "extensions": "Extensions",
     "usage": "Usage",
     "configuration": "Providers",
+    "remoteAccess": "Remote Access",
+    "remoteAccessHelp": "Open or scan this launcher URL on a device on the same network. Tap Request access, then approve it in desktop Picot.",
+    "remoteAccessUrl": "LAN launcher URL",
+    "remoteAccessCopy": "Copy URL",
+    "remoteAccessShowQr": "Show QR",
+    "remoteAccessCopied": "URL copied",
+    "remoteAccessCopyFailed": "Copy failed",
+    "remoteAccessQrAlt": "QR code for the Picot launcher",
+    "remoteAccessNote": "This QR only opens the plain /app launcher URL. It does not authorize a device. Local-network access uses http://<LAN-IP>:57620/app; traffic is unencrypted, so prompts and source may be observable on the network. Installed-PWA HTTPS requirements are not changed here.",
+    "remoteAccessUnavailable": "The local-network launcher URL is unavailable.",
     "agentInbox": "Agent Inbox",
     "backToChat": "Back to chat",
     "appearance": "Appearance",
@@ -756,15 +764,6 @@
     "copyConfigPath": "Copy path",
     "configPathCopied": "Copied",
     "configPathCopyFailed": "Copy failed"
-  },
-  "lanQr": {
-    "modalAriaLabel": "Mobile QR code",
-    "title": "Open on Mobile",
-    "closeAriaLabel": "Close",
-    "generating": "Generating QR code…",
-    "qrAlt": "QR code for mobile access",
-    "hint": "Scan with your phone to open Picot on the same network",
-    "openLink": "Open Link"
   },
   "cost": {
     "documentTitle": "Picot - Usage",

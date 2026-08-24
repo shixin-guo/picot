@@ -1,0 +1,39 @@
+.remote-access-panel {
+  max-width: 720px;
+}
+
+.remote-access-url-row {
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.remote-access-url {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.remote-access-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.remote-access-status--error,
+.remote-access-error {
+  color: var(--error);
+}
+
+.remote-access-qr {
+  display: block;
+  width: 220px;
+  height: 220px;
+  margin: var(--space-4) auto;
+  padding: var(--space-1-5);
+  background: #fff;
+  border-radius: var(--radius-md);
+}
+
+.remote-access-note {
+  max-width: 60ch;
+}

@@ -31,8 +31,7 @@ use axum::response::{Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
 use futures_util::StreamExt;
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -297,7 +296,6 @@ impl HostServer {
             .route("/v2/ws", get(websocket_upgrade))
             .route("/v2/bootstrap", get(bootstrap_target))
             .route("/v2/sessions", get(list_all_sessions_http))
-            .route("/v2/auth/exchange", post(exchange_pairing))
             .route(
                 "/v2/auth/device-requests",
                 post(create_device_request).get(list_device_requests),
@@ -314,7 +312,7 @@ impl HostServer {
                 "/v2/auth/device-requests/{request_id}/deny",
                 post(deny_device_request),
             )
-            .route("/v2/lan-qr", get(lan_qr))
+            .route("/v2/remote-access", get(remote_access))
             .route(
                 "/api/files/content",
                 get(read_file_content).put(write_file_content),
@@ -541,21 +539,8 @@ fn local_lan_url_with_port(port: u16) -> Option<String> {
     local_lan_ip().map(|ip| format!("http://{}:{}", ip, port))
 }
 
-fn append_pairing_token(url: &mut String, token: &str) {
-    let separator = if url.contains('?') { '&' } else { '?' };
-    url.push(separator);
-    url.push_str("pairingToken=");
-    url.push_str(&utf8_percent_encode(token, NON_ALPHANUMERIC).to_string());
-}
-
-#[derive(Deserialize)]
-struct LanQrQuery {
-    path: Option<String>,
-}
-
-async fn lan_qr(
+async fn remote_access(
     State(state): State<Arc<HostState>>,
-    Query(query): Query<LanQrQuery>,
     peer: ConnectInfo<std::net::SocketAddr>,
     headers: HeaderMap,
     uri: Uri,
@@ -571,25 +556,9 @@ async fn lan_qr(
             Json(json!({ "error": "No LAN interface found" })),
         ));
     }
-    // Append the session path (e.g. /app/workspaces/{id}/sessions/{id}) if provided.
-    let mut url = if let Some(path) = query.path.as_deref() {
-        let path = path.trim_start_matches('/');
-        format!("{}/{}", base_url.trim_end_matches('/'), path)
-    } else {
-        base_url.clone()
-    };
-    let pairing = state
-        .auth
-        .lock()
-        .map_err(|_| {
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({ "error": "Remote auth unavailable" })),
-            )
-        })?
-        .create_pairing(now_seconds());
-    append_pairing_token(&mut url, &pairing.token);
-    // Build QR code as SVG, then base64-encode it as a data URL.
+    // The QR is navigation only. It deliberately encodes the stable launcher
+    // URL and never contains a session path, pairing secret, or device token.
+    let url = format!("{}/app", base_url.trim_end_matches('/'));
     let code = qrcode::QrCode::new(url.as_bytes()).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -605,9 +574,7 @@ async fn lan_qr(
     use base64::Engine as _;
     let b64 = base64::engine::general_purpose::STANDARD.encode(svg_str.as_bytes());
     let data_url = format!("data:image/svg+xml;base64,{b64}");
-    Ok(Json(
-        json!({ "dataUrl": data_url, "url": url, "baseUrl": base_url }),
-    ))
+    Ok(Json(json!({ "dataUrl": data_url, "url": url })))
 }
 
 #[derive(Deserialize)]
@@ -1485,27 +1452,6 @@ async fn dispatch(
             }
             Ok(response)
         }
-        RoutedAction::Auth {
-            request_id, frame, ..
-        } => match frame.get("operation").and_then(Value::as_str) {
-            Some("create_pairing") => {
-                let pairing = state
-                    .auth
-                    .lock()
-                    .map_err(|_| ("auth_unavailable", "Remote auth unavailable".into()))?
-                    .create_pairing(now_seconds());
-                Ok(json!({
-                    "type": "auth_response",
-                    "requestId": request_id,
-                    "pairingToken": pairing.token,
-                    "expiresAt": pairing.expires_at,
-                }))
-            }
-            _ => Err((
-                "unknown_auth_operation",
-                "Unsupported auth operation".into(),
-            )),
-        },
         RoutedAction::Host {
             client_id,
             request_id,
@@ -2263,34 +2209,6 @@ fn host_data_http_error(error: HostDataError) -> (StatusCode, Json<Value>) {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct PairingExchangeRequest {
-    pairing_token: String,
-    device_id: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PairingExchangeResponse {
-    device_token: String,
-}
-
-async fn exchange_pairing(
-    State(state): State<Arc<HostState>>,
-    Json(request): Json<PairingExchangeRequest>,
-) -> Result<Json<PairingExchangeResponse>, (StatusCode, Json<Value>)> {
-    let token = state
-        .auth
-        .lock()
-        .map_err(|_| api_error(StatusCode::SERVICE_UNAVAILABLE, "auth_unavailable"))?
-        .exchange(&request.pairing_token, &request.device_id, now_seconds())
-        .map_err(|_| api_error(StatusCode::UNAUTHORIZED, "pairing_rejected"))?;
-    Ok(Json(PairingExchangeResponse {
-        device_token: token,
-    }))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct DeviceRequestBody {
     device_id: String,
     device_name: String,
@@ -2310,7 +2228,7 @@ fn is_public_http_request(method: &Method, path: &str) -> bool {
     }
     (method == Method::GET && matches!(path, "/health" | "/v2/ws"))
         || (method == Method::POST
-            && (matches!(path, "/v2/auth/exchange" | "/v2/auth/device-requests")
+            && (matches!(path, "/v2/auth/device-requests")
                 || (path.starts_with("/v2/auth/device-requests/") && path.ends_with("/claim"))))
 }
 
@@ -2578,8 +2496,8 @@ fn now_seconds() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_pairing_token, extension_ui_requires_owner, is_public_http_request,
-        messages_from_entries_response, now_seconds, trusted_loopback_request, HostServer,
+        extension_ui_requires_owner, is_public_http_request, messages_from_entries_response,
+        trusted_loopback_request, HostServer,
     };
     use crate::metadata_store::MetadataStore;
     use crate::native_pi_manager::NativePiManager;
@@ -2590,24 +2508,6 @@ mod tests {
     use std::fs;
     use std::sync::{Arc, Mutex};
     use std::time::{SystemTime, UNIX_EPOCH};
-
-    #[test]
-    fn appends_pairing_token_to_lan_deep_link() {
-        let mut plain = "http://192.168.1.10:9000/app/workspaces/a/sessions/b".to_string();
-        append_pairing_token(&mut plain, "picot_pair_a+b");
-        assert_eq!(
-            plain,
-            "http://192.168.1.10:9000/app/workspaces/a/sessions/b?pairingToken=picot%5Fpair%5Fa%2Bb"
-        );
-
-        let mut with_query =
-            "http://192.168.1.10:9000/app/workspaces/a/sessions/b?tab=settings".to_string();
-        append_pairing_token(&mut with_query, "token");
-        assert_eq!(
-            with_query,
-            "http://192.168.1.10:9000/app/workspaces/a/sessions/b?tab=settings&pairingToken=token"
-        );
-    }
 
     #[test]
     fn exposes_static_assets_and_only_the_minimum_unauthenticated_protocol_routes() {
@@ -2624,7 +2524,6 @@ mod tests {
             assert!(is_public_http_request(&Method::GET, path), "{path}");
         }
         assert!(is_public_http_request(&Method::GET, "/v2/ws"));
-        assert!(is_public_http_request(&Method::POST, "/v2/auth/exchange"));
         assert!(is_public_http_request(
             &Method::POST,
             "/v2/auth/device-requests"
@@ -2635,6 +2534,8 @@ mod tests {
         ));
 
         for (method, path) in [
+            (Method::POST, "/v2/auth/exchange"),
+            (Method::GET, "/v2/remote-access"),
             (Method::GET, "/v2/auth/device-requests"),
             (Method::POST, "/v2/auth/device-requests/request-1/approve"),
             (Method::GET, "/v2/sessions"),
@@ -2805,7 +2706,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn protects_http_data_and_legacy_qr_by_authority_and_bearer() {
+    async fn protects_http_data_and_remote_access_by_authority_and_bearer() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -2845,50 +2746,54 @@ mod tests {
             .unwrap();
         assert_eq!(invalid_bearer.status(), reqwest::StatusCode::UNAUTHORIZED);
 
-        let pairing = host
+        let remote_access = client
+            .get(format!("{}/v2/remote-access", host.origin()))
+            .send()
+            .await
+            .unwrap();
+        assert!(remote_access.status().is_success());
+        let body: serde_json::Value = remote_access.json().await.unwrap();
+        let launcher_url = reqwest::Url::parse(body["url"].as_str().unwrap()).unwrap();
+        assert_eq!(launcher_url.path(), "/app");
+        assert!(launcher_url.query().is_none());
+        assert!(launcher_url.fragment().is_none());
+        assert!(!body.to_string().contains("picot_pair_"));
+
+        let request = host
             .state
             .auth
             .lock()
             .unwrap()
-            .create_pairing(now_seconds());
-        let device_token = host
-            .state
-            .auth
-            .lock()
-            .unwrap()
-            .exchange(&pairing.token, "integration-device", now_seconds())
+            .create_device_request("remote-test", "Remote browser", &"a".repeat(64), 1)
             .unwrap();
-        let bearer = client
-            .get(&runtime_url)
-            .header("host", "remote.example")
-            .bearer_auth(&device_token)
-            .send()
-            .await
-            .unwrap();
-        assert!(bearer.status().is_success());
-
-        let lan_qr = client
-            .get(format!("{}/v2/lan-qr", host.origin()))
-            .header("host", "remote.example")
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(lan_qr.status(), reqwest::StatusCode::UNAUTHORIZED);
-
         host.state
             .auth
             .lock()
             .unwrap()
-            .revoke("integration-device")
+            .decide_device_request(&request.request_id, true, 2)
             .unwrap();
-        let revoked = client
-            .get(&runtime_url)
+        let device_token = match host
+            .state
+            .auth
+            .lock()
+            .unwrap()
+            .claim_device_request(&request.request_id, "remote-test", &"a".repeat(64), 3)
+            .unwrap()
+        {
+            crate::remote_auth::DeviceClaim::Approved(token) => token,
+            _ => panic!("approved request did not issue a token"),
+        };
+        let remote_access_bearer = client
+            .get(format!("{}/v2/remote-access", host.origin()))
             .header("host", "remote.example")
-            .bearer_auth(&device_token)
+            .bearer_auth(device_token)
             .send()
             .await
             .unwrap();
-        assert_eq!(revoked.status(), reqwest::StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            remote_access_bearer.status(),
+            reqwest::StatusCode::FORBIDDEN
+        );
 
         host.stop();
         fs::remove_dir_all(temp).unwrap();
@@ -3049,11 +2954,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bearer_authenticated_external_authority_cannot_mint_pairings_or_claim_desktop() {
-        use axum::http::header::{AUTHORIZATION, HOST};
-        use axum::http::HeaderValue;
-        use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-
+    async fn bearer_authenticated_external_authority_cannot_retrieve_remote_access() {
+        use axum::http::header::HOST;
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -3067,59 +2969,15 @@ mod tests {
         let host = HostServer::start(public, NativePiManager::new(32), auth, None)
             .await
             .unwrap();
-        let pairing = host
-            .state
-            .auth
-            .lock()
-            .unwrap()
-            .create_pairing(now_seconds());
-        let token = host
-            .state
-            .auth
-            .lock()
-            .unwrap()
-            .exchange(&pairing.token, "ws-remote", now_seconds())
-            .unwrap();
-        let ws_url = host.origin().replace("http://", "ws://") + "/v2/ws";
-        let mut request = ws_url.into_client_request().unwrap();
-        request
-            .headers_mut()
-            .insert(HOST, HeaderValue::from_static("remote.example"));
-        request.headers_mut().insert(
-            AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
-        );
-        let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
-        socket
-            .send(tokio_tungstenite::tungstenite::Message::Text(
-                json!({
-                    "type": "hello",
-                    "protocolVersion": 2,
-                    "clientType": "desktop",
-                    "clientId": "remote-self-declared-desktop",
-                    "deviceToken": token,
-                })
-                .to_string(),
-            ))
+        let token = "picot_device_invalid";
+        let response = reqwest::Client::new()
+            .get(format!("{}/v2/remote-access", host.origin()))
+            .header(HOST, "remote.example")
+            .bearer_auth(token)
+            .send()
             .await
             .unwrap();
-        let hello_ack = socket.next().await.unwrap().unwrap();
-        assert!(hello_ack.to_text().unwrap().contains("hello_ack"));
-        socket
-            .send(tokio_tungstenite::tungstenite::Message::Text(
-                json!({
-                    "type": "auth_request",
-                    "requestId": "auth-remote",
-                    "operation": "create_pairing",
-                })
-                .to_string(),
-            ))
-            .await
-            .unwrap();
-        let response = socket.next().await.unwrap().unwrap();
-        let response: serde_json::Value =
-            serde_json::from_str(response.to_text().unwrap()).unwrap();
-        assert_eq!(response["error"]["code"], "auth_forbidden");
+        assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
 
         host.stop();
         fs::remove_dir_all(temp).unwrap();
