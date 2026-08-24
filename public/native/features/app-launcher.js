@@ -53,7 +53,6 @@ async function startLauncher() {
     onAgentInboxSessionChange: null,
     loadSessions: () => data.listLauncherSessions(),
     cacheScope: "launcher",
-    enableFullTextSearch: false,
   });
 
   setupSidebarSearch(sidebar);
@@ -64,13 +63,9 @@ async function startLauncher() {
 
 export async function openLauncherSession(
   session,
-  {
-    control,
-    navigate = (path) => window.location.assign(path),
-    invalidMessage = t("launcher.invalidSession"),
-  },
+  { control, navigate = (path) => window.location.assign(path) },
 ) {
-  if (!session?.id || !session?.projectPath) throw new Error(invalidMessage);
+  if (!session?.id || !session?.projectPath) throw new Error(t("launcher.invalidSession"));
   const workspaceId = await control.resolveWorkspace(session.projectPath);
   const path = appRoutePath({ name: "session", workspaceId, sessionId: session.id });
   navigate(path);

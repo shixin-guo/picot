@@ -223,7 +223,6 @@ export class SessionSidebar {
       onAgentInboxSessionChange,
       loadSessions,
       cacheScope,
-      enableFullTextSearch = true,
     },
   ) {
     this.container = container;
@@ -238,7 +237,6 @@ export class SessionSidebar {
     this.onAgentInboxSessionChange = onAgentInboxSessionChange;
     this.loadSessions = loadSessions;
     this.cacheScope = cacheScope;
-    this.enableFullTextSearch = enableFullTextSearch;
 
     this.sessions = [];
     this.activeSessionId = getTarget()?.sessionId ?? null;
@@ -607,7 +605,7 @@ export class SessionSidebar {
       return;
     }
     this.applySearch();
-    if (this.enableFullTextSearch && this.searchQuery.length >= 2) {
+    if (this.searchQuery.length >= 2) {
       this._searchTimer = setTimeout(() => this.#fullTextSearch(this.searchQuery), 300);
     }
   }

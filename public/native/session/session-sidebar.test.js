@@ -254,7 +254,6 @@ describe("SessionSidebar.render", () => {
       getTarget: () => null,
       cacheScope: "launcher",
       loadSessions,
-      enableFullTextSearch: false,
     });
 
     await sidebar.load();
