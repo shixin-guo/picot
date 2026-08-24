@@ -22,3 +22,16 @@ export function randomId() {
   }
   return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
+
+export function sessionScopedClientId(clientType, storage = globalThis.sessionStorage) {
+  const key = "picot:host-client-id";
+  try {
+    const existing = storage.getItem(key);
+    if (existing) return existing;
+    const created = `${clientType}-${randomId()}`;
+    storage.setItem(key, created);
+    return created;
+  } catch {
+    return `${clientType}-${randomId()}`;
+  }
+}

@@ -4,6 +4,13 @@
     "welcomeHint": "在下方输入消息开始与 Pi 对话，或从侧边栏选择一个会话。",
     "currentWorkspace": "当前工作区："
   },
+  "launcher": {
+    "title": "项目",
+    "hint": "请从侧边栏选择一个项目或已保存的会话。",
+    "invalidSession": "无法打开此已保存的会话。",
+    "pairingRequired": "请在桌面端打开 Picot 的移动二维码并扫描，以配对此设备。",
+    "composerHint": "选择一个已保存的会话以开始聊天"
+  },
   "shortcuts": {
     "focusInput": "聚焦输入框",
     "abort": "中止"

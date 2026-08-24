@@ -26,7 +26,7 @@ use axum::http::header::{
 };
 use axum::http::HeaderValue;
 use axum::http::StatusCode;
-use axum::response::Response;
+use axum::response::{Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
 use futures_util::StreamExt;
@@ -288,6 +288,7 @@ impl HostServer {
             ))
             .service(ServeDir::new(static_dir));
         let app = Router::new()
+            .route("/", get(app_launcher_redirect))
             .route("/health", get(health))
             .route("/health/runtime", get(health_runtime))
             .route("/health/models/test", post(health_model_test))
@@ -366,6 +367,10 @@ impl Drop for HostServer {
             let _ = shutdown.send(());
         }
     }
+}
+
+async fn app_launcher_redirect() -> Redirect {
+    Redirect::temporary("/app")
 }
 
 async fn health(State(state): State<Arc<HostState>>) -> Json<Value> {
@@ -884,6 +889,24 @@ struct ResolveWorkspaceRequest {
     project_path: String,
 }
 
+fn resolve_workspace_path(state: &HostState, project_path: &str) -> Result<String, &'static str> {
+    let path = PathBuf::from(project_path);
+    if !path.is_dir() {
+        return Err("project_not_found");
+    }
+    let workspace_id = state
+        .auth
+        .lock()
+        .map_err(|_| "auth_unavailable")?
+        .resolve_workspace(&path)
+        .map_err(|_| "workspace_resolve_failed")?;
+    state
+        .data
+        .register_workspace(&workspace_id, path)
+        .map_err(|_| "workspace_register_failed")?;
+    Ok(workspace_id)
+}
+
 /// POST /v2/resolve-workspace — map a project path to its stable workspace id
 /// and register the workspace root so subsequent `/v2/bootstrap` calls can
 /// lazily resume its sessions. Used by LAN/mobile clients switching to a
@@ -892,30 +915,14 @@ async fn resolve_workspace(
     State(state): State<Arc<HostState>>,
     Json(body): Json<ResolveWorkspaceRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let path = PathBuf::from(&body.project_path);
-    if !path.is_dir() {
-        return Err(api_error(StatusCode::NOT_FOUND, "project_not_found"));
-    }
-    let workspace_id = state
-        .auth
-        .lock()
-        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "auth_unavailable"))?
-        .resolve_workspace(&path)
-        .map_err(|_| {
-            api_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "workspace_resolve_failed",
-            )
-        })?;
-    state
-        .data
-        .register_workspace(&workspace_id, path)
-        .map_err(|_| {
-            api_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "workspace_register_failed",
-            )
-        })?;
+    let workspace_id = resolve_workspace_path(&state, &body.project_path).map_err(|code| {
+        let status = if code == "project_not_found" {
+            StatusCode::NOT_FOUND
+        } else {
+            StatusCode::INTERNAL_SERVER_ERROR
+        };
+        api_error(status, code)
+    })?;
     Ok(Json(json!({ "workspaceId": workspace_id })))
 }
 
@@ -1490,6 +1497,23 @@ async fn dispatch(
                     "sessions": sessions,
                 }))
             }
+            Some("list_launcher_sessions") => {
+                let sessions = state
+                    .data
+                    .list_launcher_sessions()
+                    .map_err(host_data_error)?;
+                let mut sessions = serde_json::to_value(sessions)
+                    .map_err(|error| ("serialization_failed", error.to_string()))?;
+                if let Ok(statuses) = state.runtimes.statuses() {
+                    annotate_live_sessions(&mut sessions, statuses);
+                }
+                Ok(json!({
+                    "type": "data_response",
+                    "requestId": request_id,
+                    "operation": "list_launcher_sessions",
+                    "sessions": sessions,
+                }))
+            }
             Some("search_sessions") => {
                 let workspace_id = frame
                     .get("workspaceId")
@@ -1704,6 +1728,21 @@ async fn dispatch_host_operation(
                 "requestId": request_id,
                 "operation": "open_external",
                 "ok": true,
+            }))
+        }
+        "resolve_workspace" => {
+            let project_path = frame
+                .get("projectPath")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or(("invalid_project_path", "projectPath is required".into()))?;
+            let workspace_id = resolve_workspace_path(state, project_path)
+                .map_err(|code| (code, code.replace('_', " ")))?;
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "resolve_workspace",
+                "workspaceId": workspace_id,
             }))
         }
         "delete_sessions" => {
@@ -2340,6 +2379,17 @@ mod tests {
         let host = HostServer::start(public, NativePiManager::new(32), auth, None)
             .await
             .unwrap();
+
+        let root = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap()
+            .get(format!("{}/", host.origin()))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(root.status(), reqwest::StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(root.headers().get("location").unwrap(), "/app");
 
         let health: serde_json::Value = reqwest::get(format!("{}/health", host.origin()))
             .await

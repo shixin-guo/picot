@@ -131,6 +131,24 @@ describe("HostControlGateway", () => {
     await expect(response).resolves.toBe("instance-new");
   });
 
+  it("resolves a project path to a workspace id", async () => {
+    const adapter = createInMemoryRuntimeAdapter();
+    const control = new HostControlGateway(adapter);
+    const response = control.resolveWorkspace("/tmp/project");
+    const sent = adapter.takeSent();
+    expect(sent).toMatchObject({
+      type: "host_request",
+      operation: "resolve_workspace",
+      projectPath: "/tmp/project",
+    });
+    adapter.receive({
+      type: "host_response",
+      requestId: sent.requestId,
+      workspaceId: "workspace-a",
+    });
+    await expect(response).resolves.toBe("workspace-a");
+  });
+
   it("lists installed external apps", async () => {
     const adapter = createInMemoryRuntimeAdapter();
     const control = new HostControlGateway(adapter);

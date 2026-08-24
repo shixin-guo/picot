@@ -43,7 +43,7 @@ export async function resolveRemoteAuth({
   }
 
   const deviceToken = storage.getItem(DEVICE_TOKEN_KEY) || "";
-  if (!deviceToken || isLoopbackHost(url.hostname)) {
+  if (isLoopbackHost(url.hostname)) {
     return { clientType: "desktop", deviceToken: "" };
   }
   return { clientType: "remote", deviceToken };

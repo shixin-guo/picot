@@ -237,6 +237,33 @@ describe("SessionSidebar.render", () => {
     expect(item.querySelector(".session-title").textContent).toBe("New title");
   });
 
+  it("loads a targetless launcher catalog with an explicit cache scope", async () => {
+    const loadSessions = vi.fn().mockResolvedValue({
+      sessions: [
+        {
+          id: "s-launcher",
+          timestamp: new Date().toISOString(),
+          name: "Launcher session",
+          projectPath: "/ws-launcher",
+          projectName: "ws-launcher",
+          isCurrentWorkspace: false,
+        },
+      ],
+    });
+    const { sidebar, container, data } = makeSidebar([], {
+      getTarget: () => null,
+      cacheScope: "launcher",
+      loadSessions,
+      enableFullTextSearch: false,
+    });
+
+    await sidebar.load();
+
+    expect(loadSessions).toHaveBeenCalledOnce();
+    expect(data.listAllSessions).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Launcher session");
+  });
+
   it("retries transient load failures before showing the manual retry error", async () => {
     vi.useFakeTimers();
     const { sidebar, container, data } = makeSidebar([]);

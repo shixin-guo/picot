@@ -1088,16 +1088,31 @@ impl HostDataPlane {
         &self,
         workspace_id: &str,
     ) -> Result<Vec<SessionSummary>, HostDataError> {
-        let current = self.workspace_root(workspace_id).ok();
+        let current = self
+            .workspace_root(workspace_id)
+            .ok()
+            .map(|root| (workspace_id, root));
+        self.list_all_sessions_with_current(current)
+    }
+
+    /// List saved sessions for the targetless `/app` launcher. No workspace is
+    /// marked current, so selecting any result follows the existing
+    /// cross-project resolution flow before navigating to its canonical route.
+    pub fn list_launcher_sessions(&self) -> Result<Vec<SessionSummary>, HostDataError> {
+        self.list_all_sessions_with_current(None)
+    }
+
+    fn list_all_sessions_with_current(
+        &self,
+        current: Option<(&str, PathBuf)>,
+    ) -> Result<Vec<SessionSummary>, HostDataError> {
         let mut sessions = self.collect_sessions(None)?;
-        for session in &mut sessions {
-            let project = PathBuf::from(&session.project_path);
-            if current
-                .as_ref()
-                .is_some_and(|root| same_dir(root, &project))
-            {
-                session.workspace_id = workspace_id.to_owned();
-                session.is_current_workspace = true;
+        if let Some((workspace_id, root)) = current {
+            for session in &mut sessions {
+                if same_dir(&root, Path::new(&session.project_path)) {
+                    session.workspace_id = workspace_id.to_owned();
+                    session.is_current_workspace = true;
+                }
             }
         }
         sessions.sort_by_key(|session| std::cmp::Reverse(session.activity_at_ms));
@@ -2375,6 +2390,14 @@ mod tests {
         assert!(foreign.workspace_id.is_empty());
         assert!(foreign.project_path.ends_with("other"));
         assert_eq!(foreign.project_name, "other");
+
+        // The canonical /app launcher is targetless: it returns the same
+        // catalog without inventing a current workspace.
+        let launcher = data.list_launcher_sessions().unwrap();
+        assert_eq!(launcher.len(), 2);
+        assert!(launcher
+            .iter()
+            .all(|session| !session.is_current_workspace && session.workspace_id.is_empty()));
         fs::remove_dir_all(temp).unwrap();
     }
 

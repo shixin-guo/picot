@@ -72,6 +72,12 @@ export class HostControlGateway {
     return frame?.instanceId ?? null;
   }
 
+  async resolveWorkspace(projectPath) {
+    const frame = await this.#request("resolve_workspace", { projectPath });
+    if (!frame?.workspaceId) throw new Error("Host returned an invalid workspace id");
+    return frame.workspaceId;
+  }
+
   async listInstalledApps() {
     const frame = await this.#request("list_installed_apps");
     return Array.isArray(frame?.apps) ? frame.apps : [];

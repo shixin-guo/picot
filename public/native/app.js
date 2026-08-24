@@ -71,7 +71,7 @@ import { HostRuntimeAdapter, resolveHostWebSocketUrl } from "./transport/runtime
 import { routeRuntimeFrame } from "./transport/runtime-frame-routing.js";
 import { RuntimeGateway } from "./transport/runtime-gateway.js";
 import { setupAppKeyboardShortcuts } from "./utils/keyboard-shortcuts.js";
-import { randomId } from "./utils/random-id.js";
+import { randomId, sessionScopedClientId } from "./utils/random-id.js";
 import { appRoutePath, parseAppRoute, replaceTemporarySessionRoute } from "./utils/router.js";
 import { findLatestAssistantUsage, setupContextUsage } from "./workspace/context-usage.js";
 import { toggleExclusiveSideView } from "./workspace/exclusive-side-panel.js";
@@ -1009,19 +1009,6 @@ function provisionalTargetFromRoute(currentRoute) {
     sessionId: currentRoute.sessionId,
     instanceId: "pending-bootstrap",
   };
-}
-
-function sessionScopedClientId(clientType) {
-  const key = "picot:host-client-id";
-  try {
-    const existing = sessionStorage.getItem(key);
-    if (existing) return existing;
-    const created = `${clientType}-${randomId()}`;
-    sessionStorage.setItem(key, created);
-    return created;
-  } catch {
-    return `${clientType}-${randomId()}`;
-  }
 }
 
 async function loadBootstrapTarget(currentRoute) {

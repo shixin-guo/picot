@@ -2,6 +2,7 @@ const READ_OPERATIONS = new Set([
   "list_files",
   "list_sessions",
   "list_all_sessions",
+  "list_launcher_sessions",
   "search_sessions",
   "cost_dashboard",
   "workspace_info",
@@ -120,6 +121,10 @@ export class HostDataGateway {
       );
     }
     return this.request("list_all_sessions", { workspaceId });
+  }
+
+  listLauncherSessions() {
+    return this.request("list_launcher_sessions");
   }
 
   searchSessions(workspaceId, query) {

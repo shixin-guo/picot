@@ -21,6 +21,16 @@ describe("remote auth", () => {
     expect(isLoopbackHost("localhost")).toBe(true);
   });
 
+  it("requires remote authorization for an unpaired LAN client", async () => {
+    const auth = await resolveRemoteAuth({
+      location: { href: "http://192.168.1.10:9000/app" },
+      history: { replaceState: vi.fn() },
+      storage: storage(),
+      fetchImpl: vi.fn(),
+    });
+    expect(auth).toEqual({ clientType: "remote", deviceToken: "" });
+  });
+
   it("exchanges a LAN pairing token, stores the device token, and cleans the URL", async () => {
     const localStorage = storage();
     const replaceState = vi.fn();

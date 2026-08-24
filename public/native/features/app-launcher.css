@@ -1,0 +1,38 @@
+/* Canonical /app launcher: reuse the application shell without a live session. */
+
+.app-launcher .conv-nav,
+.app-launcher .file-sidebar,
+.app-launcher .mobile-context-toggle,
+.app-launcher .mobile-model-bar {
+  display: none;
+}
+
+.app-launcher .session-header {
+  min-height: var(--control-height-lg);
+}
+
+.app-launcher .launcher-header-title {
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.app-launcher .messages {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-launcher .welcome {
+  max-width: 520px;
+}
+
+.app-launcher .composer-card[aria-disabled="true"] {
+  opacity: 0.64;
+}
+
+.app-launcher .launcher-error {
+  margin-top: var(--space-3);
+  color: var(--error);
+  font-size: var(--font-size-md);
+}

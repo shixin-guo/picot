@@ -4,6 +4,13 @@
     "welcomeHint": "Type a message below to start chatting with Pi, or select a session from the sidebar.",
     "currentWorkspace": "Current workspace:"
   },
+  "launcher": {
+    "title": "Projects",
+    "hint": "Choose a project or saved session from the sidebar.",
+    "invalidSession": "This saved session cannot be opened.",
+    "pairingRequired": "Open Picot's mobile QR code on the desktop and scan it to pair this device.",
+    "composerHint": "Select a saved session to start chatting"
+  },
   "shortcuts": {
     "focusInput": "Focus input",
     "abort": "Abort"

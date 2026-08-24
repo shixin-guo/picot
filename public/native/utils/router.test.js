@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { appRoutePath, parseAppRoute, replaceTemporarySessionRoute } from "./router.js";
 
 describe("app router", () => {
-  it("round-trips opaque launcher and session routes", () => {
+  it("round-trips app launcher, workspace launcher, and session routes", () => {
+    const appLauncher = { name: "app_launcher" };
+    expect(parseAppRoute(appRoutePath(appLauncher))).toEqual(appLauncher);
+    expect(parseAppRoute("/app/")).toEqual(appLauncher);
+
     const launcher = { name: "launcher", workspaceId: "workspace_A-1" };
     expect(parseAppRoute(appRoutePath(launcher))).toEqual(launcher);
     const session = {

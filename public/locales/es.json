@@ -4,6 +4,13 @@
     "welcomeHint": "Escribe un mensaje abajo para comenzar a chatear con Pi, o selecciona una sesión en la barra lateral.",
     "currentWorkspace": "Espacio de trabajo actual:"
   },
+  "launcher": {
+    "title": "Proyectos",
+    "hint": "Elige un proyecto o una sesión guardada en la barra lateral.",
+    "invalidSession": "No se puede abrir esta sesión guardada.",
+    "pairingRequired": "Abre el código QR móvil de Picot en el escritorio y escanéalo para vincular este dispositivo.",
+    "composerHint": "Selecciona una sesión guardada para comenzar a chatear"
+  },
   "shortcuts": {
     "focusInput": "Enfocar entrada",
     "abort": "Cancelar"

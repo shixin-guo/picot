@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { randomId } from "./random-id.js";
+import { randomId, sessionScopedClientId } from "./random-id.js";
 
 const originalCrypto = globalThis.crypto;
 
@@ -26,6 +26,17 @@ describe("randomId", () => {
     });
     const id = randomId();
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+
+  it("reuses a client id within one browser session", () => {
+    const values = new Map();
+    const storage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+    };
+    const first = sessionScopedClientId("remote", storage);
+    expect(sessionScopedClientId("remote", storage)).toBe(first);
+    expect(first).toMatch(/^remote-/);
   });
 
   it("falls back to a Math.random-based id when crypto is entirely unavailable", () => {

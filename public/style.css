@@ -21,6 +21,7 @@
 @import url("native/workspace/header-open-app.css");
 @import url("native/extensions/command-palette.css");
 @import url("native/features/lan-qr.css");
+@import url("native/features/app-launcher.css");
 @import url("native/composer/composer-images.css");
 @import url("native/composer/composer-slash-menu.css");
 @import url("native/composer/at-file-mention.css");
