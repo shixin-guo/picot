@@ -8,7 +8,11 @@
     "title": "Projects",
     "hint": "Choose a project or saved session from the sidebar.",
     "invalidSession": "This saved session cannot be opened.",
-    "pairingRequired": "Open Picot's mobile QR code on the desktop and scan it to pair this device.",
+    "pairingRequired": "Pair this device to load projects.",
+    "pairingHelp": "Paste a fresh Picot pairing link from the desktop. This is required once for an installed home-screen app.",
+    "pairingInput": "Paste pairing link or token",
+    "pairDevice": "Pair device",
+    "invalidPairing": "Enter a valid, unused Picot pairing link.",
     "composerHint": "Select a saved session to start chatting"
   },
   "shortcuts": {

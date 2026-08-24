@@ -31,8 +31,25 @@
   opacity: 0.64;
 }
 
+.app-launcher .launcher-pairing {
+  display: grid;
+  gap: var(--space-2);
+  width: min(100%, 440px);
+  margin: var(--space-4) auto 0;
+  text-align: left;
+}
+
+.app-launcher .launcher-pairing .ui-button {
+  justify-self: start;
+}
+
+.app-launcher .launcher-pairing-error,
 .app-launcher .launcher-error {
   margin-top: var(--space-3);
   color: var(--error);
   font-size: var(--font-size-md);
+}
+
+.app-launcher .launcher-pairing-error:empty {
+  display: none;
 }

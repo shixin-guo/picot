@@ -74,6 +74,8 @@ The active-session mobile button keeps calling `/v2/lan-qr?path={currentSessionP
 
 A previously paired phone may later open `/app` directly because the device token is stored for the same origin and port. A fresh unpaired phone must still enter through a QR pairing link before its launcher WebSocket is authorized.
 
+iOS may isolate an installed home-screen web app's browser storage from Safari. When the launcher detects that isolated context has no device token, it shows an in-app form that accepts a fresh full pairing link or raw `picot_pair_*` token. Submission navigates within the installed app to `/app?pairingToken=...`, allowing the existing exchange and URL-cleanup flow to authorize that storage context without weakening Host authentication.
+
 The launcher catalog and workspace resolution use the authenticated WebSocket protocol rather than adding another unauthenticated LAN catalog endpoint. Broader consistency of existing HTTP-route authorization remains a separate security concern.
 
 ## PWA entry
@@ -107,10 +109,11 @@ The existing one-time reload guard remains limited to failures while importing/e
 6. A missing project produces a visible error without leaving the launcher.
 7. Existing active-session mobile QR links still include the active deep path and pairing token.
 8. A paired mobile client can later open `/app` and browse the launcher.
-9. `/app/workspaces/{workspaceId}/launcher` converges to `/app`.
-10. Unknown routes converge on `/app` instead of reloading and hanging.
-11. The manifest launches `/app`.
-12. Frontend, Rust, design, and focused route/launcher tests pass.
+9. An isolated installed PWA can paste a fresh pairing link and authorize itself within its own storage context.
+10. `/app/workspaces/{workspaceId}/launcher` converges to `/app`.
+11. Unknown routes converge on `/app` instead of reloading and hanging.
+12. The manifest launches `/app`.
+13. Frontend, Rust, design, and focused route/launcher tests pass.
 
 ## Deferred work
 

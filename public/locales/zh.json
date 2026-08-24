@@ -8,7 +8,11 @@
     "title": "项目",
     "hint": "请从侧边栏选择一个项目或已保存的会话。",
     "invalidSession": "无法打开此已保存的会话。",
-    "pairingRequired": "请在桌面端打开 Picot 的移动二维码并扫描，以配对此设备。",
+    "pairingRequired": "配对此设备以加载项目。",
+    "pairingHelp": "粘贴桌面端生成的新 Picot 配对链接。安装到主屏幕后只需执行一次。",
+    "pairingInput": "粘贴配对链接或令牌",
+    "pairDevice": "配对设备",
+    "invalidPairing": "请输入有效且未使用的 Picot 配对链接。",
     "composerHint": "选择一个已保存的会话以开始聊天"
   },
   "shortcuts": {

@@ -8,7 +8,11 @@
     "title": "Proyectos",
     "hint": "Elige un proyecto o una sesión guardada en la barra lateral.",
     "invalidSession": "No se puede abrir esta sesión guardada.",
-    "pairingRequired": "Abre el código QR móvil de Picot en el escritorio y escanéalo para vincular este dispositivo.",
+    "pairingRequired": "Vincula este dispositivo para cargar los proyectos.",
+    "pairingHelp": "Pega un enlace de vinculación nuevo generado por Picot en el escritorio. Solo se requiere una vez para la app instalada.",
+    "pairingInput": "Pega el enlace o token de vinculación",
+    "pairDevice": "Vincular dispositivo",
+    "invalidPairing": "Introduce un enlace de vinculación de Picot válido y sin usar.",
     "composerHint": "Selecciona una sesión guardada para comenzar a chatear"
   },
   "shortcuts": {

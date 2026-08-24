@@ -11,7 +11,11 @@ vi.mock("../../i18n.js", () => ({
       "launcher.title": "Projects",
       "launcher.hint": "Choose a project or saved session from the sidebar.",
       "launcher.composerHint": "Select a saved session to start chatting",
-      "launcher.pairingRequired": "Scan the mobile QR code to pair this device.",
+      "launcher.pairingRequired": "Pair this device to load projects.",
+      "launcher.pairingHelp": "Paste a fresh Picot pairing link from the desktop.",
+      "launcher.pairingInput": "Paste pairing link or token",
+      "launcher.pairDevice": "Pair device",
+      "launcher.invalidPairing": "Enter a valid, unused Picot pairing link.",
     })[key] ?? key,
 }));
 vi.mock("../../themes.js", () => ({
@@ -74,17 +78,29 @@ describe("app launcher startup", () => {
   it("shows an actionable pairing state for an unpaired LAN client", async () => {
     mocks.resolveRemoteAuth.mockResolvedValue({ clientType: "remote", deviceToken: "" });
 
-    await import("./app-launcher.js?unpaired-remote");
+    const { pairingPathFromInput } = await import("./app-launcher.js?unpaired-remote");
 
-    expect(document.getElementById("session-list").textContent).toContain(
-      "Scan the mobile QR code",
+    expect(document.getElementById("session-list").textContent).toContain("Pair this device");
+    expect(document.querySelector(".launcher-pairing input")?.placeholder).toBe(
+      "Paste pairing link or token",
     );
-    expect(document.querySelector(".launcher-error")?.textContent).toContain(
-      "Scan the mobile QR code",
+    expect(document.querySelector(".launcher-pairing button")?.textContent).toBe("Pair device");
+    const pairingInput = document.querySelector(".launcher-pairing input");
+    pairingInput.value = "not-a-token";
+    document.querySelector(".launcher-pairing").requestSubmit();
+    expect(document.querySelector(".launcher-pairing-error")?.textContent).toContain(
+      "valid, unused",
     );
     expect(document.getElementById("message-input").placeholder).toBe(
       "Select a saved session to start chatting",
     );
+    expect(
+      pairingPathFromInput(
+        "https://calico.example.ts.net/app?pairingToken=picot_pair_fresh",
+        "https://calico.example.ts.net",
+      ),
+    ).toBe("/app?pairingToken=picot_pair_fresh");
+    expect(pairingPathFromInput("not-a-token", "https://calico.example.ts.net")).toBeNull();
   });
 
   it("resolves a project before navigating and does not navigate on failure", async () => {

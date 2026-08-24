@@ -121,7 +121,55 @@ function showPairingRequired() {
     status.textContent = message;
     sessionList.replaceChildren(status);
   }
-  showLauncherError(message);
+
+  const welcome = document.querySelector("#messages .welcome");
+  if (!welcome) return;
+  const form = document.createElement("form");
+  form.className = "launcher-pairing";
+  const help = document.createElement("p");
+  help.textContent = t("launcher.pairingHelp");
+  const input = document.createElement("input");
+  input.className = "ui-input";
+  input.placeholder = t("launcher.pairingInput");
+  input.setAttribute("aria-label", t("launcher.pairingInput"));
+  const button = document.createElement("button");
+  button.type = "submit";
+  button.className = "ui-button ui-button--primary";
+  button.textContent = t("launcher.pairDevice");
+  const error = document.createElement("p");
+  error.className = "launcher-pairing-error";
+  error.setAttribute("role", "alert");
+  form.append(help, input, button, error);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const path = pairingPathFromInput(input.value);
+    if (!path) {
+      error.textContent = t("launcher.invalidPairing");
+      input.focus();
+      return;
+    }
+    window.location.assign(path);
+  });
+  welcome.appendChild(form);
+}
+
+export function pairingPathFromInput(value, origin = window.location.origin) {
+  const input = String(value ?? "").trim();
+  if (!input) return null;
+  let token = input;
+  try {
+    token = new URL(input).searchParams.get("pairingToken") ?? "";
+  } catch {
+    try {
+      token = decodeURIComponent(input);
+    } catch {
+      return null;
+    }
+  }
+  if (!token.startsWith("picot_pair_")) return null;
+  const target = new URL("/app", origin);
+  target.searchParams.set("pairingToken", token);
+  return `${target.pathname}${target.search}`;
 }
 
 function setupSidebarToggle() {
