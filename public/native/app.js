@@ -1917,11 +1917,16 @@ async function handleRuntimeEvent(event) {
       break;
     case "message_update":
       if (!streamingElement) {
+        // message_update is delta-only: it carries no cumulative `message`
+        // field, only usage + assistantMessageEvent deltas. Create an empty
+        // placeholder so we never pass undefined into renderAssistantMessage.
         showLiveProcessIndicator();
-        streamingElement = messageRenderer.renderAssistantMessage(event.message, true);
-      } else {
-        messageRenderer.updateStreamingMessage(streamingElement, event.message?.content ?? []);
+        streamingElement = messageRenderer.renderAssistantMessage(
+          { role: "assistant", content: [] },
+          true,
+        );
       }
+      messageRenderer.updateStreamingMessage(streamingElement, event.message?.content ?? []);
       break;
     case "message_end":
       if (event.message?.role === "assistant") {

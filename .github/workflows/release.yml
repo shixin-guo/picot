@@ -22,8 +22,8 @@ jobs:
           - os: macos-14
             pi_target_platform: darwin-x64
             rust_target: x86_64-apple-darwin
-          # Linux deb/rpm bundling is currently more stable on 22.04 than
-          # 24.04 for GTK/WebKit bundles in CI.
+          # Linux deb/rpm/AppImage bundling is currently more stable on
+          # 22.04 than 24.04 for GTK/WebKit bundles in CI.
           - os: ubuntu-22.04
             pi_target_platform: linux-x64
           - os: ubuntu-24.04-arm
@@ -84,6 +84,15 @@ jobs:
           if ! apt-cache show "$WEBKIT_DEV_PKG" >/dev/null 2>&1; then
             WEBKIT_DEV_PKG="libwebkit2gtk-4.0-dev"
           fi
+          # Ubuntu 24.04 renamed libfuse2 -> libfuse2t64 (64-bit time_t ABI
+          # transition). AppImages need FUSE (or the extract-and-run runtime
+          # fallback) to execute themselves; installing it explicitly rules
+          # out "missing libfuse.so.2" as a cause of AppImage bundling
+          # failures on the ubuntu-24.04-arm runner.
+          FUSE_PKG="libfuse2t64"
+          if ! apt-cache show "$FUSE_PKG" >/dev/null 2>&1; then
+            FUSE_PKG="libfuse2"
+          fi
           sudo apt-get install -y \
             desktop-file-utils \
             "$WEBKIT_DEV_PKG" \
@@ -93,7 +102,8 @@ jobs:
             gstreamer1.0-plugins-base \
             gstreamer1.0-plugins-good \
             rpm \
-            patchelf
+            patchelf \
+            "$FUSE_PKG"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -132,7 +142,7 @@ jobs:
       - name: Build pi extensions bundle
         run: bun run build:extensions
 
-      - name: Build Tauri app (Linux deb + rpm) and publish assets
+      - name: Build Tauri app (Linux deb + rpm + AppImage) and publish assets
         if: runner.os == 'Linux'
         uses: tauri-apps/tauri-action@v0
         env:
@@ -156,7 +166,10 @@ jobs:
             Download the installer for your platform from the assets below.
           releaseDraft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
-          args: --bundles deb,rpm
+          # --verbose: if this still fails, we need linuxdeploy's actual
+          # stderr instead of tauri-bundler's generic "failed to run
+          # linuxdeploy" wrapper error.
+          args: --bundles deb,rpm,appimage --verbose
           # tauri-action will only attach `latest.json` (the updater
           # manifest) when this is `true`. Combined with
           # `bundle.createUpdaterArtifacts` in tauri.conf.json, the

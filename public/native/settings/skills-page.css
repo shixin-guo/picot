@@ -193,6 +193,20 @@
   cursor: not-allowed;
 }
 
+.skills-group-enable-all {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 0 0 auto;
+  padding-left: var(--space-2);
+}
+
+.skills-enable-all-label {
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
 .skills-skill-description {
   line-height: 1.45;
 }
