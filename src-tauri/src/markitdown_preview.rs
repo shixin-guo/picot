@@ -249,6 +249,7 @@ async fn run_bounded(
     include_path: bool,
 ) -> Option<(bool, String, String)> {
     let mut command = Command::new(executable);
+    crate::windows_child::hide_console_tokio(&mut command);
     command
         .args(args)
         .env_clear()

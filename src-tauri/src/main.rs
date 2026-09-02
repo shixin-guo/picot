@@ -27,6 +27,7 @@ mod terminal_profiles;
 mod terminal_registry;
 mod terminal_state_store;
 mod window_owner;
+mod windows_child;
 
 use host_server::HostServer;
 use metadata_store::MetadataStore;

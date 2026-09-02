@@ -1521,7 +1521,8 @@ function openExternal(url: string): void {
         ? ["cmd", ["/c", "start", "", url]]
         : ["xdg-open", [url]];
   try {
-    execFile(command, args, () => {});
+    // windowsHide: a console-less pi process would otherwise flash a cmd window.
+    execFile(command, args, { windowsHide: true }, () => {});
   } catch {
     // Best-effort; frontend falls back to window.open.
   }

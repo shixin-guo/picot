@@ -115,7 +115,7 @@ impl NativePiManager {
     pub fn spawn(&self, target: RuntimeTarget, spec: NativeLaunchSpec) -> Result<(), String> {
         let launch = spec.command_description();
         let mut command = Command::new(&launch.program);
-        configure_child_process(&mut command);
+        crate::windows_child::hide_console(&mut command);
         // Before any of our own env: an AppImage's AppRun points the dynamic
         // loader at the bundle, and `pi` is built against the host system.
         crate::appimage_env::scrub(&mut command);
@@ -638,15 +638,6 @@ fn is_mutation(command_type: &str) -> bool {
             | "set_follow_up_mode"
     )
 }
-
-#[cfg(target_os = "windows")]
-fn configure_child_process(command: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    command.creation_flags(0x0800_0000);
-}
-
-#[cfg(not(target_os = "windows"))]
-fn configure_child_process(_command: &mut Command) {}
 
 #[cfg(test)]
 mod tests {

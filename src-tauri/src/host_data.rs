@@ -305,7 +305,9 @@ fn remove_session_file_trash_first_with(
 
 fn remove_session_file_trash_first(path: &std::path::Path) -> std::io::Result<()> {
     remove_session_file_trash_first_with(path, |target| {
-        std::process::Command::new("trash")
+        let mut command = std::process::Command::new("trash");
+        crate::windows_child::hide_console(&mut command);
+        command
             .arg(target)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -354,6 +356,7 @@ fn git_output(mut command: Command) -> Option<std::process::Output> {
 
 fn git_command_at(root: &Path) -> Command {
     let mut command = Command::new("git");
+    crate::windows_child::hide_console(&mut command);
     command
         .current_dir(root)
         .env("LC_ALL", "C")
