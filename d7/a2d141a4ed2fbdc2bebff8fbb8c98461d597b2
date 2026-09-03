@@ -1,0 +1,23 @@
+public/native/session/session-sidebar.js
+  s_bc64d405634f9d::t_d8cd90f006cca3 1135-1143,1146-1152
+  s_bc64d405634f9d::t_b4fffd9a45cebb 350
+  s_bc64d405634f9d::t_3b50358fff0689 1153
+public/native/session/session-sidebar.test.js
+  s_bc64d405634f9d::t_36119fc170343c 1019-1055
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d7a2d141a4ed2fbdc2bebff8fbb8c98461d597b2",
+  "prompts": {},
+  "sessions": {
+    "s_bc64d405634f9d": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a06467-591d-712c-889c-2963202ce899",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}
