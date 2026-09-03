@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * Builds browser-only ESM vendor bundles for CodeMirror and PDF.js.
+ * Builds browser-only ESM vendor bundles for CodeMirror and PDF.js, plus
+ * this project's own Lit + TypeScript UI components (which also need
+ * bundling since browsers can't load .ts or bare "lit" specifiers directly).
  *
  * Source modules import @codemirror/* and pdfjs-dist directly from node_modules
  * (resolved by Vitest). At browser runtime, index.html contains an import map
@@ -14,6 +16,7 @@
  *   public/vendor/xterm.js          — xterm constructors on globalThis.PicotXterm
  *   public/vendor/chart.js          — Chart.js constructor on globalThis.Chart
  *   public/vendor/tauri-notification.js — Tauri notification browser facade
+ *   public/vendor/session-status-pill.js — Lit session-status pill component
  */
 
 const path = require("node:path");
@@ -70,6 +73,11 @@ const entries = [
     ...common,
     entryPoints: [path.join(ROOT, "public", "tauri-notification-vendor-entry.js")],
     outfile: path.join(OUT_DIR, "tauri-notification.js"),
+  },
+  {
+    ...common,
+    entryPoints: [path.join(ROOT, "public", "ui", "session-status-pill.ts")],
+    outfile: path.join(OUT_DIR, "session-status-pill.js"),
   },
 ];
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import "../../ui/session-status-pill.js";
 import { createSessionStatus } from "./session-status.js";
 
 function t(key) {
@@ -6,15 +7,13 @@ function t(key) {
 }
 
 function bindUi(status, extras = {}) {
-  const statusText = document.createElement("span");
-  const statusIndicator = document.createElement("span");
+  const statusPill = document.createElement("picot-session-status");
   const composerCard = document.createElement("div");
   const abortButton = document.createElement("button");
   const sendButton = document.createElement("button");
   abortButton.classList.add("hidden");
   status.bind({
-    statusText,
-    statusIndicator,
+    statusPill,
     composerCard,
     abortButton,
     sendButton,
@@ -22,7 +21,7 @@ function bindUi(status, extras = {}) {
     getSessionId: () => "session-a",
     ...extras,
   });
-  return { abortButton, composerCard, sendButton, statusIndicator, statusText };
+  return { abortButton, composerCard, sendButton, statusPill };
 }
 
 describe("createSessionStatus", () => {
@@ -33,33 +32,33 @@ describe("createSessionStatus", () => {
     expect(() => status.renderStatus()).not.toThrow();
     expect(status.getKind()).toBe("working");
 
-    const { abortButton, sendButton, statusText } = bindUi(status);
-    expect(statusText.textContent).toBe("status.working");
+    const { abortButton, sendButton, statusPill } = bindUi(status);
+    expect(statusPill.label).toBe("status.working");
     expect(abortButton.classList.contains("hidden")).toBe(false);
     expect(sendButton.classList.contains("hidden")).toBe(true);
   });
 
   it("maps host English status strings to kinds, not translated labels", () => {
     const status = createSessionStatus({ t });
-    const { statusIndicator, statusText } = bindUi(status);
+    const { statusPill } = bindUi(status);
 
     status.applyHostStatus("Working...");
     expect(status.getKind()).toBe("working");
-    expect(statusText.textContent).toBe("status.working");
-    expect(statusIndicator.classList.contains("streaming")).toBe(true);
+    expect(statusPill.label).toBe("status.working");
+    expect(statusPill.kind).toBe("working");
 
     status.applyHostStatus("Disconnected");
     expect(status.getKind()).toBe("disconnected");
-    expect(statusText.textContent).toBe("status.disconnected");
-    expect(statusIndicator.classList.contains("disconnected")).toBe(true);
+    expect(statusPill.label).toBe("status.disconnected");
+    expect(statusPill.kind).toBe("disconnected");
 
     status.applyHostStatus("Connected");
     expect(status.getKind()).toBe("connected");
-    expect(statusText.textContent).toBe("status.connected");
+    expect(statusPill.label).toBe("status.connected");
 
     status.applyHostStatus("Compacting context");
     expect(status.getKind()).toBe("custom");
-    expect(statusText.textContent).toBe("Compacting context");
+    expect(statusPill.label).toBe("Compacting context");
   });
 
   it("shows abort when an extension prompt is pending even if not working", () => {

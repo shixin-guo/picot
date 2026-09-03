@@ -47,17 +47,14 @@ export function createSessionStatus({ t }) {
   }
 
   function renderStatus() {
-    if (!ui?.statusText) return;
+    if (!ui?.statusPill) return;
     const working = state.kind === "working";
-    const disconnected = state.kind === "disconnected";
-    ui.statusText.textContent = statusLabel();
+    ui.statusPill.kind = state.kind;
+    ui.statusPill.label = statusLabel();
     const showAbort = working || Boolean(ui.hasPending?.(ui.getSessionId?.()));
-    ui.statusIndicator?.classList.toggle("streaming", working);
     ui.composerCard?.classList.toggle("streaming", working);
     ui.abortButton?.classList.toggle("hidden", !showAbort);
     ui.sendButton?.classList.toggle("hidden", showAbort);
-    ui.statusIndicator?.classList.toggle("disconnected", disconnected);
-    ui.statusIndicator?.classList.toggle("connected", !working && !disconnected);
   }
 
   function setStatus(kind, customText = "") {
