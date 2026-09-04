@@ -16,7 +16,12 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-top: var(--space-3);
+  flex-shrink: 0;
+}
+
+.remote-access-copy-status {
+  display: block;
+  margin-top: var(--space-1);
 }
 
 .remote-access-status--error,
@@ -28,7 +33,7 @@
   display: block;
   width: 220px;
   height: 220px;
-  margin: var(--space-4) auto;
+  margin: var(--space-4) 0 0;
   padding: var(--space-1-5);
   background: #fff;
   border-radius: var(--radius-md);

@@ -1,6 +1,6 @@
 {
   "name": "picot",
-  "version": "0.5.0",
+  "version": "0.5.3",
   "description": "Local Codex-style desktop GUI for the Pi coding agent",
   "keywords": [
     "picot",
@@ -86,7 +86,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.2",
-    "@earendil-works/pi-coding-agent": "0.82.0",
+    "@earendil-works/pi-coding-agent": "0.84.4",
     "@tauri-apps/cli": "^2.11.2",
     "@vitest/coverage-istanbul": "3.2.4",
     "esbuild": "^0.28.0",

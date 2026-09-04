@@ -550,6 +550,37 @@ describe("SessionSidebar.render", () => {
     );
   });
 
+  it("still toggles a project when saving its collapsed state exceeds storage quota", async () => {
+    const { sidebar, container } = makeSidebar([
+      {
+        id: "s-other",
+        timestamp: new Date().toISOString(),
+        name: "Other",
+        projectPath: "/other",
+        projectName: "other",
+        isCurrentWorkspace: false,
+      },
+    ]);
+    await sidebar.load();
+
+    const originalSetItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (key, value) {
+      if (key === "picot-projects-collapsed") {
+        throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+      }
+      originalSetItem.call(this, key, value);
+    });
+
+    const project = container.querySelector(".project-group");
+    const header = project.querySelector(".project-header");
+    const sessions = project.querySelector(".project-sessions");
+    expect(sessions.classList.contains("collapsed")).toBe(true);
+
+    header.click();
+
+    expect(sessions.classList.contains("collapsed")).toBe(false);
+  });
+
   it("shows the current project new-chat button for LAN clients", async () => {
     delete globalThis.__TAURI__;
     const onCreateSession = vi.fn().mockResolvedValue(undefined);
@@ -983,6 +1014,43 @@ describe("SessionSidebar.pinned", () => {
     expect(group.querySelector(".pinned-workspace-group")).not.toBeNull();
     expect(group.querySelectorAll(".pinned-workspace-group .session-item")).toHaveLength(2);
     expect(group.textContent).toContain("PINNED");
+  });
+
+  it("keeps show more and show less controls for pinned workspace sessions", async () => {
+    const sessions = Array.from({ length: 12 }, (_, index) => ({
+      id: `pinned-${index}`,
+      filePath: `/sessions/pinned-${index}.jsonl`,
+      timestamp: new Date(Date.now() - index * 1000).toISOString(),
+      name: `Pinned ${index}`,
+    }));
+    const { sidebar, container } = makeSidebar(sessions);
+
+    await sidebar.load();
+    sidebar.pinnedStore.pinWorkspace("/ws-1", "/ws-1");
+    await sidebar.load();
+
+    let group = container.querySelector(".pinned-workspace-group");
+    expect(group.querySelectorAll(".session-item")).toHaveLength(8);
+    const showMore = group.querySelector(
+      ".project-sessions-toggle:not(.project-sessions-toggle-less)",
+    );
+    expect(showMore).toBeTruthy();
+    expect(group.querySelector(".project-sessions-toggle-less")).toBeNull();
+
+    showMore.click();
+
+    group = container.querySelector(".pinned-workspace-group");
+    expect(group.querySelectorAll(".session-item")).toHaveLength(12);
+    expect(
+      group.querySelector(".project-sessions-toggle:not(.project-sessions-toggle-less)"),
+    ).toBeNull();
+    expect(group.querySelector(".project-sessions-toggle-less")).toBeTruthy();
+
+    group.querySelector(".project-sessions-toggle-less").click();
+
+    expect(
+      container.querySelector(".pinned-workspace-group").querySelectorAll(".session-item"),
+    ).toHaveLength(8);
   });
 
   it("excludes workspace-pinned sessions from the regular project list", async () => {

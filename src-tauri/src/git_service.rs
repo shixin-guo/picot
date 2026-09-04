@@ -1456,6 +1456,8 @@ fn git_command(root: &Path, args: impl IntoIterator<Item = OsString>) -> Command
             Ok(())
         });
     }
+    // CREATE_NO_WINDOW: keep console-less GUI children from flashing a window.
+    crate::windows_child::hide_console(&mut command);
     command
 }
 fn git_os(root: &Path, args: &[OsString]) -> Result<Vec<u8>, String> {

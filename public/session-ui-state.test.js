@@ -1,5 +1,5 @@
-// ABOUTME: Tests host-backed per-session profiles and temporary composer drafts.
-// ABOUTME: Profiles never use browser storage; drafts stay in the current page instance.
+// ABOUTME: Tests host-backed per-session model/thinking profiles.
+// ABOUTME: Profiles never use browser storage.
 import { describe, expect, test, vi } from "vitest";
 import { SessionUiStateStore } from "./session-ui-state.js";
 
@@ -45,36 +45,5 @@ describe("SessionUiStateStore profiles", () => {
       modelId: "m",
       thinkingLevel: "off",
     });
-  });
-});
-
-describe("SessionUiStateStore drafts", () => {
-  test("keeps drafts isolated in memory for the lifetime of one store", () => {
-    const store = new SessionUiStateStore();
-
-    store.saveDraft("/sessions/a.jsonl", "draft for A");
-
-    expect(store.loadDraft("/sessions/a.jsonl")).toBe("draft for A");
-    expect(store.loadDraft("/sessions/b.jsonl")).toBe("");
-  });
-
-  test("discards drafts when a new store instance represents a refreshed window", () => {
-    const firstPage = new SessionUiStateStore();
-    firstPage.saveDraft("/sessions/a.jsonl", "draft from the old page");
-
-    const refreshedPage = new SessionUiStateStore();
-
-    expect(refreshedPage.loadDraft("/sessions/a.jsonl")).toBe("");
-  });
-
-  test("clearDraft removes only the selected in-memory draft", () => {
-    const store = new SessionUiStateStore();
-    store.saveDraft("/sessions/a.jsonl", "draft for A");
-    store.saveDraft("/sessions/b.jsonl", "draft for B");
-
-    store.clearDraft("/sessions/a.jsonl");
-
-    expect(store.loadDraft("/sessions/a.jsonl")).toBe("");
-    expect(store.loadDraft("/sessions/b.jsonl")).toBe("draft for B");
   });
 });

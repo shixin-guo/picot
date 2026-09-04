@@ -139,7 +139,7 @@ impl PiLaunchResolver {
         let pi_bin_str = strip_verbatim_prefix(&pi_bin.to_string_lossy());
         let augmented_path = build_augmented_path();
         let mut command = Command::new(&pi_bin_str);
-        configure_child_process_for_windows(&mut command);
+        crate::windows_child::hide_console(&mut command);
         crate::appimage_env::scrub(&mut command);
         command
             .args(args)
@@ -517,7 +517,9 @@ pub fn open_in_app(
     }
 
     if let Some(command) = command.map(str::trim).filter(|command| !command.is_empty()) {
-        let status = Command::new(command)
+        let mut launcher = Command::new(command);
+        crate::windows_child::hide_console(&mut launcher);
+        let status = launcher
             .arg(trimmed_path)
             .status()
             .map_err(|error| format!("Failed to launch `{command}`: {error}"))?;
@@ -538,7 +540,11 @@ pub fn open_in_app(
             .arg(trimmed_path)
             .status();
         #[cfg(not(target_os = "macos"))]
-        let status = Command::new(app_name).arg(trimmed_path).status();
+        let status = {
+            let mut launcher = Command::new(app_name);
+            crate::windows_child::hide_console(&mut launcher);
+            launcher.arg(trimmed_path).status()
+        };
 
         let status = status.map_err(|error| format!("Failed to open `{app_name}`: {error}"))?;
         if !status.success() {
@@ -556,7 +562,7 @@ fn open_path(path: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     let status = {
         let mut command = Command::new("explorer");
-        configure_child_process_for_windows(&mut command);
+        crate::windows_child::hide_console(&mut command);
         command.arg(path).status()
     };
     #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
@@ -900,7 +906,7 @@ pub fn open_external(url: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     let status = {
         let mut command = Command::new("cmd");
-        configure_child_process_for_windows(&mut command);
+        crate::windows_child::hide_console(&mut command);
         command.args(["/C", "start", "", trimmed]).status()
     };
     #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
@@ -911,16 +917,6 @@ pub fn open_external(url: &str) -> Result<(), String> {
         code => Err(format!("Opener exited with status {code}")),
     }
 }
-
-#[cfg(target_os = "windows")]
-fn configure_child_process_for_windows(command: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    // CREATE_NO_WINDOW: keep console-less GUI children from flashing a window.
-    command.creation_flags(0x0800_0000);
-}
-
-#[cfg(not(target_os = "windows"))]
-fn configure_child_process_for_windows(_command: &mut Command) {}
 
 fn pi_extension_npm_bin_dir(home: &Path) -> PathBuf {
     home.join(".pi")

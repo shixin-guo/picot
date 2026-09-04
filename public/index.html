@@ -1918,12 +1918,12 @@
                   <span class="settings-label-main" data-i18n="settings.remoteAccessUrl">LAN launcher URL</span>
                   <code class="settings-static-value remote-access-url" id="remote-access-url">Loading…</code>
                 </span>
-                <button type="button" class="ui-button ui-button--secondary" id="remote-access-copy" data-i18n="settings.remoteAccessCopy">Copy URL</button>
+                <span class="remote-access-actions">
+                  <button type="button" class="ui-button ui-button--secondary" id="remote-access-copy" data-i18n="settings.remoteAccessCopy">Copy URL</button>
+                  <button type="button" class="ui-button ui-button--secondary" id="remote-access-refresh-qr" data-i18n="settings.remoteAccessRefreshQr">Refresh QR</button>
+                </span>
               </div>
-              <div class="remote-access-actions">
-                <button type="button" class="ui-button ui-button--secondary" id="remote-access-refresh-qr" data-i18n="settings.remoteAccessRefreshQr">Refresh QR</button>
-                <span class="settings-save-status" id="remote-access-copy-status" role="status" aria-live="polite"></span>
-              </div>
+              <span class="settings-save-status remote-access-copy-status" id="remote-access-copy-status" role="status" aria-live="polite"></span>
               <img class="remote-access-qr" id="remote-access-qr" hidden alt="QR code for the Picot launcher" data-i18n-alt="settings.remoteAccessQrAlt" />
               <p class="settings-help remote-access-note" data-i18n="settings.remoteAccessNote">
                 This QR only opens the plain /app launcher URL. It does not authorize a device. Local-network access uses http://&lt;LAN-IP&gt;:57620/app; traffic is unencrypted, so prompts and source may be observable on the network. Installed-PWA HTTPS requirements are not changed here.

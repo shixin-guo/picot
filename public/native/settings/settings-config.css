@@ -289,6 +289,16 @@
 .models-config-toolbar {
   margin-top: 0;
   margin-bottom: var(--space-2);
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.models-config-toolbar .models-config-source-button {
+  margin-right: auto;
+}
+
+.models-config-toolbar-status:not(.hidden) {
+  margin-right: var(--space-1);
 }
 
 .models-config-models-section {

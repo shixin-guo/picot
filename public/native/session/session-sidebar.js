@@ -73,6 +73,15 @@ function readArray(key) {
   }
 }
 
+function writeStorage(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Sidebar preferences are best-effort; storage quota/private-mode errors
+    // must not prevent the live UI interaction from completing.
+  }
+}
+
 function sessionCacheKey(workspaceId) {
   return `${STORAGE.sessionCache}:${workspaceId}`;
 }
@@ -285,7 +294,7 @@ export class SessionSidebar {
 
   // ── persistence ────────────────────────────────────────────────
   #save(key, value) {
-    localStorage.setItem(key, JSON.stringify(value));
+    writeStorage(key, JSON.stringify(value));
   }
   isFavourite(id) {
     return this.favourites.includes(id);
@@ -338,9 +347,7 @@ export class SessionSidebar {
       .map((id) => byId.get(id))
       .filter(
         (session) =>
-          session &&
-          !this.isArchived(session.id) &&
-          !isSuperAgentProjectPath(session.projectPath),
+          session && !this.isArchived(session.id) && !isSuperAgentProjectPath(session.projectPath),
       );
     const validIds = resolved.map((session) => session.id);
     if (JSON.stringify(validIds) !== JSON.stringify(this.recent)) {
@@ -942,7 +949,7 @@ export class SessionSidebar {
         expanded: !this.recentCollapsed,
         onToggle: (expanded) => {
           this.recentCollapsed = !expanded;
-          localStorage.setItem(STORAGE.recentCollapsed, String(this.recentCollapsed));
+          writeStorage(STORAGE.recentCollapsed, String(this.recentCollapsed));
         },
         renderSessions: (body) => {
           for (const session of recentSessions) {
@@ -984,7 +991,7 @@ export class SessionSidebar {
         expanded: !this.archivedCollapsed,
         onToggle: (expanded) => {
           this.archivedCollapsed = !expanded;
-          localStorage.setItem(STORAGE.archivedCollapsed, String(this.archivedCollapsed));
+          writeStorage(STORAGE.archivedCollapsed, String(this.archivedCollapsed));
         },
         renderSessions: (body) => {
           for (const s of archived) {
@@ -1081,12 +1088,23 @@ export class SessionSidebar {
         for (const pinned of pinnedGroups) {
           const ws = pinned.workspace;
           const workspaceId = ws?.path || `pinned-session:${pinned.sessions[0]?.id || ""}`;
+          const invoke = globalThis.__TAURI__?.core?.invoke ?? null;
+          const canCreateSession = Boolean(ws && !pinned.unavailable && invoke);
           const { group } = buildSidebarWorkspaceGroup({
             workspaceId,
             folderName: ws?.folderName || t("sidebar.unavailable"),
             workspacePath: ws?.path || "",
             sessionCount: pinned.sessions.length,
             expanded: true,
+            onNewChat: canCreateSession
+              ? () => {
+                  invoke("open_new_session_in_workspace", { projectPath: ws.path }).catch(
+                    (error) => {
+                      console.error("[Sidebar] Failed to start new chat:", error);
+                    },
+                  );
+                }
+              : null,
             onMoreActions: pinned.workspacePin
               ? (event) =>
                   this.#showProjectContextMenu(event, { path: ws.path, name: ws.folderName })
@@ -1114,8 +1132,24 @@ export class SessionSidebar {
                 container.appendChild(unpin);
                 return;
               }
-              for (const session of pinned.sessions) {
+              const project = {
+                path: ws?.path || workspaceId,
+                name: ws?.folderName || workspaceId,
+              };
+              const visibleCount = this.#projectVisibleCount(project, pinned.sessions.length);
+              const visible = this.searchQuery
+                ? pinned.sessions
+                : pinned.sessions.slice(0, visibleCount);
+              for (const session of visible) {
                 container.appendChild(this.#buildItem(session));
+              }
+              if (!this.searchQuery) {
+                const toggle = this.#buildToggleRow(
+                  project,
+                  visible.length,
+                  pinned.sessions.length,
+                );
+                if (toggle) container.appendChild(toggle);
               }
             },
           });
@@ -1220,7 +1254,7 @@ export class SessionSidebar {
     header.addEventListener("click", () => {
       const next = !this.#isProjectCollapsed(project);
       this.projectsCollapsed[project.path] = next;
-      localStorage.setItem(STORAGE.projectsCollapsed, JSON.stringify(this.projectsCollapsed));
+      writeStorage(STORAGE.projectsCollapsed, JSON.stringify(this.projectsCollapsed));
       header.classList.toggle("collapsed", next);
       list.classList.toggle("collapsed", next);
     });

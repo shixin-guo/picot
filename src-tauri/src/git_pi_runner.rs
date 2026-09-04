@@ -57,6 +57,7 @@ impl GitPiRunner {
     }
     pub fn command(binary: &Path, request_file: &Path, cwd: &Path) -> Command {
         let mut command = Command::new(binary);
+        crate::windows_child::hide_console(&mut command);
         command
             .current_dir(cwd)
             .arg("--system-prompt")

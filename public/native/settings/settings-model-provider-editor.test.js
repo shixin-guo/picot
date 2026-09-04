@@ -248,6 +248,33 @@ describe("models provider editor", () => {
     expect(saved.providers.local.models[0].id).toBe("qwen");
   });
 
+  test("visual layout exposes a Save button that persists form edits", async () => {
+    const onModelConfigurationChanged = vi.fn();
+    const editor = setupModelsPage({
+      configGateway: { call },
+      onModelConfigurationChanged,
+    });
+    await editor.loadInlineModelsEditor();
+
+    const toolbarSave = document.querySelector(".models-config-toolbar-save");
+    expect(toolbarSave).not.toBeNull();
+
+    const providerButtons = document.querySelectorAll(".models-provider-item");
+    providerButtons[1].click();
+    const baseUrl = document.querySelector(
+      '.models-config-field input[placeholder="https://api.example.com/v1"]',
+    );
+    baseUrl.value = "http://127.0.0.1:11434/v1";
+    baseUrl.dispatchEvent(new window.Event("input", { bubbles: true }));
+
+    toolbarSave.click();
+    await vi.waitFor(() => expect(onModelConfigurationChanged).toHaveBeenCalledOnce());
+
+    const write = call.mock.calls.find(([operation]) => operation === "write_models_config");
+    const saved = JSON.parse(write[1].content);
+    expect(saved.providers.local.baseUrl).toBe("http://127.0.0.1:11434/v1");
+  });
+
   test("add-provider dialog uses themed overlay primitives", async () => {
     const editor = setupModelsPage({ configGateway: { call } });
     await editor.loadInlineModelsEditor();

@@ -99,6 +99,7 @@ pub async fn run_model_test(
     let (pi_bin, path_env) = pi_launch.resolve_bundled_pi_for_spawn()?;
 
     let mut command = Command::new(&pi_bin);
+    crate::windows_child::hide_console_tokio(&mut command);
     crate::appimage_env::scrub_tokio(&mut command);
     command
         .arg("--provider")
