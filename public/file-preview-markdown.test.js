@@ -163,15 +163,14 @@ describe("renderFileMarkdown", () => {
     expect(container.querySelector("img")?.getAttribute("src")).toContain("data:image/png");
   });
 
-  test.each([
-    "https://tracker.test/pixel.gif",
-    "//tracker.test/pixel.gif",
-    "images/logo.png",
-  ])("replaces converted image source %s with a localized placeholder", (src) => {
-    container.append(renderFileMarkdown(`![mail](${src})`, { convertedDocument: true }));
-    expect(container.querySelector("img")).toBeNull();
-    expect(container.textContent).toContain("Remote image hidden");
-  });
+  test.each(["https://tracker.test/pixel.gif", "//tracker.test/pixel.gif", "images/logo.png"])(
+    "replaces converted image source %s with a localized placeholder",
+    (src) => {
+      container.append(renderFileMarkdown(`![mail](${src})`, { convertedDocument: true }));
+      expect(container.querySelector("img")).toBeNull();
+      expect(container.textContent).toContain("Remote image hidden");
+    },
+  );
 
   test("removes inline event-handler attributes", () => {
     const frag = renderFileMarkdown('# Title\n\n<div onclick="alert(1)">text</div>\n');
