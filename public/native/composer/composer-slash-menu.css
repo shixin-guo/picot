@@ -94,6 +94,10 @@
   white-space: nowrap;
 }
 
+.agent-picker-option {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
 .skill-slash-empty {
   padding: var(--space-5) var(--space-2);
   font-size: var(--font-size-md);

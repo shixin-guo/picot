@@ -90,7 +90,7 @@ export function setupComposerAgentMenu({ input, container, getAgents, onSelect }
         const option = document.createElement("button");
         option.type = "button";
         option.id = `agent-picker-option-${index}`;
-        option.className = "skill-slash-option";
+        option.className = "skill-slash-option agent-picker-option";
         option.classList.toggle("selected", index === selectedIndex);
         option.setAttribute("role", "option");
         option.setAttribute("aria-selected", String(index === selectedIndex));
