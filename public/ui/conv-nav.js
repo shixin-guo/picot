@@ -75,9 +75,26 @@ export class ConvNav {
       this.#hideTooltip();
     };
 
+    // Delegate clicks to the whole rail so users don't have to hit the thin
+    // tick exactly: a click anywhere maps to the nearest turn (same logic as
+    // hover). Inter-tick gaps and the rail's own padding are all jump targets.
+    this._onNavClick = (e) => {
+      // Dots handle their own click (mouse click gives the right index and
+      // keyboard activation keeps working). Only delegate clicks that land
+      // outside a dot — i.e. in the inter-tick gaps or rail padding — so the
+      // user doesn't have to hit the thin tick precisely.
+      if (e.target?.closest?.(".conv-nav-dot")) return;
+      const idx = this.#indexFromClientY(e.clientY);
+      if (idx < 0) return;
+      const turn = this.#turns[idx];
+      if (!turn) return;
+      this.#jumpTo(turn, idx);
+    };
+
     this.#trackEl.addEventListener("mouseenter", this._onTrackPointer);
     this.#trackEl.addEventListener("mousemove", this._onTrackPointer);
     this.#trackEl.addEventListener("mouseleave", this._onTrackLeave);
+    this.#navEl.addEventListener("click", this._onNavClick);
 
     this._onScroll = () => {
       const threshold = 150;
@@ -105,6 +122,7 @@ export class ConvNav {
     this.#trackEl?.removeEventListener("mouseenter", this._onTrackPointer);
     this.#trackEl?.removeEventListener("mousemove", this._onTrackPointer);
     this.#trackEl?.removeEventListener("mouseleave", this._onTrackLeave);
+    this.#navEl?.removeEventListener("click", this._onNavClick);
     this._observer?.disconnect();
     clearTimeout(this.#tooltipHideTimer);
     clearTimeout(this.#navLockTimer);

@@ -92,6 +92,28 @@ describe("ConvNav", () => {
     nav.destroy();
   });
 
+  it("jumps to the nearest turn when a click lands in the inter-tick gap", () => {
+    const { messages, header, badge } = setupDom();
+    const nav = new ConvNav({ messagesEl: messages, headerEl: header, badgeEl: badge });
+
+    appendTurn(messages, 120, 180);
+    appendTurn(messages, 220, 280);
+    appendTurn(messages, 320, 380);
+    nav.mount();
+    nav.rebuild();
+
+    const track = document.getElementById("conv-nav-track");
+    layoutDots(track);
+
+    // clientY 141 sits in the gap between dot 1 (ends 132) and dot 2 (starts
+    // 148), nearer to dot 2 (mid 152). The whole-rail delegation must still
+    // jump to turn index 2 instead of doing nothing.
+    track.dispatchEvent(new MouseEvent("click", { clientY: 141, bubbles: true }));
+
+    expect(messages.scrollTop).toBe(220);
+    nav.destroy();
+  });
+
   it("notifies onJumpToEntry with the jumped turn's entry id", () => {
     const { messages, header, badge } = setupDom();
     appendTurn(messages, 120, 180);
