@@ -185,6 +185,30 @@ describe("HostControlGateway", () => {
     await expect(response).resolves.toEqual([{ id: "vscode", label: "VS Code" }]);
   });
 
+  it("lists locally detected ACP subagents", async () => {
+    const adapter = createInMemoryRuntimeAdapter();
+    const control = new HostControlGateway(adapter);
+    const response = control.listAcpAgents();
+    const sent = adapter.takeSent();
+    expect(sent).toMatchObject({ type: "host_request", operation: "acp_list_agents" });
+    adapter.receive({
+      type: "host_response",
+      requestId: sent.requestId,
+      operation: "acp_list_agents",
+      agents: [{ id: "claude-code", label: "Claude Code" }],
+    });
+    await expect(response).resolves.toEqual([{ id: "claude-code", label: "Claude Code" }]);
+  });
+
+  it("returns an empty agent list when the host omits it", async () => {
+    const adapter = createInMemoryRuntimeAdapter();
+    const control = new HostControlGateway(adapter);
+    const response = control.listAcpAgents();
+    const sent = adapter.takeSent();
+    adapter.receive({ type: "host_response", requestId: sent.requestId, operation: "acp_list_agents" });
+    await expect(response).resolves.toEqual([]);
+  });
+
   it("opens a workspace in an external app", async () => {
     const adapter = createInMemoryRuntimeAdapter();
     const control = new HostControlGateway(adapter);

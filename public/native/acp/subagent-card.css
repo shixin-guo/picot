@@ -1,0 +1,322 @@
+/* Inline Claude Code (ACP) subagent card, rendered as a block inside the Pi
+   message list (see subagent-card.js). Collapsible; block styles use Pi's
+   design tokens so it reads as part of the conversation, not a foreign panel. */
+
+.subagent-card {
+  align-self: stretch;
+  /* Never let the message list's flex layout compress the card — its own body
+     scrolls. Without this the card height tracks the remaining viewport space
+     and shrinks further whenever something (e.g. devtools) shrinks the window. */
+  flex-shrink: 0;
+  margin: var(--space-2) 0;
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-md);
+  background: var(--bg-glass);
+  overflow: hidden;
+}
+
+.subagent-card-head {
+  display: flex;
+  align-items: stretch;
+}
+
+.subagent-card-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.subagent-card-toggle:hover {
+  background: var(--bg-glass-hover);
+}
+
+.subagent-card-expand {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-3);
+  border: none;
+  border-left: 1px solid var(--border-hover);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.subagent-card-expand:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+}
+
+.subagent-card-chevron {
+  flex-shrink: 0;
+  display: inline-flex;
+  color: var(--text-secondary);
+  transition: transform var(--duration, 0.15s) var(--ease, ease);
+}
+
+.subagent-card.expanded .subagent-card-chevron {
+  transform: rotate(90deg);
+}
+
+.subagent-card-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.subagent-card-status {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.subagent-card[data-status="done"] .subagent-card-status {
+  color: var(--success);
+}
+.subagent-card[data-status="error"] .subagent-card-status {
+  color: var(--error);
+}
+.subagent-card[data-status="running"] .subagent-card-status {
+  color: var(--accent, var(--text-secondary));
+}
+
+.subagent-card-elapsed {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary, var(--text-secondary));
+  font-variant-numeric: tabular-nums;
+}
+
+.subagent-card-body {
+  display: none;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  padding: var(--space-3);
+  /* Extra room at the end so the last block scrolls fully clear of the edge. */
+  padding-bottom: var(--space-5);
+  border-top: 1px solid var(--border-hover);
+  max-height: 720px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.subagent-card.expanded .subagent-card-body {
+  display: flex;
+}
+
+/* Blocks keep their full height and the body scrolls; without this the flex
+   column shrinks children to min-content and the last one can't be reached. */
+.subagent-card-body > * {
+  flex-shrink: 0;
+}
+
+.subagent-block {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.subagent-user {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--user-bubble);
+  color: var(--text-primary);
+}
+
+/* Agent replies reuse `.message.assistant .message-content` (Markdown pipeline
+   + Pi's own styling); just make sure they fill the card body. */
+.subagent-card-body > .message.assistant {
+  align-self: stretch;
+  max-width: 100%;
+  margin: 0;
+}
+
+/* Tool calls reuse Picot's ToolCardRenderer output; keep them full-width. */
+.subagent-card-body > .tool-card {
+  align-self: stretch;
+  margin: 0;
+}
+
+.subagent-thought {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: var(--space-1) 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.subagent-plan {
+  align-self: stretch;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass-strong);
+}
+
+.subagent-plan ul {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+.subagent-error {
+  align-self: stretch;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--error);
+  color: var(--text-primary);
+}
+
+.subagent-empty {
+  align-self: flex-start;
+  padding: var(--space-1) 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.subagent-card-footer {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border-hover);
+}
+
+.subagent-card-send {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass-strong);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.subagent-card-send:hover:not(:disabled) {
+  background: var(--bg-glass-hover);
+}
+
+.subagent-card-send:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ── Fullscreen result / transcript overlay ─────────────────────────── */
+
+.subagent-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  transition: opacity 0.18s var(--ease, ease);
+}
+
+.subagent-fullscreen.open {
+  opacity: 1;
+}
+
+.subagent-fullscreen-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(1000px, 100%);
+  height: min(90vh, 100%);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  background: var(--bg-solid);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.subagent-fullscreen-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-hover);
+}
+
+.subagent-fullscreen-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+}
+
+.subagent-fullscreen-close {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.subagent-fullscreen-close:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+}
+
+.subagent-fullscreen-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-5) max(var(--space-5), calc((100% - 860px) / 2));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.subagent-fullscreen-result {
+  align-self: stretch;
+  max-width: 100%;
+  margin: 0;
+  font-size: var(--font-size-md, 1rem);
+}
+
+.subagent-fullscreen-transcript {
+  align-self: stretch;
+  border-top: 1px solid var(--border-hover);
+  padding-top: var(--space-3);
+}
+
+.subagent-fullscreen-transcript > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  user-select: none;
+}
+
+.subagent-fullscreen-transcript-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}

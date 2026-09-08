@@ -72,13 +72,31 @@ impl AcpAgentManager {
         command
             .args(&spec.args)
             .current_dir(&spec.cwd)
+            // A macOS/Linux GUI launch inherits a bare `PATH` that rarely
+            // contains `npx`/`node`, so reuse the same PATH the embedded Pi
+            // runtime is spawned with — otherwise `#claude` fails with an
+            // opaque "No such file or directory".
+            .env("PATH", crate::pi_launch::build_augmented_path())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let child = command
-            .spawn()
-            .map_err(|error| format!("Cannot start ACP agent '{}': {error}", spec.agent_id))?;
+        let child = command.spawn().map_err(|error| {
+            format!(
+                "Cannot start ACP agent '{}' ({}): {error}",
+                spec.agent_id, spec.command
+            )
+        })?;
         let (bridge, mut process) = PiRpcBridge::attach(child, MAX_ACP_FRAME_BYTES)?;
+
+        // Fold whatever the agent printed to stderr into the failure message —
+        // for a crash-on-startup that text ("not logged in", a stack trace) is
+        // the only actionable detail the user gets.
+        fn with_stderr(process: &PiRpcProcess, message: String) -> String {
+            match process.drain_diagnostics() {
+                Some(diagnostics) => format!("{message}\n--- agent stderr ---\n{diagnostics}"),
+                None => message,
+            }
+        }
 
         let initialize = json!({
             "jsonrpc": "2.0",
@@ -95,12 +113,14 @@ impl AcpAgentManager {
             .request(initialize, ACP_HANDSHAKE_TIMEOUT)
             .await
             .map_err(|error| {
+                let message = with_stderr(&process, format!("ACP initialize failed: {error:?}"));
                 let _ = process.kill();
-                format!("ACP initialize failed: {error:?}")
+                message
             })?;
         if let Some(error) = init_response.get("error") {
+            let message = with_stderr(&process, format!("ACP initialize rejected: {error}"));
             let _ = process.kill();
-            return Err(format!("ACP initialize rejected: {error}"));
+            return Err(message);
         }
 
         let new_session = json!({
@@ -112,12 +132,14 @@ impl AcpAgentManager {
             .request(new_session, ACP_HANDSHAKE_TIMEOUT)
             .await
             .map_err(|error| {
+                let message = with_stderr(&process, format!("ACP session/new failed: {error:?}"));
                 let _ = process.kill();
-                format!("ACP session/new failed: {error:?}")
+                message
             })?;
         if let Some(error) = session_response.get("error") {
+            let message = with_stderr(&process, format!("ACP session/new rejected: {error}"));
             let _ = process.kill();
-            return Err(format!("ACP session/new rejected: {error}"));
+            return Err(message);
         }
         let acp_session_id = session_response
             .get("result")

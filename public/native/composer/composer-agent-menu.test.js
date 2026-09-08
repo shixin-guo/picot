@@ -3,8 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activeHashQuery, matchAgents, setupComposerAgentMenu } from "./composer-agent-menu.js";
 
 const AGENTS = [
-  { id: "pi", label: "Pi", description: "Picot's built-in agent" },
-  { id: "claude-code", label: "Claude Code", description: "External agent via ACP" },
+  { id: "claude-code", token: "claude", label: "Claude Code", description: "Delegate a task via ACP" },
 ];
 
 describe("composer agent menu", () => {
@@ -50,13 +49,13 @@ describe("composer agent menu", () => {
   });
 
   it("filters agents by id, label, or description", () => {
-    expect(matchAgents(AGENTS, "claude")).toEqual([AGENTS[1]]);
-    expect(matchAgents(AGENTS, "acp")).toEqual([AGENTS[1]]);
+    expect(matchAgents(AGENTS, "claude")).toEqual([AGENTS[0]]);
+    expect(matchAgents(AGENTS, "acp")).toEqual([AGENTS[0]]);
     expect(matchAgents(AGENTS, "")).toEqual(AGENTS);
     expect(matchAgents(AGENTS, "nope")).toEqual([]);
   });
 
-  it("lists agents matching the query and selects one on click", async () => {
+  it("inserts a `#<token> ` prefix and keeps the rest of the line on click", async () => {
     const onSelect = vi.fn();
     const controller = setupComposerAgentMenu({
       input,
@@ -74,8 +73,9 @@ describe("composer agent menu", () => {
     expect(options[0].textContent).toContain("Claude Code");
 
     options[0].dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
-    expect(onSelect).toHaveBeenCalledWith(AGENTS[1]);
-    expect(input.value).toBe("");
+    expect(onSelect).toHaveBeenCalledWith(AGENTS[0]);
+    expect(input.value).toBe("#claude ");
+    expect(input.selectionStart).toBe("#claude ".length);
     expect(menu.classList.contains("hidden")).toBe(true);
   });
 

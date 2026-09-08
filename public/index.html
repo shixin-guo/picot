@@ -729,11 +729,9 @@
               id="super-agent-chat-header"
             ></sa-chat-header>
 
-            <!-- External ACP agent turn panel (Claude Code, ...) — shown instead of
-                 #messages while the active session's agent isn't Pi. -->
-            <div class="acp-panel hidden" id="acp-panel"></div>
-
             <!-- Messages Container -->
+            <!-- Claude Code (ACP) subagent runs render as inline cards inside
+                 #messages — see native/acp/subagent-runs.js. -->
             <div class="messages" id="messages">
               <div class="welcome">
                 <div class="welcome-icon">

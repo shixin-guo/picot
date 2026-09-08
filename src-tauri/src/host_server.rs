@@ -99,10 +99,11 @@ fn fingerprint_static_dir(static_dir: &std::path::Path) -> String {
 struct HostState {
     router: Mutex<HostRouter>,
     runtimes: NativePiManager,
-    // External Agent Client Protocol agents (Claude Code today) spawned when a
-    // session's `#` picker selects something other than Pi. A session is
-    // owned by at most one of `runtimes`/`acp` at a time — see
-    // `switch_session_agent` and `target_owner`.
+    // External Agent Client Protocol agents (Claude Code today), spawned as
+    // scoped subagents for a single task via `acp_task_start`. These never own
+    // a session — the Pi `runtimes` backend keeps the conversation — they are
+    // throwaway task runtimes the frontend drives with `acp_prompt` and retires
+    // with `acp_task_stop`.
     acp: AcpAgentManager,
     auth: Arc<Mutex<RemoteAuth>>,
     session_owners: Mutex<std::collections::HashMap<RuntimeTarget, String>>,
@@ -1874,6 +1875,21 @@ async fn dispatch_host_operation(
             "operation": "list_installed_apps",
             "apps": list_installed_apps(),
         })),
+        // ACP subagents whose underlying CLI is present on this machine — the
+        // composer's `#` picker only offers these.
+        "acp_list_agents" => {
+            let path_env = crate::pi_launch::build_augmented_path();
+            let agents: Vec<Value> = acp_launch::detected_presets(&path_env)
+                .into_iter()
+                .map(|(id, label)| json!({ "id": id, "label": label }))
+                .collect();
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "acp_list_agents",
+                "agents": agents,
+            }))
+        }
         "open_in_app" => {
             let path = frame
                 .get("path")
@@ -2330,7 +2346,14 @@ async fn dispatch_host_operation(
                 "ok": true,
             }))
         }
-        "switch_session_agent" => {
+        // Spawn an external ACP agent (Claude Code, ...) as a scoped *subagent*
+        // for one task. Unlike the removed `switch_session_agent`, this never
+        // touches `state.runtimes`: the session's Pi backend keeps running and
+        // owns the conversation, while the returned task target is a throwaway
+        // runtime the frontend drives with `acp_prompt` and tears down with
+        // `acp_task_stop` once the run settles. The synthetic session id keeps
+        // concurrent runs from colliding in the ACP coordinator.
+        "acp_task_start" => {
             let workspace_id = frame
                 .get("workspaceId")
                 .and_then(Value::as_str)
@@ -2344,20 +2367,8 @@ async fn dispatch_host_operation(
             let agent_id = frame
                 .get("agentId")
                 .and_then(Value::as_str)
-                .ok_or(("invalid_agent", "agentId is required".into()))?
+                .unwrap_or("claude-code")
                 .to_owned();
-
-            // A session is owned by at most one backend at a time — stop
-            // whichever one currently has it before spawning the new one.
-            if let Some(existing) = state
-                .runtimes
-                .target_for_session(&workspace_id, &session_id)
-            {
-                let _ = state.runtimes.stop(&existing);
-            }
-            if let Some(existing) = state.acp.target_for_session(&workspace_id, &session_id) {
-                let _ = state.acp.stop(&existing);
-            }
 
             let cwd = state.data.workspace_root_path(&workspace_id).map_err(|_| {
                 (
@@ -2365,44 +2376,42 @@ async fn dispatch_host_operation(
                     "Could not resolve workspace root".into(),
                 )
             })?;
-            let new_instance_id = format!("instance-{}", uuid::Uuid::new_v4().simple());
-            let target =
-                RuntimeTarget::new(workspace_id.clone(), session_id.clone(), new_instance_id);
+            let run_id = uuid::Uuid::new_v4().simple().to_string();
+            let task_session_id = format!("{session_id}::acp::{run_id}");
+            let instance_id = format!("acp-task-{run_id}");
+            let target = RuntimeTarget::new(workspace_id, task_session_id, instance_id);
 
-            if agent_id == "pi" {
-                let session_path = state
-                    .data
-                    .resolve_session_path(&workspace_id, &session_id)
-                    .ok()
-                    .flatten();
-                let cwd_str = cwd.to_string_lossy().to_string();
-                let session_path_str = session_path
-                    .as_ref()
-                    .map(|p| p.to_string_lossy().to_string());
-                let spec = state
-                    .pi_launch
-                    .native_launch_spec(&cwd_str, session_path_str.as_deref())
-                    .map_err(|message| ("launch_spec_failed", message))?;
-                state
-                    .runtimes
-                    .spawn(target.clone(), spec)
-                    .map_err(|message| ("switch_session_agent_failed", message))?;
-            } else {
-                let spec = acp_launch::resolve_preset(&agent_id, cwd)
-                    .map_err(|message| ("unknown_acp_agent", message))?;
-                state
-                    .acp
-                    .spawn(target.clone(), spec)
-                    .await
-                    .map_err(|message| ("switch_session_agent_failed", message))?;
-            }
+            let spec = acp_launch::resolve_preset(&agent_id, cwd)
+                .map_err(|message| ("unknown_acp_agent", message))?;
+            state
+                .acp
+                .spawn(target.clone(), spec)
+                .await
+                .map_err(|message| ("acp_task_start_failed", message))?;
 
             Ok(json!({
                 "type": "host_response",
                 "requestId": request_id,
-                "operation": "switch_session_agent",
+                "operation": "acp_task_start",
                 "target": target,
                 "agentId": agent_id,
+            }))
+        }
+        "acp_task_stop" => {
+            let target: RuntimeTarget = serde_json::from_value(
+                frame
+                    .get("target")
+                    .cloned()
+                    .ok_or(("invalid_target", "Runtime target is required".into()))?,
+            )
+            .map_err(|_| ("invalid_target", "Runtime target is invalid".into()))?;
+            // Best effort: a run whose process already exited is not an error.
+            let _ = state.acp.stop(&target);
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "acp_task_stop",
+                "ok": true,
             }))
         }
         _ => Err((

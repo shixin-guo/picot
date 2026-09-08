@@ -1,6 +1,6 @@
 // Pure reducer turning ACP `session/update` notifications (forwarded by the
 // host as `acp_session_update` runtime events, see acp_manager.rs) into a
-// flat block list the independent ACP panel renders. Kept separate from
+// flat block list the subagent card renders. Kept separate from
 // message-renderer.js/tool-card.js: those are shaped around Pi/Anthropic's
 // own message-content schema, not ACP's `ContentBlock`/`ToolCall` schema.
 
@@ -25,6 +25,36 @@ export function reduceAcpEvent(state, event) {
     default:
       return state;
   }
+}
+
+/**
+ * Appends the local user's prompt as a block so the ACP panel echoes what was
+ * sent — `session/update` notifications only ever carry the agent's side of the
+ * turn, so without this the panel shows nothing until the agent replies.
+ */
+export function appendUserPrompt(state, text) {
+  const trimmed = typeof text === "string" ? text : "";
+  if (!trimmed) return state;
+  return { ...state, blocks: [...state.blocks, { kind: "user", text: trimmed }] };
+}
+
+/**
+ * The agent's final answer text — the last run of `message` blocks concatenated.
+ * Used as the payload for the card's "Send result to Pi" action and as the
+ * persisted `resultText`.
+ */
+export function finalAgentText(state) {
+  const messages = (state?.blocks ?? []).filter((block) => block.kind === "message");
+  if (messages.length === 0) return "";
+  // Walk back over the trailing contiguous message blocks so a reply split
+  // across several `messageId`s is rejoined, but earlier commentary isn't.
+  const tail = [];
+  for (let i = state.blocks.length - 1; i >= 0; i--) {
+    const block = state.blocks[i];
+    if (block.kind === "message") tail.unshift(block.text);
+    else if (block.kind === "tool_call" || block.kind === "user") break;
+  }
+  return (tail.length > 0 ? tail : messages.map((block) => block.text)).join("").trim();
 }
 
 export function resolvePermissionRequest(state, requestId) {
@@ -80,6 +110,12 @@ function upsertToolCall(state, update) {
     title: update.title ?? existing.title,
     status: update.status ?? existing.status,
     content: update.content ?? existing.content,
+    // Carried so the card can render a Picot-style tool card: `toolKind` picks
+    // the label, `rawInput` feeds the args preview / Edit diff, `locations` the
+    // file reference.
+    toolKind: update.kind ?? existing.toolKind,
+    rawInput: update.rawInput ?? existing.rawInput,
+    locations: update.locations ?? existing.locations,
   };
   if (index >= 0) blocks[index] = next;
   else blocks.push(next);

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createAcpState, reduceAcpEvent, resolvePermissionRequest } from "./acp-store.js";
+import {
+  appendUserPrompt,
+  createAcpState,
+  reduceAcpEvent,
+  resolvePermissionRequest,
+} from "./acp-store.js";
 
 function sessionUpdate(update) {
   return { type: "acp_session_update", params: { update } };
@@ -102,6 +107,17 @@ describe("acp-store", () => {
     expect(state.permissionRequests).toHaveLength(1);
     state = resolvePermissionRequest(state, "perm-1");
     expect(state.permissionRequests).toHaveLength(0);
+  });
+
+  it("echoes the local user's prompt as a block", () => {
+    let state = createAcpState();
+    state = appendUserPrompt(state, "hello agent");
+    expect(state.blocks).toEqual([{ kind: "user", text: "hello agent" }]);
+  });
+
+  it("ignores an empty user prompt", () => {
+    const state = createAcpState();
+    expect(appendUserPrompt(state, "")).toBe(state);
   });
 
   it("records an acp_error message", () => {

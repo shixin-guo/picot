@@ -25,7 +25,7 @@ import {
 } from "../ui/process-group.js";
 import { setupResizablePanel } from "../ui/resizable-panel.js";
 import { ToolCardRenderer } from "../ui/tool-card.js";
-import { setupAcpPanel } from "./acp/acp-panel.js";
+import { createSubagentRunManager } from "./acp/subagent-runs.js";
 import { setupComposerAgentMenu } from "./composer/composer-agent-menu.js";
 import { setupComposerAutoResize } from "./composer/composer-autoresize.js";
 import { setupComposerImageAttachments } from "./composer/composer-images.js";
@@ -373,49 +373,70 @@ const customUiPanel = new CustomUiPanel({
   getTarget: () => target,
   onError: showError,
 });
-// Available `#`-picker agents. Codex/Cursor are follow-up presets (see
-// acp_launch.rs); adding one here plus a matching Rust preset is enough to
-// surface it.
-const ACP_AGENTS = [
-  { id: "pi", label: "Pi", description: "Picot's built-in agent" },
-  { id: "claude-code", label: "Claude Code", description: "External agent via ACP" },
+// `#`-picker agents that can be delegated a scoped task. Selecting one inserts
+// a `#<token> ` token; the rest of the composer line becomes the subagent's
+// task (see sendComposerInput). The picker only offers the ones whose CLI the
+// host detects locally (`control.listAcpAgents()`); adding one here plus a
+// matching preset in acp_launch.rs is enough to surface it.
+const SUBAGENTS = [
+  { id: "claude-code", token: "claude", label: "Claude Code", description: "Delegate a task via ACP" },
+  { id: "gemini", token: "gemini", label: "Gemini CLI", description: "Delegate a task via ACP" },
+  { id: "codex", token: "codex", label: "Codex", description: "Delegate a task via ACP" },
+  { id: "cursor", token: "cursor", label: "Cursor", description: "Delegate a task via ACP" },
+  { id: "qwen", token: "qwen", label: "Qwen Code", description: "Delegate a task via ACP" },
 ];
-const acpPanel = setupAcpPanel({
-  container: document.getElementById("acp-panel"),
-  messagesElement,
-  onRespondPermission: (requestId, optionId) => {
+const SUBAGENT_LINE = /^[#/]([a-z][a-z0-9-]*)[ \t]+([\s\S]+)$/;
+const SUBAGENT_TOKEN_ONLY = /^[#/]([a-z][a-z0-9-]*)\s*$/;
+// null until the host reports which agents' CLIs are installed; the probe is
+// kicked off lazily the first time the `#` menu asks for the list (never during
+// the disconnected startup window), and until it resolves the full list shows.
+let detectedSubagentIds = null;
+let detectingSubagents = false;
+function ensureSubagentDetection() {
+  if (detectedSubagentIds || detectingSubagents) return;
+  detectingSubagents = true;
+  control
+    .listAcpAgents()
+    .then((agents) => {
+      detectedSubagentIds = new Set(agents.map((agent) => agent.id));
+    })
+    .catch(() => {
+      // Detection failed — keep the full list; a run whose CLI is missing still
+      // surfaces the reason on its card.
+    })
+    .finally(() => {
+      detectingSubagents = false;
+    });
+}
+
+// Claude Code subagent runs — each renders as a collapsible card inside the Pi
+// message list; the Pi backend keeps owning the conversation.
+const subagentRuns = createSubagentRunManager({
+  runtime,
+  control,
+  getTarget: () => target,
+  adapter,
+  mount: (element) => {
+    messagesElement?.appendChild(element);
+    element.scrollIntoView({ block: "nearest" });
+  },
+  sendToPi: (message) => {
     runtime
-      .request({ type: "acp_permission_response", requestId, optionId }, target, {
-        idempotencyKey: randomId(),
-      })
+      .request({ type: "prompt", message }, target, { idempotencyKey: randomId() })
       .catch(showError);
   },
+  onError: showError,
 });
-async function switchAgent(agentId) {
-  if (agentId === store.agentKind) return;
-  try {
-    const nextTarget = await control.switchSessionAgent(
-      target.workspaceId,
-      target.sessionId,
-      agentId,
-    );
-    await adoptTarget(nextTarget, { agentKind: agentId });
-    acpPanel.reset();
-    if (agentId === "pi") {
-      acpPanel.hide();
-      hydrateSnapshotOnce().catch(showError);
-    } else {
-      acpPanel.show();
-    }
-  } catch (error) {
-    showError(error);
-  }
-}
+
 setupComposerAgentMenu({
   input,
   container: document.getElementById("agent-picker-menu"),
-  getAgents: () => ACP_AGENTS,
-  onSelect: (agent) => switchAgent(agent.id),
+  getAgents: () => {
+    ensureSubagentDetection();
+    return detectedSubagentIds
+      ? SUBAGENTS.filter((agent) => detectedSubagentIds.has(agent.id))
+      : SUBAGENTS;
+  },
 });
 // Remembers which extension commands rely on terminal-only `ctx.ui` surfaces,
 // so the slash menu can badge them instead of leaving the user with a command
@@ -874,6 +895,9 @@ const hydrateFromSnapshot = async (snapshot) => {
 
 runtime.subscribe((frame) => {
   if (frame.type !== "runtime_event") return;
+  // Claude Code subagent task runtimes carry a synthetic sessionId/instanceId;
+  // their events feed a card in the message list, not the Pi session state.
+  if (subagentRuns.applyEvent(frame)) return;
   taskCompletionNotifications.handleRuntimeFrame(frame);
   const previous = store;
   const routed = routeRuntimeFrame({
@@ -1882,26 +1906,48 @@ function setupFileBrowser() {
   });
 }
 
+function knownSubagent(token) {
+  return SUBAGENTS.find((entry) => entry.token === token || entry.id === token) ?? null;
+}
+
+// Returns { agent, task } when `value` delegates to a known subagent
+// (`#claude <task>` / `/codex <task>` / …), { agent, incomplete: true } when the
+// token is there but the task is missing, or null when it's an ordinary line.
+function parseSubagentTask(value) {
+  const text = String(value ?? "").trimStart();
+  const match = SUBAGENT_LINE.exec(text);
+  if (match) {
+    const agent = knownSubagent(match[1]);
+    const task = match[2].trim();
+    if (agent && task) return { agent, task };
+  }
+  const tokenOnly = SUBAGENT_TOKEN_ONLY.exec(text);
+  const agent = tokenOnly && knownSubagent(tokenOnly[1]);
+  if (agent) return { agent, incomplete: true };
+  return null;
+}
+
 async function sendComposerInput({ altKey }) {
   if (pasteOffload?.isBusy()) return;
   const value = input.value;
   const images = imageAttachments.getImages();
   if (!value.trim() && images.length === 0) return;
-  if (store.agentKind !== "pi") {
+  // Delegate to a subagent: `#claude <task>`, `/codex <task>`, … — the rest of
+  // the line is the task; the Pi session is untouched and a card streams the run.
+  const subagentTask = parseSubagentTask(value);
+  if (subagentTask?.incomplete) {
+    const { token, label } = subagentTask.agent;
+    messageRenderer.renderSystemMessage(
+      `Add a task after #${token}, e.g. #${token} ask ${label} to review the diff.`,
+    );
+    return;
+  }
+  if (subagentTask) {
     input.value = "";
     input.scrollTop = 0;
     composerAutoResize.sync();
     imageAttachments.clear();
-    try {
-      await runtime.request({ type: "acp_prompt", message: value, images }, target, {
-        idempotencyKey: randomId(),
-      });
-    } catch (error) {
-      input.value = value;
-      composerAutoResize.sync();
-      imageAttachments.setImages(images);
-      throw error;
-    }
+    subagentRuns.start(subagentTask.task, subagentTask.agent).catch(showError);
     return;
   }
   const intent = resolveComposerInput(value, commandCatalog, {
@@ -1961,11 +2007,6 @@ function mountTurnFileChips() {
 
 async function handleRuntimeEvent(event) {
   switch (event.type) {
-    case "acp_session_update":
-    case "acp_permission_request":
-    case "acp_error":
-      acpPanel.apply(event);
-      break;
     case "agent_start":
       lastShownProviderError = null;
       assistantMessageStream.reset();
@@ -2108,7 +2149,7 @@ function upsertActiveSessionFromUserMessage(message = null) {
   pendingBoundSessionFirstMessage = null;
 }
 
-async function adoptTarget(nextTarget, { updateRoute = true, agentKind = "pi" } = {}) {
+async function adoptTarget(nextTarget, { updateRoute = true } = {}) {
   const previousTarget = target;
   const sessionChanged = nextTarget.sessionId !== previousTarget.sessionId;
   const targetChanged =
@@ -2126,7 +2167,7 @@ async function adoptTarget(nextTarget, { updateRoute = true, agentKind = "pi" } 
     );
   }
   target = nextTarget;
-  store = createSessionStore(target, { agentKind });
+  store = createSessionStore(target);
   // Reset the in-flight guard whenever the target changes so a new session
   // is never blocked from hydrating by a stale flag from the previous one.
   snapshotInFlight = false;
@@ -2256,6 +2297,7 @@ function renderHistory(messages) {
   if (messages.length === 0) {
     messageRenderer.renderWelcome();
     applyActiveSearchHighlight({ scrollToFirst: false });
+    subagentRuns.restore(target.sessionId).catch(showError);
     logMessagesDom("renderHistory empty", {
       sessionId: target.sessionId,
     });
@@ -2403,6 +2445,10 @@ function renderHistory(messages) {
       }
     }
   }
+
+  // Re-attach Claude Code subagent cards after the message list rebuild that
+  // messageRenderer.clear() just wiped.
+  subagentRuns.restore(target.sessionId).catch(showError);
 
   const highlighted = applyActiveSearchHighlight();
   if (highlighted === 0) messageRenderer.forceScrollToBottom();

@@ -329,7 +329,7 @@ impl PiLaunchResolver {
     }
 }
 
-fn build_augmented_path() -> String {
+pub(crate) fn build_augmented_path() -> String {
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|value| std::env::split_paths(&value).collect())
         .unwrap_or_default();

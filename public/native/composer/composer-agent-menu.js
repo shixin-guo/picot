@@ -1,8 +1,8 @@
-// `#` picker for external Agent Client Protocol (ACP) agents (Claude Code,
-// ...) plus Pi itself. Modeled directly on composer-slash-menu.js, but
-// simpler: the catalog is a short static list (not pi's command catalog),
-// and selecting an entry never inserts text — it clears the `#query` and
-// immediately switches the whole session's backend via `onSelect`.
+// `#` picker for delegating a task to an external Agent Client Protocol (ACP)
+// subagent (Claude Code, ...). Modeled on composer-slash-menu.js but simpler:
+// the catalog is a short static list, and selecting an entry replaces the
+// `#query` with a `#<token> ` prefix so the user types the task after it
+// (`#claude fix the failing test`). `onSelect` is an optional hook.
 
 export function activeHashQuery(input) {
   const cursor = input.selectionStart ?? input.value.length;
@@ -23,7 +23,7 @@ export function matchAgents(agents, query) {
   );
 }
 
-export function setupComposerAgentMenu({ input, container, getAgents, onSelect }) {
+export function setupComposerAgentMenu({ input, container, getAgents, onSelect = () => {} }) {
   if (!input || !container) return { close() {}, update() {} };
 
   let matches = [];
@@ -49,8 +49,9 @@ export function setupComposerAgentMenu({ input, container, getAgents, onSelect }
     const agent = matches[index];
     const hash = activeHashQuery(input);
     if (!agent || !hash) return;
-    input.value = input.value.slice(hash.end);
-    input.setSelectionRange(0, 0);
+    const prefix = `#${agent.token ?? agent.id} `;
+    input.value = prefix + input.value.slice(hash.end);
+    input.setSelectionRange(prefix.length, prefix.length);
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.focus();
     close();
