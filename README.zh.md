@@ -111,6 +111,8 @@ curl -fsSL https://raw.githubusercontent.com/shixin-guo/picot/main/scripts/insta
 - **安全单条删除** — 可从侧边栏或「已归档」删除会话；运行中的会话会被服务端拒绝
 - **最近访问** — 跨工作区的最近使用列表固定显示最后访问的五个会话
 
+> 🛣️ **规划中：** subagent/团队支持 — 从界面中创建 Agent 团队、侧边栏可视化分组、Agent 间实时切换。详见 [`ROADMAP.md`](./ROADMAP.md)。
+
 **全文搜索** — 跨所有会话历史搜索并高亮匹配片段（`⌘K`）：
 
 <p align="center">
