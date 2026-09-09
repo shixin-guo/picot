@@ -41,8 +41,13 @@ Windows (PowerShell):
 irm https://raw.githubusercontent.com/shixin-guo/picot/main/scripts/install.ps1 | iex
 ```
 
-Linux 安装脚本会按你的包管理器选择 `.deb` 或 `.rpm`。两者都没有的发行版，或者不想用 `sudo`
-的话，加 `--appimage` 把 AppImage 装到 `~/.local/bin`：
+Linux 安装脚本会按你的包管理器选择 `.deb` 或 `.rpm`，**优先用这两个**：它们链接系统自带的
+WebKitGTK，会跟随发行版更新，在 Fedora 43 这类最新系统上也能正常工作。
+
+AppImage 只是兜底：适用于既没有 `apt` 也没有 `dnf`/`rpm` 的发行版，或者不想用 `sudo` 的场景。
+它**打包**了 WebKitGTK，在过新的发行版上可能一启动就崩溃（打包的 JavaScriptCore 里 `SIGSEGV`）——
+原因是打包的引擎比宿主系统库旧。只要你的系统有 `.deb`/`.rpm` 就优先用它。加 `--appimage`
+把 AppImage 装到 `~/.local/bin`：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/shixin-guo/picot/main/scripts/install.sh | bash -s -- --appimage
