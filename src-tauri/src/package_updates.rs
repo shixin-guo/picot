@@ -287,25 +287,22 @@ async fn run_update_command(command: &str, args: &[String], cwd: &Path) -> Resul
     {
         return Err("offline mode".to_string());
     }
-    let output = timeout(
-        Duration::from_secs(UPDATE_CHECK_TIMEOUT_SECS),
-        {
-            let mut child = Command::new(command);
-            crate::windows_child::hide_console_tokio(&mut child);
-            child
-                .args(args)
-                .current_dir(cwd)
-                .env("GIT_TERMINAL_PROMPT", "0")
-                .stdin(Stdio::null())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                // A per-subprocess timeout cancels the in-flight output() future, and a
-                // cancelled child that stays attached would keep running detached; always
-                // reap it on drop so stalled npm/git checks cannot leak orphan processes.
-                .kill_on_drop(true)
-                .output()
-        },
-    )
+    let output = timeout(Duration::from_secs(UPDATE_CHECK_TIMEOUT_SECS), {
+        let mut child = Command::new(command);
+        crate::windows_child::hide_console_tokio(&mut child);
+        child
+            .args(args)
+            .current_dir(cwd)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            // A per-subprocess timeout cancels the in-flight output() future, and a
+            // cancelled child that stays attached would keep running detached; always
+            // reap it on drop so stalled npm/git checks cannot leak orphan processes.
+            .kill_on_drop(true)
+            .output()
+    })
     .await
     .map_err(|_| "package update check timed out".to_string())?
     .map_err(|error| format!("package update check failed: {error}"))?;

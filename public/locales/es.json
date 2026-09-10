@@ -603,7 +603,7 @@
     "title": "Picot no pudo iniciarse",
     "descriptionPre": "El",
     "descriptionPost": "runtime integrado que se incluye con Picot falló al iniciarse.",
-    "help": "Esto generalmente significa que la instalación está incompleta o dañada. Reinstalar Picot normalmente lo soluciona. Haz clic en Reintentar inicio después de reinstalar o reiniciar.",
+    "help": "Esto puede ocurrir si se eliminó la última carpeta del proyecto, o si la instalación de Picot está incompleta. Haz clic en Reintentar inicio para volver a intentarlo. Reinstala Picot si sigue fallando.",
     "retry": "Reintentar inicio",
     "tauriUnavailable": "El runtime de Tauri no está disponible en esta ventana.",
     "starting": "Iniciando runtime de Pi...",

@@ -30,6 +30,11 @@ description = "Allow bootstrapping the fixed Agent Inbox workspace and backgroun
 commands.allow = ["ensure_agent_inbox_session"]
 
 [[permission]]
+identifier = "allow-retry-startup"
+description = "Allow retrying native runtime startup from the bootstrap error window."
+commands.allow = ["retry_startup"]
+
+[[permission]]
 identifier = "allow-check-beta-update"
 description = "Allow checking the prerelease Picot updater channel."
 commands.allow = ["check_beta_update"]
@@ -47,6 +52,7 @@ permissions = [
   "allow-open-session-in-project",
   "allow-show-task-completion-notification",
   "allow-ensure-agent-inbox-session",
+  "allow-retry-startup",
   "allow-check-beta-update",
   "allow-install-beta-update",
 ]
