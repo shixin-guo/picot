@@ -1,0 +1,44 @@
+public/bootstrap.html
+  s_d070875120b5eb::t_9f8e4612c2f4ca 107
+  s_d070875120b5eb::t_4ad8f8074a0d89 163
+  s_d070875120b5eb::t_13ebcb8d0fa70c 136
+  s_d070875120b5eb::t_ce24b2037d90c1 96
+public/locales/en.json
+  s_d070875120b5eb::t_b26de753915c2a 606
+public/locales/es.json
+  s_d070875120b5eb::t_15356868411b52 606
+public/locales/ja.json
+  s_d070875120b5eb::t_74e2d3e6d815c6 606
+src-tauri/permissions/default.toml
+  s_d070875120b5eb::t_a3257b28b58e5e 55
+  s_d070875120b5eb::t_2091f0201a01a8 33-36
+  s_d070875120b5eb::t_0e1beaf66ef401 32
+src-tauri/src/main.rs
+  s_d070875120b5eb::t_71b5e7361ab397 949-951,953
+  s_d070875120b5eb::t_1f78c7e081979b 628
+  s_d070875120b5eb::t_398bc96db11025 791-802,813,819-825,833-835,840
+  s_d070875120b5eb::t_ad28cd6c7c80c6 937
+  s_d070875120b5eb::t_be6ed640fd6b30 1086-1098,1102,1106-1131
+  s_d070875120b5eb::t_201def5b6322ef 257-270
+  s_d070875120b5eb::t_782cf531a48263 40
+  s_d070875120b5eb::t_6388d04be16f0f 1030-1033
+  s_d070875120b5eb::t_7d6b1cb70617e4 873,879
+public/locales/zh.json
+  s_d070875120b5eb::t_94f2e1681d65a9 606
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "94dca4b3b665eb119bdb3304b234f8d3b0a768da",
+  "prompts": {},
+  "sessions": {
+    "s_d070875120b5eb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "53d89a2c-6744-482d-8679-68d16c81654c",
+        "model": "auto-smart"
+      },
+      "human_author": null
+    }
+  }
+}
