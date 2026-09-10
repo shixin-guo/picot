@@ -1,0 +1,14 @@
+src-tauri/tauri.conf.json
+  h_d9094605f62439 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "45808c434d2ec2eb36067453886dc4894889feca",
+  "prompts": {},
+  "humans": {
+    "h_d9094605f62439": {
+      "author": "Shixin Guo <shixin.guo@zoom.us>"
+    }
+  }
+}
