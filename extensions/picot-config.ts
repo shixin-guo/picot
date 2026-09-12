@@ -87,7 +87,9 @@ type CatalogRegistry = {
     label?: string;
   };
   getProviderDisplayName: (provider: string) => string;
-  refresh: () => void | Promise<void>;
+  // The live pi registry resolves to ModelsRefreshResult; every caller here
+  // awaits and discards it, so the contract only promises "awaitable".
+  refresh: () => void | Promise<unknown>;
   getApiKeyForProvider?: (provider: string) => Promise<string | undefined>;
   getApiKeyAndHeaders?: (model: CatalogModel) => Promise<{
     ok?: boolean;
@@ -103,7 +105,7 @@ const oauthLoginManager = createOAuthLoginOperationManager();
 
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
-type ConfigContext = {
+export type ConfigContext = {
   modelRegistry?: CatalogRegistry;
   cwd?: string;
   model?: unknown;
@@ -762,7 +764,11 @@ function getDefaultThinkingLevel(scope: unknown, ctx: ConfigContext) {
   if (requestedScope === "project" || requestedScope === "effective") {
     const project = getProjectSettings(ctx);
     const projectValue = project?.settings.defaultThinkingLevel;
-    if (typeof projectValue === "string" && THINKING_LEVELS.has(projectValue as ThinkingLevel)) {
+    if (
+      project &&
+      typeof projectValue === "string" &&
+      THINKING_LEVELS.has(projectValue as ThinkingLevel)
+    ) {
       return { level: projectValue, source: "project", path: project.path };
     }
     if (requestedScope === "project") {

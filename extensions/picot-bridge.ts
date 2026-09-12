@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerCustomUiBridge } from "./custom-ui-bridge";
 import { registerHostUiCapabilityReporter } from "./host-ui-capabilities";
 import { handlePicotConfig } from "./picot-config";
+import type { ConfigContext } from "./picot-config";
 import projectTrust from "./project-trust";
 import { registerAutomaticSessionTitle } from "./session-title-auto";
 
@@ -49,7 +50,12 @@ export default function picotBridge(pi: ExtensionAPI) {
       const op = typeof request.op === "string" ? request.op : "";
       const params = request.params && typeof request.params === "object" ? request.params : {};
       try {
-        const result = await handlePicotConfig(op, params, { ...ctx, oauthNotify });
+        // SAFETY: ctx is the live pi ExtensionContext; ConfigContext only
+        // declares the slices these operations consume. The registry's real
+        // method signatures are narrower than the structural shell, so this
+        // cast widens the object to the shell shape (same rationale as the
+        // respond() cast below).
+        const result = await handlePicotConfig(op, params, { ...ctx, oauthNotify } as unknown as ConfigContext);
         // SAFETY: handlePicotConfig returns PicotConfigResult ({ ok, data?, error? }) —
         // a plain JSON-serializable record by construction; the cast only
         // widens the discriminated union to its record shape for respond().
