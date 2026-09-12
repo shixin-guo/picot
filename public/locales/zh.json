@@ -860,7 +860,45 @@
     "installedHelp": "管理为此安装配置的扩展包：启用、禁用、更新或移除。",
     "copyConfigPath": "复制路径",
     "configPathCopied": "已复制",
-    "configPathCopyFailed": "复制失败"
+    "configPathCopyFailed": "复制失败",
+    "theme": "主题",
+    "chat": {
+      "title": "聊天",
+      "fontSize": "字体大小",
+      "fontSizeDescription": "聊天消息的文字大小。"
+    },
+    "preview": {
+      "title": "文件预览",
+      "theme": "预览主题",
+      "themeSystem": "跟随系统",
+      "themeLight": "浅色",
+      "themeDark": "深色",
+      "fontSize": "字体大小",
+      "fontSizeDescription": "代码编辑器和 Markdown 预览的文字大小。"
+    },
+    "terminal": {
+      "title": "终端",
+      "theme": "终端主题",
+      "themeDescription": "跟随 Picot 主题，或强制浅色 / 深色。",
+      "themeSystem": "跟随系统",
+      "themeLight": "浅色",
+      "themeDark": "深色",
+      "fontSize": "字体大小",
+      "fontSizeDescription": "终端文字大小。",
+      "scrollback": "回滚行数",
+      "scrollbackDescription": "终端保留的历史行数。",
+      "smoothScroll": "平滑滚动时长",
+      "smoothScrollDescription": "动画时长（毫秒）；0 表示禁用。",
+      "webgl": "WebGL 渲染器",
+      "webglDescription": "使用 GPU 渲染终端。若文字模糊请关闭。"
+    },
+    "fontLevel": {
+      "small": "小",
+      "normal": "标准",
+      "medium": "中",
+      "large": "大",
+      "xlarge": "特大"
+    }
   },
   "cost": {
     "documentTitle": "Picot - 使用量",

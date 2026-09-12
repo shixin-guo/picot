@@ -860,7 +860,45 @@
     "installedHelp": "Manage the extension packages configured for this installation: enable, disable, update, or remove.",
     "copyConfigPath": "Copy path",
     "configPathCopied": "Copied",
-    "configPathCopyFailed": "Copy failed"
+    "configPathCopyFailed": "Copy failed",
+    "theme": "Theme",
+    "chat": {
+      "title": "Chat",
+      "fontSize": "Font size",
+      "fontSizeDescription": "Text size for chat messages."
+    },
+    "preview": {
+      "title": "File preview",
+      "theme": "Preview theme",
+      "themeSystem": "System",
+      "themeLight": "Light",
+      "themeDark": "Dark",
+      "fontSize": "Font size",
+      "fontSizeDescription": "Text size for code editors and markdown previews."
+    },
+    "terminal": {
+      "title": "Terminal",
+      "theme": "Terminal theme",
+      "themeDescription": "Follow the Picot theme, or force light or dark.",
+      "themeSystem": "System",
+      "themeLight": "Light",
+      "themeDark": "Dark",
+      "fontSize": "Font size",
+      "fontSizeDescription": "Terminal text size.",
+      "scrollback": "Scrollback",
+      "scrollbackDescription": "Number of terminal history lines to retain.",
+      "smoothScroll": "Smooth scroll duration",
+      "smoothScrollDescription": "Animation duration in milliseconds; 0 disables it.",
+      "webgl": "WebGL renderer",
+      "webglDescription": "Render the terminal on the GPU. Disable it if text looks blurry."
+    },
+    "fontLevel": {
+      "small": "Small",
+      "normal": "Normal",
+      "medium": "Medium",
+      "large": "Large",
+      "xlarge": "Extra large"
+    }
   },
   "cost": {
     "documentTitle": "Picot - Usage",

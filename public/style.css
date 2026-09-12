@@ -7,6 +7,7 @@
 @import url("components/super-agent-chat-header.css");
 @import url("components/super-agent-runtime.css");
 @import url("native/settings/cost-dashboard.css");
+@import url("native/settings/appearance-settings.css");
 @import url("ui/context-viz.css");
 @import url("ui/message-renderer.css");
 @import url("ui/markdown.css");

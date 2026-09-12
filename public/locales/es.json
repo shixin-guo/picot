@@ -860,7 +860,45 @@
     "installedHelp": "Gestiona los paquetes de extensión configurados para esta instalación: habilita, deshabilita, actualiza o elimina.",
     "copyConfigPath": "Copiar ruta",
     "configPathCopied": "Copiado",
-    "configPathCopyFailed": "Error al copiar"
+    "configPathCopyFailed": "Error al copiar",
+    "theme": "Tema",
+    "chat": {
+      "title": "Chat",
+      "fontSize": "Tamaño de fuente",
+      "fontSizeDescription": "Tamaño del texto de los mensajes del chat."
+    },
+    "preview": {
+      "title": "Vista previa de archivos",
+      "theme": "Tema de vista previa",
+      "themeSystem": "Sistema",
+      "themeLight": "Claro",
+      "themeDark": "Oscuro",
+      "fontSize": "Tamaño de fuente",
+      "fontSizeDescription": "Tamaño del texto para editores de código y vistas previas markdown."
+    },
+    "terminal": {
+      "title": "Terminal",
+      "theme": "Tema de la terminal",
+      "themeDescription": "Seguir el tema de Picot, o forzar claro u oscuro.",
+      "themeSystem": "Sistema",
+      "themeLight": "Claro",
+      "themeDark": "Oscuro",
+      "fontSize": "Tamaño de fuente",
+      "fontSizeDescription": "Tamaño del texto de la terminal.",
+      "scrollback": "Desplazamiento",
+      "scrollbackDescription": "Número de líneas del historial de la terminal.",
+      "smoothScroll": "Duración del desplazamiento suave",
+      "smoothScrollDescription": "Duración de la animación en milisegundos; 0 la desactiva.",
+      "webgl": "Renderizador WebGL",
+      "webglDescription": "Renderiza la terminal en la GPU. Desactívalo si el texto se ve borroso."
+    },
+    "fontLevel": {
+      "small": "Pequeño",
+      "normal": "Normal",
+      "medium": "Mediano",
+      "large": "Grande",
+      "xlarge": "Extra grande"
+    }
   },
   "cost": {
     "documentTitle": "Picot - Uso",
