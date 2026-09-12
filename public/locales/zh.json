@@ -874,6 +874,7 @@
     "preview": {
       "title": "文件预览",
       "theme": "预览主题",
+      "themeDescription": "跟随 Picot 主题，或为代码与 Markdown 预览强制浅色 / 深色。",
       "themeSystem": "跟随系统",
       "themeLight": "浅色",
       "themeDark": "深色",

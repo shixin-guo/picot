@@ -874,6 +874,7 @@
     "preview": {
       "title": "ファイルプレビュー",
       "theme": "プレビューテーマ",
+      "themeDescription": "Picot テーマに従うか、コードとマークダウンプレビューのライト/ダークを強制します。",
       "themeSystem": "システム",
       "themeLight": "ライト",
       "themeDark": "ダーク",

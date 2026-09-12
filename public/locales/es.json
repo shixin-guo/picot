@@ -874,6 +874,7 @@
     "preview": {
       "title": "Vista previa de archivos",
       "theme": "Tema de vista previa",
+      "themeDescription": "Seguir el tema de Picot, o forzar claro u oscuro para las vistas previas de código y markdown.",
       "themeSystem": "Sistema",
       "themeLight": "Claro",
       "themeDark": "Oscuro",

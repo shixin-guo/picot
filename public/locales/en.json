@@ -874,6 +874,7 @@
     "preview": {
       "title": "File preview",
       "theme": "Preview theme",
+      "themeDescription": "Follow the Picot theme, or force light or dark for code and markdown previews.",
       "themeSystem": "System",
       "themeLight": "Light",
       "themeDark": "Dark",
