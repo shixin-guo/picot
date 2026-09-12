@@ -296,6 +296,12 @@ impl HostServer {
             .route("/v2/ws", get(websocket_upgrade))
             .route("/v2/bootstrap", get(bootstrap_target))
             .route("/v2/sessions", get(list_all_sessions_http))
+            .route("/v2/remote-sessions", get(list_remote_sessions_http))
+            .route(
+                "/v2/remote-session",
+                get(remote_session_get_http).post(remote_session_post_http),
+            )
+            .route("/v2/remote-session/new", post(remote_session_create_http))
             .route(
                 "/v2/auth/device-requests",
                 post(create_device_request).get(list_device_requests),
@@ -427,6 +433,79 @@ impl Drop for HostServer {
 
 async fn app_launcher_redirect() -> Redirect {
     Redirect::temporary("/app")
+}
+
+async fn list_remote_sessions_http() -> Response {
+    match crate::pi_web_remote::discover_remote_sessions().await {
+        Ok(value) => no_store_json(StatusCode::OK, value),
+        Err(error) => no_store_json(
+            StatusCode::SERVICE_UNAVAILABLE,
+            json!({ "error": error, "machines": [] }),
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteSessionQuery {
+    machine_id: String,
+    session_id: String,
+    cwd: String,
+    operation: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteSessionPostBody {
+    machine_id: String,
+    session_id: String,
+    cwd: String,
+    operation: String,
+    #[serde(default)]
+    payload: Value,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteSessionCreateBody {
+    machine_id: String,
+    cwd: String,
+}
+
+async fn remote_session_get_http(Query(query): Query<RemoteSessionQuery>) -> Response {
+    match crate::pi_web_remote::remote_session_get(
+        &query.machine_id,
+        &query.session_id,
+        &query.cwd,
+        &query.operation,
+    )
+    .await
+    {
+        Ok(value) => no_store_json(StatusCode::OK, value),
+        Err(error) => no_store_json(StatusCode::BAD_GATEWAY, json!({ "error": error })),
+    }
+}
+
+async fn remote_session_post_http(Json(body): Json<RemoteSessionPostBody>) -> Response {
+    match crate::pi_web_remote::remote_session_post(
+        &body.machine_id,
+        &body.session_id,
+        &body.cwd,
+        &body.operation,
+        &body.payload,
+    )
+    .await
+    {
+        Ok(value) => no_store_json(StatusCode::OK, value),
+        Err(error) => no_store_json(StatusCode::BAD_GATEWAY, json!({ "error": error })),
+    }
+}
+
+async fn remote_session_create_http(Json(body): Json<RemoteSessionCreateBody>) -> Response {
+    match crate::pi_web_remote::create_remote_session(&body.machine_id, &body.cwd).await {
+        Ok(value) => no_store_json(StatusCode::OK, value),
+        Err(error) => no_store_json(StatusCode::BAD_GATEWAY, json!({ "error": error })),
+    }
 }
 
 async fn health(State(state): State<Arc<HostState>>) -> Json<Value> {

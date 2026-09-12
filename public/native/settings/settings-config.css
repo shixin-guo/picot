@@ -187,13 +187,12 @@
 }
 
 .models-provider-add {
-  border-color: var(--accent);
+  border: 1px dashed var(--border);
   flex-shrink: 0;
   justify-content: center;
   padding: var(--space-2);
   margin-top: var(--space-2);
   font-size: var(--font-size-sm);
-  border: 1px dashed var(--border);
 }
 
 .models-provider-add:hover {

@@ -15,6 +15,7 @@ mod package_updates;
 mod pi_launch;
 mod pi_rpc_bridge;
 mod pi_tls;
+mod pi_web_remote;
 mod remote_auth;
 mod runtime_coordinator;
 mod session_ui_profile_store;
