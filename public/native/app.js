@@ -79,6 +79,7 @@ import {
 import { HostControlGateway } from "./transport/control-gateway.js";
 import { HostDataGateway } from "./transport/data-gateway.js";
 import { createOauthGateway } from "./transport/oauth-gateway.js";
+import { PreferenceGateway } from "./transport/preference-gateway.js";
 import { HostRuntimeAdapter, resolveHostWebSocketUrl } from "./transport/runtime-adapter.js";
 import { routeRuntimeFrame } from "./transport/runtime-frame-routing.js";
 import { RuntimeGateway } from "./transport/runtime-gateway.js";
@@ -356,6 +357,7 @@ const data = new HostDataGateway(adapter, {
   deviceToken: remoteAuth.deviceToken,
 });
 const control = new HostControlGateway(adapter);
+const preferences = new PreferenceGateway(adapter);
 const config = new ConfigGateway({
   runtime,
   getTarget: () => target,
@@ -1021,6 +1023,7 @@ setupCommandPalette({
 const settingsPanel = setupSettingsPanel({
   data,
   control,
+  preferences,
   getWorkspaceId: () => target.workspaceId,
   configGateway: config,
   oauthGateway,

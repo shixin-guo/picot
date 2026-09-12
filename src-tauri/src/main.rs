@@ -870,7 +870,9 @@ fn setup_native_runtime(app: &AppHandle, static_dir: PathBuf) -> Result<(), Stri
             runtimes.clone(),
             remote_auth,
             std::collections::HashMap::from([(target.workspace_id.clone(), PathBuf::from(&cwd))]),
+<<<<<<< HEAD
             Some(app.clone()),
+            Some(Arc::clone(&metadata)),
         )
         .await?;
         runtimes.spawn(target.clone(), launch)?;
