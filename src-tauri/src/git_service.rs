@@ -748,6 +748,207 @@ impl GitService {
         Ok(())
     }
 
+    pub fn log(
+        &self,
+        _owner: &str,
+        root: &Path,
+        _generation: u64,
+        limit: usize,
+        before: Option<&str>,
+    ) -> Result<GitLogResponse, String> {
+        assert_workspace_root(root)?;
+        let limit = limit.clamp(1, MAX_LOG_LIMIT);
+        if let Some(before) = before {
+            validate_oid(before)?;
+        }
+        if git(root, &["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]).is_err() {
+            return Ok(GitLogResponse {
+                commits: Vec::new(),
+                has_more: false,
+            });
+        }
+        let mut args: Vec<OsString> = vec![
+            "--no-pager".into(),
+            "log".into(),
+            "--first-parent".into(),
+            format!("--max-count={limit}").into(),
+            format!("--format={LOG_LIST_FMT}").into(),
+            "-z".into(),
+        ];
+        if let Some(before) = before {
+            let verify = format!("{before}^{{commit}}");
+            if git(root, &["rev-parse", "--verify", "--quiet", &verify]).is_err() {
+                return Err("unknown commit".into());
+            }
+            let parent = format!("{before}~1^{{commit}}");
+            if git(root, &["rev-parse", "--verify", "--quiet", &parent]).is_err() {
+                return Ok(GitLogResponse {
+                    commits: Vec::new(),
+                    has_more: false,
+                });
+            }
+            args.push(format!("{before}~1").into());
+        }
+        let output = git_os(root, &args).map_err(|_| "log failed".to_string())?;
+        let fields = output.split(|byte| *byte == 0).collect::<Vec<_>>();
+        let mut commits = Vec::new();
+        for group in fields.as_chunks::<5>().0 {
+            commits.push(GitLogEntry {
+                oid: String::from_utf8_lossy(group[0]).into_owned(),
+                subject: String::from_utf8_lossy(group[2]).into_owned(),
+                author_name: String::from_utf8_lossy(group[3]).into_owned(),
+                author_time: String::from_utf8_lossy(group[4]).parse().unwrap_or(0),
+            });
+        }
+        Ok(GitLogResponse {
+            has_more: commits.len() == limit,
+            commits,
+        })
+    }
+
+    pub fn log_detail(
+        &self,
+        _owner: &str,
+        root: &Path,
+        _generation: u64,
+        oid: &str,
+    ) -> Result<GitLogDetailResponse, String> {
+        assert_workspace_root(root)?;
+        validate_oid(oid)?;
+        let kind = commit_kind(root, oid)?;
+        let args = vec![
+            OsString::from("--no-pager"),
+            OsString::from("log"),
+            OsString::from("-1"),
+            OsString::from(format!("--format={LOG_DETAIL_FMT}")),
+            OsString::from("-z"),
+            OsString::from(oid),
+        ];
+        let output = git_os(root, &args).map_err(|_| "log detail failed".to_string())?;
+        let fields = output.split(|byte| *byte == 0).collect::<Vec<_>>();
+        if fields.len() < 4 {
+            return Err("malformed log detail".into());
+        }
+        let mut full_message = String::from_utf8_lossy(fields[3]).into_owned();
+        while full_message.ends_with(['\r', '\n']) {
+            full_message.pop();
+        }
+        let mut message_truncated = false;
+        if full_message.len() > MAX_LOG_MESSAGE_BYTES {
+            message_truncated = true;
+            let mut end = MAX_LOG_MESSAGE_BYTES;
+            while end > 0 && !full_message.is_char_boundary(end) {
+                end -= 1;
+            }
+            full_message.truncate(end);
+            full_message.push('…');
+        }
+        let mut files = Vec::new();
+        let mut files_truncated = false;
+        let mut files_bytes = 0;
+        for file in name_status(root, &kind, oid)? {
+            let encoded_path = BASE64.encode(&file.path_bytes);
+            let file_bytes = file.status.len()
+                + file.path.len()
+                + encoded_path.len()
+                + file.original_path.as_deref().map_or(0, str::len);
+            if files.len() >= MAX_LOG_FILES || files_bytes + file_bytes > MAX_LOG_FILES_BYTES {
+                files_truncated = true;
+                break;
+            }
+            files_bytes += file_bytes;
+            files.push(GitLogDetailFile {
+                status: file.status,
+                path: file.path,
+                path_bytes_base64: encoded_path,
+                original_path: file.original_path,
+            });
+        }
+        Ok(GitLogDetailResponse {
+            oid: String::from_utf8_lossy(fields[0]).into_owned(),
+            author_name: String::from_utf8_lossy(fields[1]).into_owned(),
+            author_time: String::from_utf8_lossy(fields[2]).parse().unwrap_or(0),
+            full_message,
+            message_truncated,
+            files_truncated,
+            files,
+        })
+    }
+
+    pub fn commit_diff(
+        &self,
+        _owner: &str,
+        root: &Path,
+        _generation: u64,
+        oid: &str,
+        path_bytes: &[u8],
+    ) -> Result<GitCommitDiffResponse, String> {
+        assert_workspace_root(root)?;
+        validate_oid(oid)?;
+        let kind = commit_kind(root, oid)?;
+        let file = name_status(root, &kind, oid)?
+            .into_iter()
+            .find(|file| file.path_bytes == path_bytes)
+            .ok_or("unauthorized commit path")?;
+        let path = path_arg(path_bytes);
+        let args = match kind {
+            CommitKind::Root => vec![
+                "--literal-pathspecs".into(),
+                "--no-pager".into(),
+                "diff-tree".into(),
+                "-p".into(),
+                "--root".into(),
+                oid.into(),
+                "--".into(),
+                path,
+            ],
+            CommitKind::Linear => vec![
+                "--literal-pathspecs".into(),
+                "--no-pager".into(),
+                "diff-tree".into(),
+                "-p".into(),
+                oid.into(),
+                "--".into(),
+                path,
+            ],
+            CommitKind::Merge => {
+                let parent = format!("{oid}^1");
+                vec![
+                    "--literal-pathspecs".into(),
+                    "--no-pager".into(),
+                    "diff".into(),
+                    parent.into(),
+                    oid.into(),
+                    "--".into(),
+                    path,
+                ]
+            }
+        };
+        let mut patch = git_os(root, &args)?;
+        let truncated = patch.len() > MAX_DIFF_BYTES;
+        patch.truncate(MAX_DIFF_BYTES);
+        let patch_text = String::from_utf8_lossy(&patch);
+        let fallback_reason = if patch_text.contains("Binary files ")
+            || patch_text.contains("GIT binary patch")
+            || patch.contains(&0)
+        {
+            Some("binary".to_string())
+        } else if file.status.starts_with('R') {
+            Some("rename".to_string())
+        } else if file.status.starts_with('C') {
+            Some("copy".to_string())
+        } else {
+            None
+        };
+        Ok(GitCommitDiffResponse {
+            comparison: "commit".into(),
+            path_bytes_base64: BASE64.encode(path_bytes),
+            raw_patch: String::from_utf8_lossy(&patch).into_owned(),
+            truncated,
+            fallback_reason,
+        })
+    }
+
     pub fn prepare_ai_snapshot(
         &self,
         owner: &str,
@@ -1334,6 +1535,201 @@ fn record_outcome(
     });
     serde_json::to_string(&frame)
         .unwrap_or_else(|_| "{\"type\":\"git_commit_result\",\"status\":\"outcomeUnknown\"}".into())
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitDiffResponse {
+    pub comparison: String,
+    pub path_bytes_base64: String,
+    pub raw_patch: String,
+    pub truncated: bool,
+    pub fallback_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GitNameStatusFile {
+    pub status: String,
+    pub path: String,
+    pub path_bytes: Vec<u8>,
+    pub original_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitLogEntry {
+    pub oid: String,
+    pub subject: String,
+    pub author_name: String,
+    pub author_time: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitLogResponse {
+    pub commits: Vec<GitLogEntry>,
+    pub has_more: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitLogDetailFile {
+    pub status: String,
+    pub path: String,
+    pub path_bytes_base64: String,
+    pub original_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitLogDetailResponse {
+    pub oid: String,
+    pub author_name: String,
+    pub author_time: i64,
+    pub full_message: String,
+    pub message_truncated: bool,
+    pub files_truncated: bool,
+    pub files: Vec<GitLogDetailFile>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CommitKind {
+    Root,
+    Linear,
+    Merge,
+}
+
+pub const MAX_LOG_LIMIT: usize = 200;
+pub const MAX_LOG_FILES: usize = 2_000;
+pub const MAX_LOG_MESSAGE_BYTES: usize = 32 * 1024;
+pub const MAX_LOG_FILES_BYTES: usize = 256 * 1024;
+const LOG_LIST_FMT: &str = "%H%x00%h%x00%s%x00%an%x00%at";
+const LOG_DETAIL_FMT: &str = "%H%x00%an%x00%at%x00%B";
+
+/// Parses `git diff-tree --name-status -r -z` and `git diff --name-status -r -z`.
+/// Empty NUL fields are separators between records; path bytes remain opaque.
+pub fn parse_diff_tree_name_status_z(bytes: &[u8]) -> Vec<GitNameStatusFile> {
+    let tokens: Vec<&[u8]> = bytes
+        .split(|b| *b == 0)
+        .filter(|token| !token.is_empty())
+        .collect();
+    let mut files = Vec::new();
+    let mut index = 0;
+    while index < tokens.len() {
+        let token = tokens[index];
+        let is_status = matches!(token, b"M" | b"A" | b"D" | b"T" | b"U" | b"X" | b"B")
+            || matches!(token.first(), Some(b'R' | b'C'))
+                && token.len() > 1
+                && token[1..].iter().all(u8::is_ascii_digit);
+        if !is_status {
+            index += 1;
+            continue;
+        }
+        let is_rename_or_copy = matches!(token.first(), Some(b'R' | b'C'));
+        let path_count = if is_rename_or_copy { 2 } else { 1 };
+        if index + path_count >= tokens.len() {
+            index += 1;
+            continue;
+        }
+        let original = if is_rename_or_copy {
+            Some(tokens[index + 1].to_vec())
+        } else {
+            None
+        };
+        let path = tokens[index + path_count].to_vec();
+        files.push(GitNameStatusFile {
+            status: String::from_utf8_lossy(token).into_owned(),
+            path: String::from_utf8_lossy(&path).into_owned(),
+            path_bytes: path,
+            original_path: original
+                .as_deref()
+                .map(|value| String::from_utf8_lossy(value).into_owned()),
+        });
+        index += path_count + 1;
+    }
+    files
+}
+
+pub fn validate_oid(oid: &str) -> Result<(), String> {
+    if (oid.len() != 40 && oid.len() != 64) || !oid.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("invalid oid".into());
+    }
+    Ok(())
+}
+
+pub fn commit_kind(root: &Path, oid: &str) -> Result<CommitKind, String> {
+    validate_oid(oid)?;
+    let verify = format!("{oid}^{{commit}}");
+    if git(root, &["rev-parse", "--verify", "--quiet", &verify]).is_err() {
+        return Err("unknown commit".into());
+    }
+    let parents = git(root, &["log", "-1", "--format=%P", oid])?;
+    Ok(
+        match String::from_utf8_lossy(&parents).split_whitespace().count() {
+            0 => CommitKind::Root,
+            1 => CommitKind::Linear,
+            _ => CommitKind::Merge,
+        },
+    )
+}
+
+fn name_status(
+    root: &Path,
+    kind: &CommitKind,
+    oid: &str,
+) -> Result<Vec<GitNameStatusFile>, String> {
+    let output = match kind {
+        CommitKind::Root => git_os(
+            root,
+            &[
+                "--literal-pathspecs".into(),
+                "--no-pager".into(),
+                "diff-tree".into(),
+                "--no-commit-id".into(),
+                "--name-status".into(),
+                "-M".into(),
+                "-C".into(),
+                "-r".into(),
+                "-z".into(),
+                "--root".into(),
+                oid.into(),
+            ],
+        )?,
+        CommitKind::Linear => git_os(
+            root,
+            &[
+                "--literal-pathspecs".into(),
+                "--no-pager".into(),
+                "diff-tree".into(),
+                "--no-commit-id".into(),
+                "--name-status".into(),
+                "-M".into(),
+                "-C".into(),
+                "-r".into(),
+                "-z".into(),
+                oid.into(),
+            ],
+        )?,
+        CommitKind::Merge => {
+            let parent = format!("{oid}^1");
+            git_os(
+                root,
+                &[
+                    "--literal-pathspecs".into(),
+                    "--no-pager".into(),
+                    "diff".into(),
+                    "--name-status".into(),
+                    "-M".into(),
+                    "-C".into(),
+                    "-r".into(),
+                    "-z".into(),
+                    parent.into(),
+                    oid.into(),
+                ],
+            )?
+        }
+    };
+    Ok(parse_diff_tree_name_status_z(&output))
 }
 
 fn path_arg(bytes: &[u8]) -> OsString {
@@ -2291,5 +2687,307 @@ mod tests {
         );
         // The unborn repo should now have a HEAD.
         assert!(root.path().join(".git/HEAD").exists());
+    }
+
+    // ── History panel (log / detail / commit diff) ──
+    use std::process::Command as StdCommand;
+
+    fn test_repo() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let run = |args: &[&str]| {
+            let output = StdCommand::new("git")
+                .current_dir(&root)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        run(&["init", "-q", "-b", "main"]);
+        run(&["config", "user.name", "Test"]);
+        run(&["config", "user.email", "test@example.com"]);
+        (dir, root)
+    }
+
+    fn test_commit(root: &Path, path: &str, content: &str, message: &str) -> String {
+        std::fs::write(root.join(path), content).unwrap();
+        let run = |args: &[&str]| {
+            let output = StdCommand::new("git")
+                .current_dir(root)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        run(&["add", "-A"]);
+        run(&["commit", "-q", "-m", message]);
+        let output = StdCommand::new("git")
+            .current_dir(root)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .unwrap();
+        String::from_utf8(output.stdout).unwrap().trim().to_owned()
+    }
+
+    #[test]
+    fn parses_diff_tree_name_status_z_flat_and_rename() {
+        let files = parse_diff_tree_name_status_z(
+            b"M\0a.txt\0A\0b.txt\0R100\0old.txt\0new.txt\0C75\0source\nname\0copy\"name\0\0",
+        );
+        assert_eq!(files.len(), 4);
+        assert_eq!(files[0].status, "M");
+        assert_eq!(files[0].path, "a.txt");
+        assert_eq!(files[2].status, "R100");
+        assert_eq!(files[2].path, "new.txt");
+        assert_eq!(files[2].original_path.as_deref(), Some("old.txt"));
+        assert_eq!(files[3].status, "C75");
+        assert_eq!(files[3].original_path.as_deref(), Some("source\nname"));
+        assert_eq!(files[3].path, "copy\"name");
+    }
+
+    #[test]
+    fn parses_diff_tree_name_status_z_empty_fields_and_missing_paths() {
+        let files = parse_diff_tree_name_status_z(b"M\0A\0R50\0only-one\0\0");
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].status, "M");
+        assert_eq!(files[0].path, "A");
+    }
+
+    #[test]
+    fn validate_oid_rejects_injection_and_bad_shape() {
+        assert!(validate_oid(&"0".repeat(40)).is_ok());
+        assert!(validate_oid(&"0".repeat(64)).is_ok());
+        assert!(validate_oid("; rm -rf /").is_err());
+        assert!(validate_oid("abc").is_err());
+        assert!(validate_oid(&"g".repeat(40)).is_err());
+    }
+
+    #[test]
+    fn log_detail_and_commit_diff_preserve_empty_message_fields() {
+        let (_dir, root) = test_repo();
+        std::fs::write(root.join("line\nname.txt"), "one\n").unwrap();
+        let output = StdCommand::new("git")
+            .current_dir(&root)
+            .args(["add", "-A"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let output = StdCommand::new("git")
+            .current_dir(&root)
+            .args(["commit", "-q", "--allow-empty-message", "-m", ""])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let root_oid = String::from_utf8(
+            StdCommand::new("git")
+                .current_dir(&root)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_owned();
+        let service = GitService::new();
+        let page = service.log("owner", &root, 1, 50, None).unwrap();
+        assert_eq!(page.commits.len(), 1);
+        assert_eq!(page.commits[0].subject, "");
+        let detail = service.log_detail("owner", &root, 1, &root_oid).unwrap();
+        assert_eq!(detail.full_message, "");
+        assert_eq!(detail.files[0].path, "line\nname.txt");
+        let diff = service
+            .commit_diff("owner", &root, 1, &root_oid, b"line\nname.txt")
+            .unwrap();
+        assert_eq!(diff.comparison, "commit");
+        assert!(diff.raw_patch.contains("+one"));
+        let response = serde_json::to_value(&diff).unwrap();
+        assert!(response.get("snapshotId").is_none());
+        assert!(service
+            .commit_diff("owner", &root, 1, &root_oid, b"missing")
+            .is_err());
+    }
+
+    #[test]
+    fn log_detail_trims_git_format_newline_but_preserves_message_body() {
+        let (_dir, root) = test_repo();
+        let message_path = root.join("message.txt");
+        std::fs::write(&message_path, "subject\n\nbody\n").unwrap();
+        let output = StdCommand::new("git")
+            .current_dir(&root)
+            .args(["commit", "--allow-empty", "-q", "-F", "message.txt"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let oid = String::from_utf8(
+            StdCommand::new("git")
+                .current_dir(&root)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_owned();
+        let detail = GitService::new()
+            .log_detail("owner", &root, 1, &oid)
+            .unwrap();
+        assert_eq!(detail.full_message, "subject\n\nbody");
+        assert!(!detail.full_message.ends_with(['\r', '\n']));
+    }
+
+    #[test]
+    fn log_detail_marks_oversized_message_as_truncated() {
+        let (_dir, root) = test_repo();
+        let message_path = root.join("message.txt");
+        std::fs::write(
+            &message_path,
+            format!("{}\n", "x".repeat(MAX_LOG_MESSAGE_BYTES + 1)),
+        )
+        .unwrap();
+        let output = StdCommand::new("git")
+            .current_dir(&root)
+            .args(["commit", "--allow-empty", "-q", "-F", "message.txt"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let oid = String::from_utf8(
+            StdCommand::new("git")
+                .current_dir(&root)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_owned();
+        let detail = GitService::new()
+            .log_detail("owner", &root, 1, &oid)
+            .unwrap();
+        assert!(detail.message_truncated);
+        assert!(detail.full_message.ends_with('…'));
+    }
+
+    #[test]
+    fn log_detail_and_commit_diff_detect_real_rename() {
+        let (_dir, root) = test_repo();
+        test_commit(&root, "old.txt", "content\n", "add old");
+        let output = StdCommand::new("git")
+            .current_dir(&root)
+            .args(["mv", "old.txt", "new.txt"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let output = StdCommand::new("git")
+            .current_dir(&root)
+            .args(["commit", "-q", "-m", "rename"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let oid = String::from_utf8(
+            StdCommand::new("git")
+                .current_dir(&root)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_owned();
+        let service = GitService::new();
+        let detail = service.log_detail("owner", &root, 1, &oid).unwrap();
+        assert_eq!(detail.files.len(), 1);
+        assert!(detail.files[0].status.starts_with('R'));
+        assert_eq!(detail.files[0].original_path.as_deref(), Some("old.txt"));
+        assert_eq!(detail.files[0].path, "new.txt");
+        let diff = service
+            .commit_diff("owner", &root, 1, &oid, b"new.txt")
+            .unwrap();
+        assert_eq!(diff.fallback_reason.as_deref(), Some("rename"));
+    }
+
+    #[test]
+    fn log_paginates_first_parent_and_stops_at_root() {
+        let (_dir, root) = test_repo();
+        let root_oid = test_commit(&root, "root.txt", "root\n", "root");
+        let second_oid = test_commit(&root, "second.txt", "second\n", "second");
+        let service = GitService::new();
+        let first = service.log("owner", &root, 1, 1, None).unwrap();
+        assert_eq!(first.commits[0].oid, second_oid);
+        assert!(first.has_more);
+        let second = service
+            .log("owner", &root, 1, 1, Some(&second_oid))
+            .unwrap();
+        assert_eq!(second.commits[0].oid, root_oid);
+        let end = service.log("owner", &root, 1, 1, Some(&root_oid)).unwrap();
+        assert!(end.commits.is_empty());
+        assert!(!end.has_more);
+        let unknown = "0".repeat(40);
+        assert!(service.log("owner", &root, 1, 1, Some(&unknown)).is_err());
+    }
+
+    #[test]
+    fn log_detail_and_commit_diff_use_first_parent_for_merges() {
+        let (_dir, root) = test_repo();
+        test_commit(&root, "base.txt", "base\n", "base");
+        let run = |args: &[&str]| {
+            let output = StdCommand::new("git")
+                .current_dir(&root)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        run(&["checkout", "-q", "-b", "side"]);
+        test_commit(&root, "side.txt", "side\n", "side");
+        run(&["checkout", "-q", "main"]);
+        test_commit(&root, "main.txt", "main\n", "main");
+        run(&["merge", "-q", "--no-ff", "-m", "merge", "side"]);
+        let merge_oid = String::from_utf8(
+            StdCommand::new("git")
+                .current_dir(&root)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_owned();
+        let service = GitService::new();
+        let detail = service.log_detail("owner", &root, 1, &merge_oid).unwrap();
+        let paths = detail
+            .files
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect::<Vec<_>>();
+        assert!(paths.contains(&"side.txt"));
+        assert!(!paths.contains(&"main.txt"));
+        let diff = service
+            .commit_diff("owner", &root, 1, &merge_oid, b"side.txt")
+            .unwrap();
+        assert!(diff.raw_patch.contains("+side"));
+        assert!(service
+            .commit_diff("owner", &root, 1, &merge_oid, b"main.txt")
+            .is_err());
     }
 }
