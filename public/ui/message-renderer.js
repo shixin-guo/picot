@@ -320,6 +320,7 @@ export class MessageRenderer {
         : renderMarkdown(message.content);
     } else if (Array.isArray(message.content)) {
       for (const block of message.content) {
+        if (!block) continue;
         if (block.type === "text") {
           rawStreamingText += block.text;
           contentHtml += isStreaming

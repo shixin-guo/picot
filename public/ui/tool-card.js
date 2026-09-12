@@ -465,6 +465,7 @@ export class ToolCardRenderer {
 
     if (result.content && Array.isArray(result.content)) {
       return result.content
+        .filter(Boolean)
         .map((block) => {
           if (block.type === "text") return block.text;
           return JSON.stringify(block);
