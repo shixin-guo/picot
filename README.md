@@ -113,6 +113,8 @@ Provide your model credentials via `pi /login` inside any workspace, or by writi
 - **Safe individual deletion** — delete a session from the sidebar or ARCHIVED; running sessions are refused by the server
 - **RECENT** — a cross-workspace, most-recently-used list keeps the last five visited sessions at the top of the sidebar
 
+> 🛣️ **Planned:** subagent/team support — spawning agent teams from the UI, visual grouping in the sidebar, and live-switching between agents. Tracked in [`ROADMAP.md`](./ROADMAP.md).
+
 **Full-text search** across all session history, with highlighted snippets (`⌘K`):
 
 <p align="center">
