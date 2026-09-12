@@ -117,7 +117,11 @@
     "searchPlaceholder": "Buscar modelos…",
     "emptyTitle": "No hay modelos disponibles",
     "emptyHelp": "No hay claves API configuradas. Establece una clave en Ajustes → Modelos.",
-    "openSettings": "Abrir ajustes"
+    "openSettings": "Abrir ajustes",
+    "scoped": "Modelos con favoritos",
+    "allEnabled": "Todos los modelos habilitados",
+    "addScoped": "Añadir a modelos con favoritos",
+    "removeScoped": "Quitar de modelos con favoritos"
   },
   "queue": {
     "queued": "En cola",

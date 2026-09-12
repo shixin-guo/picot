@@ -117,7 +117,11 @@
     "searchPlaceholder": "搜索模型…",
     "emptyTitle": "无可用模型",
     "emptyHelp": "未配置 API 密钥。请在设置 → 模型 中设置密钥。",
-    "openSettings": "打开设置"
+    "openSettings": "打开设置",
+    "scoped": "常用模型",
+    "allEnabled": "其他已启用模型",
+    "addScoped": "加入常用模型",
+    "removeScoped": "移出常用模型"
   },
   "queue": {
     "queued": "排队中",

@@ -117,7 +117,11 @@
     "searchPlaceholder": "モデルを検索…",
     "emptyTitle": "利用可能なモデルがありません",
     "emptyHelp": "APIキーが設定されていません。設定 → モデル でキーを設定してください。",
-    "openSettings": "設定を開く"
+    "openSettings": "設定を開く",
+    "scoped": "スコープ済みモデル",
+    "allEnabled": "有効なモデルすべて",
+    "addScoped": "スコープ済みモデルに追加",
+    "removeScoped": "スコープ済みモデルから削除"
   },
   "queue": {
     "queued": "キュー中",

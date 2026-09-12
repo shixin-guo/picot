@@ -117,7 +117,11 @@
     "searchPlaceholder": "Search models…",
     "emptyTitle": "No models available",
     "emptyHelp": "No API keys configured. Set a key in Settings → Models.",
-    "openSettings": "Open Settings"
+    "openSettings": "Open Settings",
+    "scoped": "Scoped models",
+    "allEnabled": "All enabled models",
+    "addScoped": "Add to scoped models",
+    "removeScoped": "Remove from scoped models"
   },
   "queue": {
     "queued": "Queued",
