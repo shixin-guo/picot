@@ -42,6 +42,20 @@ describe("GitClient", () => {
     expect(client.consumeWriteAck({ requestId: writeId, workspaceGeneration: 4 })).toBe(true);
     expect(client.consumeWriteAck({ requestId: writeId, workspaceGeneration: 4 })).toBe(false);
   });
+  it("builds independent history command frames", () => {
+    const send = vi.fn();
+    const client = new GitClient({ send });
+    client.setWorkspaceGeneration(7);
+    const logId = client.log(50, null);
+    const detailId = client.logDetail("aabb");
+    const diffId = client.commitDiff("aabb", "YS50eHQ=");
+    expect(new Set([logId, detailId, diffId]).size).toBe(3);
+    expect(send.mock.calls.map(([frame]) => frame.command)).toEqual([
+      { type: "log", limit: 50, before: null },
+      { type: "log_detail", oid: "aabb" },
+      { type: "commit_diff", commitOid: "aabb", pathBytesBase64: "YS50eHQ=" },
+    ]);
+  });
   it("releases a pending write when the broker reports failure", () => {
     const client = new GitClient({ send: vi.fn() });
     client.setWorkspaceGeneration(4);

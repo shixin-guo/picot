@@ -80,7 +80,13 @@ export function createGitDiffRenderer(initialDescriptor = {}) {
       const reason = document.createElement("p");
       reason.className = "git-diff-fallback-reason";
       reason.textContent =
-        fallbackReason || (descriptor.truncated ? "Diff is truncated" : "Raw patch");
+        fallbackReason === "rename"
+          ? t("git.fallback.rename")
+          : fallbackReason === "copy"
+            ? t("git.fallback.copy")
+            : fallbackReason === "binary"
+              ? t("git.fallback.binary")
+              : fallbackReason || (descriptor.truncated ? "Diff is truncated" : "Raw patch");
       const pre = document.createElement("pre");
       pre.textContent = descriptor.rawPatch || "";
       fallback.append(reason, pre);

@@ -72,12 +72,25 @@
     "comparison": {
       "staged": "已暂存",
       "changes": "修改",
-      "untracked": "未跟踪"
+      "untracked": "未跟踪",
+      "commit": "提交"
     },
     "toggleChanges": "切换 Git 变更",
     "closeChanges": "关闭 Git 变更",
     "changesWithBranch": "Git 变更 — {branch}",
-    "changesHeading": "变更"
+    "changesHeading": "变更",
+    "fallback": {
+      "binary": "该文件为二进制文件，无法显示",
+      "copy": "该文件在此提交中仅被复制",
+      "rename": "该文件在此提交中仅被重命名"
+    },
+    "copyHash": "复制哈希",
+    "history": "历史",
+    "historyEmpty": "暂无提交历史",
+    "historySelectHint": "选择一个提交查看详情",
+    "messageTruncated": "提交信息已截断",
+    "filesTruncated": "部分变更文件已被省略",
+    "justNow": "刚刚"
   },
   "usage": {
     "contextTokens": "上下文：{used}k / {limit}k 令牌",

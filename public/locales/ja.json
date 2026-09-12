@@ -72,12 +72,25 @@
     "comparison": {
       "staged": "ステージ済み",
       "changes": "変更",
-      "untracked": "未追跡"
+      "untracked": "未追跡",
+      "commit": "コミット"
     },
     "toggleChanges": "Git の変更を切り替え",
     "closeChanges": "Git の変更を閉じる",
     "changesWithBranch": "Git の変更 — {branch}",
-    "changesHeading": "変更"
+    "changesHeading": "変更",
+    "fallback": {
+      "binary": "このファイルはバイナリのため表示できません",
+      "copy": "このファイルはこのコミットでコピーされただけです",
+      "rename": "このファイルはこのコミットでリネームされただけです"
+    },
+    "copyHash": "ハッシュをコピー",
+    "history": "履歴",
+    "historyEmpty": "履歴はまだありません",
+    "historySelectHint": "コミットを選択すると詳細が表示されます",
+    "messageTruncated": "コミットメッセージが切り詰められました",
+    "filesTruncated": "一部の変更ファイルは省略されています",
+    "justNow": "たった今"
   },
   "usage": {
     "contextTokens": "コンテキスト：{used}k / {limit}k トークン",

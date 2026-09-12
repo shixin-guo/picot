@@ -72,12 +72,25 @@
     "comparison": {
       "staged": "Preparado",
       "changes": "Cambios",
-      "untracked": "Sin seguimiento"
+      "untracked": "Sin seguimiento",
+      "commit": "Commit"
     },
     "toggleChanges": "Mostrar u ocultar cambios de Git",
     "closeChanges": "Cerrar cambios de Git",
     "changesWithBranch": "Cambios de Git — {branch}",
-    "changesHeading": "Cambios"
+    "changesHeading": "Cambios",
+    "fallback": {
+      "binary": "Este archivo es binario y no se puede mostrar",
+      "copy": "Este archivo solo se copió en este commit",
+      "rename": "Este archivo solo se renombró en este commit"
+    },
+    "copyHash": "Copiar hash",
+    "history": "Historial",
+    "historyEmpty": "Aún no hay historial",
+    "historySelectHint": "Selecciona un commit para ver detalles",
+    "messageTruncated": "Mensaje de commit truncado",
+    "filesTruncated": "Algunos archivos modificados se omiten",
+    "justNow": "Justo ahora"
   },
   "usage": {
     "contextTokens": "Contexto: {used}k / {limit}k tokens",

@@ -66,7 +66,14 @@ export function setupGitPanel({
     client.resolveResponse(normalized);
     if (normalized.type === "git_status") panel.setSnapshot(normalized.snapshot);
     else if (normalized.type === "git_diff") filePreviewPanel?.openDiff?.(normalized.diff);
-    else if (normalized.type === "git_ai_commit_message")
+    else if (normalized.type === "git_log") panel.historyPanel?.applyLog(normalized);
+    else if (normalized.type === "git_log_detail") panel.historyPanel?.applyLogDetail(normalized);
+    else if (normalized.type === "git_commit_diff") {
+      const diff = normalized.diff;
+      if (diff && normalized.requestId === latestCommitDiffRequest) {
+        filePreviewPanel?.openDiff?.({ ...latestCommitDiffDescriptor, ...diff });
+      }
+    } else if (normalized.type === "git_ai_commit_message")
       panel.applyAiResult(normalized.snapshot, normalized.message);
     else if (normalized.type === "git_ai_commit_message_failed")
       panel.applyAiFailure(normalized.error);
@@ -79,6 +86,7 @@ export function setupGitPanel({
     } else if (normalized.type === "git_command_ack") panel.refresh();
     else if (normalized.type === "git_command_failed") {
       client.consumeWriteFailure(normalized);
+      panel.historyPanel?.handleFailure(normalized.requestId);
       if (isGitUnavailableError(normalized.error)) {
         panel.setSnapshot(null);
       } else if (
@@ -102,6 +110,8 @@ export function setupGitPanel({
     }
   };
 
+  let latestCommitDiffRequest = null;
+  let latestCommitDiffDescriptor = null;
   const panel = new GitPanel({
     container,
     fileList,
@@ -113,6 +123,10 @@ export function setupGitPanel({
         ...descriptor,
         id: createDiffTabId(descriptor.comparison, descriptor.pathBytesBase64),
       });
+    },
+    onHistoryDiffRequest: (requestId, descriptor) => {
+      latestCommitDiffRequest = requestId;
+      latestCommitDiffDescriptor = descriptor || null;
     },
   });
 
@@ -159,6 +173,7 @@ export function setupGitPanel({
     },
     destroy() {
       unsubscribe?.();
+      panel.historyPanel?.clearSession();
       panel.destroy();
     },
   };
