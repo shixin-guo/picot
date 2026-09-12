@@ -52,6 +52,9 @@ tempfile = "3"
 portable-pty = "0.9"
 libc = "0.2"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation = { version = "0.3.2", features = ["NSString", "NSUserDefaults"] }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
   "Win32_System_JobObjects",
