@@ -241,6 +241,17 @@ impl HostServer {
             install_secret,
             app_handle,
         });
+        // Prewarm the cost-metrics cache in the background: one full scan at
+        // startup parses every file the Usage dashboard can need, so the first
+        // Settings → Usage open answers from cache instead of parsing hundreds
+        // of MB of session jsonl on the request path. Guarded off in test
+        // builds: the suite starts real servers against the user's real
+        // session root, and a background full scan there starves the
+        // timing-sensitive spawn/route tests of CPU.
+        if !cfg!(test) {
+            let data = state.data.clone();
+            std::thread::spawn(move || data.prewarm_cost_metrics());
+        }
         let index = static_dir.join("index.html");
         // Serve this build's JS/CSS/HTML under a version-stamped path
         // (`/v/<version>/...`) and point index.html's `<base>` at it. The

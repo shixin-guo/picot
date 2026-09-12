@@ -3,7 +3,8 @@ use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::SystemTime;
 
 use crate::markitdown_preview::{is_convertible_suffix, INPUT_BYTE_CAP};
 
@@ -239,7 +240,7 @@ pub struct CostDashboard {
     pub sessions: Vec<CostSessionRow>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct SessionMetrics {
     id: String,
     title: String,
@@ -254,6 +255,16 @@ struct SessionMetrics {
     user_messages: u64,
     tool_calls: u64,
     tool_cost_by_name: HashMap<String, f64>,
+}
+
+/// Parsed-metrics cache entry for the cost dashboard scan. Session files
+/// are append-only, so an unchanged `(mtime, len)` pair implies an unchanged
+/// parse result.
+#[derive(Debug, Clone)]
+struct CachedMetrics {
+    modified: SystemTime,
+    len: u64,
+    metrics: SessionMetrics,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -272,6 +283,7 @@ pub struct HostDataPlane {
     workspace_roots: Arc<RwLock<HashMap<String, PathBuf>>>,
     session_root: Option<PathBuf>,
     session_summary_cache: Arc<RwLock<HashMap<PathBuf, CachedSessionSummary>>>,
+    cost_metrics_cache: Arc<Mutex<HashMap<PathBuf, CachedMetrics>>>,
 }
 
 fn message_with_entry_id(mut message: serde_json::Value, entry_id: &str) -> serde_json::Value {
@@ -409,6 +421,7 @@ impl HostDataPlane {
             workspace_roots: Arc::new(RwLock::new(canonical)),
             session_root: None,
             session_summary_cache: Arc::new(RwLock::new(HashMap::new())),
+            cost_metrics_cache: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -1445,7 +1458,27 @@ impl HostDataPlane {
         if !session_root.is_dir() {
             return Ok(CostDashboard::default());
         }
-        let mut sessions = Vec::new();
+        let metrics = self.scan_cost_metrics(session_root)?;
+        Ok(build_cost_dashboard(metrics))
+    }
+
+    /// Scan the shared session tree once to warm the parsed-metrics cache.
+    /// Best-effort: used at startup so the first Usage open answers from cache
+    /// instead of parsing hundreds of MB of session jsonl on the request path.
+    pub fn prewarm_cost_metrics(&self) {
+        let Some(session_root) = &self.session_root else {
+            return;
+        };
+        if !session_root.is_dir() {
+            return;
+        }
+        let _ = self.scan_cost_metrics(session_root);
+    }
+
+    fn scan_cost_metrics(&self, session_root: &Path) -> Result<Vec<SessionMetrics>, HostDataError> {
+        // Phase 1 — candidates with (path, mtime, len): metadata only, so a
+        // scan of hundreds of MB of history stays cheap at the directory walk.
+        let mut candidates = Vec::new();
         for project in std::fs::read_dir(session_root)
             .map_err(|error| HostDataError::Io(error.to_string()))?
             .filter_map(Result::ok)
@@ -1461,12 +1494,94 @@ impl HostDataPlane {
                 if path.extension().and_then(|value| value.to_str()) != Some("jsonl") {
                     continue;
                 }
-                if let Some(metrics) = parse_session_metrics(&path, None)? {
-                    sessions.push(metrics);
+                let Ok(meta) = std::fs::metadata(&path) else {
+                    continue;
+                };
+                let modified = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
+                candidates.push((path, modified, meta.len()));
+            }
+        }
+        // Phase 2 — cache hits resolve without touching the file; only misses
+        // reach the parallel parse below. The lock is held just for this split
+        // and the insert afterwards — never across worker threads.
+        let mut metrics_all = Vec::new();
+        let mut misses = Vec::new();
+        {
+            let cache = self
+                .cost_metrics_cache
+                .lock()
+                .map_err(|_| HostDataError::Io("cost metrics cache poisoned".into()))?;
+            for (path, modified, len) in &candidates {
+                match cache.get(path) {
+                    Some(cached) if cached.modified == *modified && cached.len == *len => {
+                        metrics_all.push(cached.metrics.clone());
+                    }
+                    _ => misses.push((path.clone(), *modified, *len)),
                 }
             }
         }
-        Ok(build_cost_dashboard(sessions))
+        // Phase 3 — parse misses in parallel on plain std threads (no async
+        // runtime here, no new deps): JSON line parsing is CPU-bound and
+        // dominates the cold scan. Biggest file first keeps the fixed-count
+        // chunks byte-balanced. build_cost_dashboard sorts every aggregate
+        // deterministically, so thread merge order cannot change the payload.
+        misses.sort_by_key(|&(_, _, len)| std::cmp::Reverse(len));
+        let workers = std::thread::available_parallelism()
+            .map(|count| count.get())
+            .unwrap_or(1)
+            .clamp(1, 8);
+        let chunk_size = misses.len().div_ceil(workers).max(1);
+        let mut parsed: Vec<(PathBuf, SystemTime, u64, SessionMetrics)> = Vec::new();
+        std::thread::scope(|scope| -> Result<(), HostDataError> {
+            let handles: Vec<_> = misses
+                .chunks(chunk_size)
+                .map(|chunk| {
+                    scope.spawn(move || {
+                        let mut chunk_metrics = Vec::with_capacity(chunk.len());
+                        for (path, modified, len) in chunk {
+                            if let Some(metrics) = parse_session_metrics(path, None)? {
+                                chunk_metrics.push((path.clone(), *modified, *len, metrics));
+                            }
+                        }
+                        Ok(chunk_metrics)
+                    })
+                })
+                .collect();
+            for handle in handles {
+                let chunk_metrics = handle
+                    .join()
+                    .map_err(|_| HostDataError::Io("cost scan worker panicked".into()))??;
+                parsed.extend(chunk_metrics);
+            }
+            Ok(())
+        })?;
+        if !parsed.is_empty() {
+            let mut cache = self
+                .cost_metrics_cache
+                .lock()
+                .map_err(|_| HostDataError::Io("cost metrics cache poisoned".into()))?;
+            for (path, modified, len, metrics) in &parsed {
+                cache.insert(
+                    path.clone(),
+                    CachedMetrics {
+                        modified: *modified,
+                        len: *len,
+                        metrics: metrics.clone(),
+                    },
+                );
+            }
+        }
+        metrics_all.extend(parsed.into_iter().map(|(_, _, _, metrics)| metrics));
+        Ok(metrics_all)
+    }
+
+    /// Number of validated cache entries. Test-only observation helper.
+    #[cfg(test)]
+    fn cached_metrics_len(&self) -> usize {
+        self.cost_metrics_cache
+            .lock()
+            .map(|cache| cache.len())
+            .unwrap_or(0)
     }
 }
 
@@ -3056,6 +3171,54 @@ mod tests {
         assert_eq!(dashboard.by_tool[0].name, "bash");
         // The most expensive session sorts first.
         assert_eq!(dashboard.top_sessions[0].id, "session-b");
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn cost_dashboard_reuses_parsed_metrics_until_a_file_changes() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp = std::env::temp_dir().join(format!("picot-host-cost-cache-{nonce}"));
+        let workspace = temp.join("workspace");
+        let sessions = temp.join("sessions/project");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&sessions).unwrap();
+        let session_path = sessions.join("session-a.jsonl");
+        fs::write(
+            &session_path,
+            format!(
+                "{{\"type\":\"session\",\"id\":\"session-a\",\"cwd\":{}}}\n{{\"type\":\"message\",\"message\":{{\"role\":\"assistant\",\"model\":\"gpt-5\",\"usage\":{{\"input\":10,\"output\":20,\"cost\":{{\"total\":1.0}}}}}}}}\n",
+                serde_json::to_string(&workspace.to_string_lossy()).unwrap(),
+            ),
+        )
+        .unwrap();
+        let data = HostDataPlane::new(HashMap::from([("workspace-a".into(), workspace)]))
+            .unwrap()
+            .with_session_root(temp.join("sessions"));
+
+        let first = data.cost_dashboard("workspace-a").unwrap();
+        assert_eq!(first.summary.total_cost, 1.0);
+        assert_eq!(data.cached_metrics_len(), 1);
+
+        // An unchanged file is served from the cache: same totals, and the
+        // cache holds exactly one validated entry.
+        let second = data.cost_dashboard("workspace-a").unwrap();
+        assert_eq!(second.summary.total_cost, 1.0);
+        assert_eq!(data.cached_metrics_len(), 1);
+
+        // Appending changes (mtime, len) so the stale entry is re-parsed and
+        // replaced with the updated metrics.
+        let mut updated = fs::read_to_string(&session_path).unwrap();
+        updated.push_str(
+            "{\"type\":\"message\",\"message\":{\"role\":\"assistant\",\"model\":\"gpt-5\",\"usage\":{\"input\":1,\"output\":2,\"cost\":{\"total\":2.0}}}}\n",
+        );
+        fs::write(&session_path, updated).unwrap();
+        let third = data.cost_dashboard("workspace-a").unwrap();
+        assert_eq!(third.summary.total_cost, 3.0);
+        assert_eq!(data.cached_metrics_len(), 1);
+
         fs::remove_dir_all(temp).unwrap();
     }
 
