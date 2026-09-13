@@ -1,0 +1,57 @@
+/* ═══════════════════════════════════════════════════════
+   <ssh-hosts-manager> — Settings → Remote Workspace → SSH hosts
+   (public/components/ssh-hosts-manager.js)
+   ═══════════════════════════════════════════════════════ */
+
+.ssh-hosts-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ssh-hosts-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+}
+
+.ssh-hosts-row-text {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.ssh-hosts-row-detail {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ssh-hosts-editor {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.ssh-hosts-editor.hidden {
+  display: none;
+}
+
+.settings-save-status[data-tone="error"] {
+  color: var(--error);
+}
+
+.settings-save-status[data-tone="success"] {
+  color: var(--success);
+}

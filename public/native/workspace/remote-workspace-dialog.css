@@ -1,0 +1,151 @@
+/* ═══════════════════════════════════════════════════════
+   Connect to a remote host (public/native/workspace/remote-workspace-dialog.js)
+   ═══════════════════════════════════════════════════════ */
+
+.remote-workspace-overlay {
+  z-index: 1000;
+}
+
+.remote-workspace-overlay.hidden,
+.remote-workspace-dialog.hidden {
+  display: none;
+}
+
+.remote-workspace-dialog {
+  position: fixed;
+  top: 10vh;
+  left: 50%;
+  z-index: 1001;
+  display: flex;
+  width: min(620px, calc(100vw - var(--space-12)));
+  max-height: min(760px, 80vh);
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateX(-50%);
+}
+
+.remote-workspace-header {
+  padding: var(--space-4) var(--space-5) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.remote-workspace-help {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.remote-workspace-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5);
+}
+
+.remote-workspace-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.remote-workspace-grid.hidden {
+  display: none;
+}
+
+.remote-workspace-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  grid-column: span 2;
+}
+
+.remote-workspace-field--sm {
+  grid-column: span 1;
+}
+
+.remote-workspace-label {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.remote-workspace-path-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.remote-workspace-path-row .ui-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.remote-workspace-browser {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+}
+
+.remote-workspace-browser.hidden {
+  display: none;
+}
+
+.remote-workspace-browser-path {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  word-break: break-all;
+}
+
+.remote-workspace-browser-list {
+  max-height: 180px;
+  margin: 0;
+  padding: var(--space-1);
+  overflow-y: auto;
+  list-style: none;
+}
+
+.remote-workspace-browser-item {
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.remote-workspace-browser-item:hover {
+  background: var(--bg-glass-hover);
+}
+
+.remote-workspace-status {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.remote-workspace-status.hidden {
+  display: none;
+}
+
+.remote-workspace-status[data-tone="error"] {
+  color: var(--error);
+}
+
+.remote-workspace-status[data-tone="success"] {
+  color: var(--success);
+}
+
+.remote-workspace-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5) var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.remote-workspace-spacer {
+  flex: 1 1 auto;
+}
