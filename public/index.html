@@ -190,6 +190,30 @@
             </button>
             <button
               class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
+              id="open-remote-btn"
+              title="Connect to a remote host"
+              data-i18n-title="remoteWorkspace.openRemote"
+              aria-label="Connect to a remote host"
+              data-i18n-aria-label="remoteWorkspace.openRemote"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="2" y="3" width="20" height="7" rx="2" />
+                <rect x="2" y="14" width="20" height="7" rx="2" />
+                <line x1="6" y1="6.5" x2="6.01" y2="6.5" />
+                <line x1="6" y1="17.5" x2="6.01" y2="17.5" />
+              </svg>
+            </button>
+            <button
+              class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
               id="refresh-sessions-btn"
               title="Refresh sessions"
               data-i18n-title="sidebar.refreshSessions"
@@ -665,6 +689,36 @@
               <span
                 class="git-branch-toggle__label"
                 id="git-branch-indicator"
+              ></span>
+            </button>
+            <button
+              type="button"
+              class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn ssh-remote-indicator hidden"
+              id="ssh-remote-indicator"
+              title="Running on a remote host"
+              data-i18n-title="remoteWorkspace.indicatorFallbackTitle"
+              aria-label="Running on a remote host"
+              data-i18n-aria-label="remoteWorkspace.indicatorFallbackTitle"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="2" y="3" width="20" height="7" rx="2" />
+                <rect x="2" y="14" width="20" height="7" rx="2" />
+                <line x1="6" y1="6.5" x2="6.01" y2="6.5" />
+                <line x1="6" y1="17.5" x2="6.01" y2="17.5" />
+              </svg>
+              <span
+                class="ssh-remote-indicator__label"
+                data-ssh-remote-label
               ></span>
             </button>
             <button

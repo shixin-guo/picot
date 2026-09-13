@@ -3,6 +3,7 @@
 mod acp_launch;
 mod acp_manager;
 mod appimage_env;
+mod child_supervision;
 mod git_pi_runner;
 mod git_service;
 mod host_data;
@@ -18,6 +19,7 @@ mod pi_launch;
 mod pi_rpc_bridge;
 mod pi_tls;
 mod remote_auth;
+mod remote_workspace;
 mod runtime_coordinator;
 mod session_ui_profile_store;
 mod settings_store;
@@ -134,6 +136,22 @@ async fn open_folder_as_workspace(
         .to_path_buf();
     open_workspace_at_path(&app, Some(&window), &path, None)?;
     Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// Open a workspace that lives on a remote host. There is no local checkout to
+/// pick, so the anchor directory is created for the user (see
+/// `remote_workspace`), its `sshRemote` binding written, and the window opened
+/// there — read/write/edit/bash then run over SSH from the first message.
+#[tauri::command]
+async fn open_remote_workspace(
+    app: AppHandle,
+    window: WebviewWindow,
+    connection: remote_workspace::RemoteWorkspaceRequest,
+) -> Result<String, String> {
+    let root = remote_workspace::remotes_root()?;
+    let anchor = remote_workspace::prepare_remote_anchor(&connection, &root)?;
+    open_workspace_at_path(&app, Some(&window), &anchor, None)?;
+    Ok(anchor.to_string_lossy().into_owned())
 }
 
 /// Open a brand-new session in the given workspace (identified by its
@@ -879,6 +897,13 @@ fn main() {
         eprintln!("[picot] failed to sync login-shell environment: {error}");
     }
 
+    // Runtimes left behind by a Picot that was killed outright: no teardown of
+    // ours ran for those, so this is the only chance to collect them.
+    let swept = child_supervision::sweep_orphans();
+    if swept > 0 {
+        log::info!("[picot-native] cleaned up {swept} orphaned pi runtime(s) from a previous run");
+    }
+
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
     let builder = builder.menu(build_app_menu).on_menu_event(|app, event| {
@@ -900,6 +925,7 @@ fn main() {
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             open_folder_as_workspace,
+            open_remote_workspace,
             open_new_session_in_workspace,
             open_session_in_project,
             show_task_completion_notification,
@@ -985,13 +1011,53 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle: &tauri::AppHandle, event| {
+            if let tauri::RunEvent::Ready = event {
+                install_termination_handlers(app_handle.clone());
+            }
             if let tauri::RunEvent::Exit = event {
                 if let Some(manager) = app_handle.try_state::<NativePiManagerState>() {
                     manager.stop_all();
                 }
+                child_supervision::clear_registry();
             }
         });
 }
+
+/// Tear runtimes down on the signals that otherwise skip `RunEvent::Exit`
+/// entirely: Ctrl-C under `tauri dev`, a logout or shutdown (SIGTERM), and a
+/// closing terminal (SIGHUP). Nothing can be done about SIGKILL — that case is
+/// what the startup sweep exists for.
+#[cfg(unix)]
+fn install_termination_handlers(app_handle: tauri::AppHandle) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static INSTALLED: AtomicBool = AtomicBool::new(false);
+    if INSTALLED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    for signal in [
+        tokio::signal::unix::SignalKind::terminate(),
+        tokio::signal::unix::SignalKind::interrupt(),
+        tokio::signal::unix::SignalKind::hangup(),
+    ] {
+        let app_handle = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            let Ok(mut stream) = tokio::signal::unix::signal(signal) else {
+                return;
+            };
+            if stream.recv().await.is_none() {
+                return;
+            }
+            if let Some(manager) = app_handle.try_state::<NativePiManagerState>() {
+                manager.stop_all();
+            }
+            child_supervision::clear_registry();
+            app_handle.exit(0);
+        });
+    }
+}
+
+#[cfg(not(unix))]
+fn install_termination_handlers(_app_handle: tauri::AppHandle) {}
 
 #[cfg(test)]
 mod tests {

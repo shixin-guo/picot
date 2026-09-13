@@ -43,9 +43,14 @@ import {
   createRemoteReadOps,
   createRemoteWriteOps,
   DEFAULT_SSH_REMOTE_SETTINGS,
+  listSshRemoteDirectories,
+  parseSshConfigHosts,
+  parseSshHosts,
   parseSshRemoteSettings,
   readProjectSshRemoteSettings,
+  readResolvedProjectSshRemoteSettings,
   registerSshRemoteExtension,
+  resolveSshRemoteSettings,
   serializeSshRemoteSettings,
   shQuote,
   sshExec,
@@ -449,5 +454,177 @@ describe("registerSshRemoteExtension", () => {
     );
     const result = await registeredTools.read.execute("id", {}, undefined, undefined, {});
     expect(result).toEqual({ kind: "read", remote: false });
+  });
+});
+
+describe("parseSshHosts", () => {
+  it("normalizes a registry and drops entries without a host", () => {
+    expect(
+      parseSshHosts({
+        "gpu-box": { host: " 10.0.0.5 ", user: " ubuntu ", port: 2222, enabled: true },
+        broken: { user: "ubuntu" },
+        "  ": { host: "10.0.0.6" },
+      }),
+    ).toEqual({ "gpu-box": { host: "10.0.0.5", port: 2222, user: "ubuntu" } });
+  });
+
+  it("reads a non-object as an empty registry", () => {
+    expect(parseSshHosts(null)).toEqual({});
+    expect(parseSshHosts([1, 2])).toEqual({});
+  });
+});
+
+describe("resolveSshRemoteSettings", () => {
+  const hosts = {
+    "gpu-box": { host: "10.0.0.5", user: "ubuntu", port: 2222, identityFile: "~/.ssh/id_ed25519" },
+  };
+
+  it("fills the connection in from the referenced host", () => {
+    expect(
+      resolveSshRemoteSettings(
+        { enabled: true, host: "", hostRef: "gpu-box", remotePath: "/srv/app" },
+        hosts,
+      ),
+    ).toEqual({
+      enabled: true,
+      host: "10.0.0.5",
+      hostRef: "gpu-box",
+      port: 2222,
+      user: "ubuntu",
+      remotePath: "/srv/app",
+      identityFile: "~/.ssh/id_ed25519",
+    });
+  });
+
+  it("lets the project override a single field of a shared host", () => {
+    const resolved = resolveSshRemoteSettings(
+      { enabled: true, host: "", hostRef: "gpu-box", port: 2200 },
+      hosts,
+    );
+    expect(resolved.port).toBe(2200);
+    expect(resolved.host).toBe("10.0.0.5");
+  });
+
+  it("leaves an inline binding untouched", () => {
+    const inline = { enabled: true, host: "example.com" };
+    expect(resolveSshRemoteSettings(inline, hosts)).toEqual(inline);
+  });
+
+  it("does not invent a connection for an alias that is gone", () => {
+    const binding = { enabled: true, host: "", hostRef: "deleted" };
+    expect(resolveSshRemoteSettings(binding, hosts)).toEqual(binding);
+  });
+});
+
+describe("serializeSshRemoteSettings", () => {
+  it("stores only the binding when a host alias is used", () => {
+    expect(
+      serializeSshRemoteSettings({
+        enabled: true,
+        hostRef: "gpu-box",
+        host: "10.0.0.5",
+        identityFile: "~/.ssh/id_ed25519",
+        remotePath: "/srv/app",
+      }),
+    ).toEqual({ enabled: true, hostRef: "gpu-box", remotePath: "/srv/app" });
+  });
+});
+
+describe("parseSshConfigHosts", () => {
+  it("reads host blocks, honouring keyword case and = separators", () => {
+    expect(
+      parseSshConfigHosts(
+        [
+          "# a comment",
+          "Host gpu-box",
+          "  HostName 10.0.0.5",
+          "  user ubuntu",
+          "  Port 2222",
+          "  IdentityFile ~/.ssh/id_ed25519",
+          "",
+          "host plain",
+          "",
+          "Host wild-*",
+          "  HostName ignored.example.com",
+          "Host eq",
+          "  HostName=10.0.0.9",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      {
+        alias: "gpu-box",
+        host: "10.0.0.5",
+        user: "ubuntu",
+        port: 2222,
+        identityFile: "~/.ssh/id_ed25519",
+      },
+      { alias: "plain", host: "plain" },
+      { alias: "eq", host: "10.0.0.9" },
+    ]);
+  });
+
+  it("returns nothing for an empty config", () => {
+    expect(parseSshConfigHosts("")).toEqual([]);
+  });
+});
+
+describe("listSshRemoteDirectories", () => {
+  it("lists only directories, relative to the resolved path", async () => {
+    vi.mocked(spawn).mockReturnValue(
+      makeFakeChild({ stdout: "/home/ubuntu\ncode/\nnotes.md\n.config/\n" }) as never,
+    );
+    await expect(
+      listSshRemoteDirectories({ enabled: true, host: "example.com" }, "/home/ubuntu"),
+    ).resolves.toEqual({ path: "/home/ubuntu", directories: [".config", "code"] });
+    const [, args] = vi.mocked(spawn).mock.calls[0];
+    expect(args?.at(-1)).toBe("cd '/home/ubuntu' && pwd && ls -1pA");
+  });
+
+  it("falls back to the login home when no path is given", async () => {
+    vi.mocked(spawn).mockReturnValue(makeFakeChild({ stdout: "/home/ubuntu\n" }) as never);
+    await listSshRemoteDirectories({ enabled: true, host: "example.com" });
+    const [, args] = vi.mocked(spawn).mock.calls[0];
+    expect(args?.at(-1)).toBe('cd "$HOME" && pwd && ls -1pA');
+  });
+
+  it("requires a host", async () => {
+    await expect(listSshRemoteDirectories({ enabled: true, host: "" })).rejects.toThrow(
+      "Host is required",
+    );
+  });
+});
+
+describe("readResolvedProjectSshRemoteSettings", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("joins the project binding to the global registry", () => {
+    const home = mkdtempSync(join(tmpdir(), "ssh-remote-home-"));
+    dirs.push(home);
+    vi.stubEnv("HOME", home);
+    mkdirSync(join(home, ".pi", "agent"), { recursive: true });
+    writeFileSync(
+      join(home, ".pi", "agent", "settings.json"),
+      JSON.stringify({ sshHosts: { "gpu-box": { host: "10.0.0.5", user: "ubuntu" } } }),
+      "utf8",
+    );
+    const cwd = join(home, "anchor");
+    mkdirSync(join(cwd, ".pi"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".pi", "settings.json"),
+      JSON.stringify({ sshRemote: { enabled: true, hostRef: "gpu-box", remotePath: "/srv/app" } }),
+      "utf8",
+    );
+
+    expect(readResolvedProjectSshRemoteSettings(cwd)).toEqual({
+      enabled: true,
+      host: "10.0.0.5",
+      hostRef: "gpu-box",
+      user: "ubuntu",
+      remotePath: "/srv/app",
+    });
   });
 });

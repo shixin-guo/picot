@@ -15,6 +15,7 @@ interface TelegramResponse<T> {
   ok: boolean;
   result?: T;
   description?: string;
+  error_code?: number;
 }
 interface TelegramUser {
   id: number;
@@ -79,9 +80,30 @@ async function callTelegram<T>(
     signal: options?.signal,
   });
   const data = (await response.json()) as TelegramResponse<T>;
-  if (!response.ok || !data.ok || data.result === undefined)
-    throw new Error(data.description || `Telegram API ${method} failed`);
+  if (!response.ok || !data.ok || data.result === undefined) {
+    const error = new Error(
+      data.description || `Telegram API ${method} failed`,
+    ) as TelegramApiError;
+    error.telegramErrorCode = data.error_code ?? response.status;
+    throw error;
+  }
   return data.result;
+}
+
+interface TelegramApiError extends Error {
+  telegramErrorCode?: number;
+}
+
+/**
+ * Telegram allows exactly one `getUpdates` consumer per bot token and answers
+ * a second one by terminating the first with 409. So a conflict is not a
+ * network blip: it means another poller exists, and the only safe reaction is
+ * to check who owns the channel now.
+ */
+function isGetUpdatesConflict(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if ((error as TelegramApiError).telegramErrorCode === 409) return true;
+  return /\bconflict\b|terminated by other getupdates/i.test(error.message);
 }
 
 const TELEGRAM_COMMANDS = [
@@ -319,8 +341,25 @@ export async function connectTelegramLive(
   });
   await processInitialUpdates(initialUpdates);
   await handlers.onCaughtUp();
+  // Stand down for good once another instance holds the channel; `abort` alone
+  // would let the caller's reconnect path immediately claim it back, and two
+  // instances doing that turn into an eviction ping-pong that starves both.
+  const evictIfReplaced = async (reason: string): Promise<boolean> => {
+    if (!handlers.isStillOwner || (await handlers.isStillOwner())) return false;
+    abort = true;
+    pollController.abort();
+    // Hand the callback off instead of awaiting it: the handler tears this
+    // connection down, and `disconnect()` waits on this very loop — awaiting
+    // it here would deadlock the two against each other.
+    if (handlers.onEvicted) {
+      const notify = handlers.onEvicted.bind(handlers);
+      queueMicrotask(() => void notify(reason));
+    }
+    return true;
+  };
   const loop = (async () => {
     while (!abort) {
+      if (await evictIfReplaced("channel taken over by another instance")) break;
       try {
         const updates = await callTelegram<TelegramUpdate[]>(
           account.botToken,
@@ -355,6 +394,13 @@ export async function connectTelegramLive(
       } catch (error) {
         if (abort) break;
         if (error instanceof DOMException && error.name === "AbortError") break;
+        if (isGetUpdatesConflict(error)) {
+          // Fast path for a takeover: the new poller's first call kicks us out
+          // of the long poll, so we learn about it in milliseconds instead of
+          // waiting out the 30s timeout.
+          if (await evictIfReplaced("another poller took over this bot token")) break;
+          // Still the owner: something outside Picot is polling the same token.
+        }
         await handlers.onError(error instanceof Error ? error : new Error(String(error)));
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }

@@ -1,5 +1,5 @@
 // ABOUTME: Delegates read/write/edit/bash tool execution to a remote host over SSH.
-// ABOUTME: Config is project-scoped (.pi/settings.json) and managed from Settings → SSH Remote.
+// ABOUTME: A project binds to a host (inline, or by alias into the global registry).
 
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
@@ -15,6 +15,7 @@ import {
   type ReadOperations,
   type WriteOperations,
 } from "@earendil-works/pi-coding-agent";
+import { resolveHomeDir, resolvePiAgentRoot } from "./pi-agent-paths";
 
 export type SshRemoteSettings = {
   enabled: boolean;
@@ -23,26 +24,117 @@ export type SshRemoteSettings = {
   user?: string;
   remotePath?: string;
   identityFile?: string;
+  /**
+   * Alias into the global `sshHosts` registry. When set, the connection fields
+   * (host/port/user/identityFile) live once in `~/.pi/agent/settings.json` and
+   * the project only records which host it is bound to plus its remote path,
+   * so a second project on the same machine needs no re-typed credentials.
+   */
+  hostRef?: string;
 };
+
+/** One entry of the global `sshHosts` registry: connection only, no project binding. */
+export type SshHostEntry = {
+  host: string;
+  port?: number;
+  user?: string;
+  identityFile?: string;
+};
+
+/** A `Host` block parsed out of the user's `~/.ssh/config`. */
+export type SshConfigHost = SshHostEntry & { alias: string };
 
 export const DEFAULT_SSH_REMOTE_SETTINGS: SshRemoteSettings = { enabled: false, host: "" };
 
 const SSH_CONNECT_TIMEOUT_SECONDS = 8;
 const PROJECT_CONFIG_DIR_NAME = ".pi";
 
-/** Read the `sshRemote` block from `<cwd>/.pi/settings.json`. Missing/invalid data reads as disabled. */
+function globalSettingsPath(): string {
+  return path.join(resolvePiAgentRoot(), "settings.json");
+}
+
+function readJsonObject(filePath: string): Record<string, unknown> {
+  try {
+    if (!fs.existsSync(filePath)) return {};
+    const parsed: unknown = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Read the `sshRemote` binding from `<cwd>/.pi/settings.json` exactly as
+ * stored — a `hostRef` is NOT resolved here. Missing/invalid data reads as
+ * disabled. Use `readResolvedProjectSshRemoteSettings` to get a connectable
+ * settings object.
+ */
 export function readProjectSshRemoteSettings(cwd: string): SshRemoteSettings {
   const settingsPath = path.join(cwd, PROJECT_CONFIG_DIR_NAME, "settings.json");
-  try {
-    if (!fs.existsSync(settingsPath)) return DEFAULT_SSH_REMOTE_SETTINGS;
-    const parsed: unknown = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return DEFAULT_SSH_REMOTE_SETTINGS;
-    }
-    return parseSshRemoteSettings((parsed as Record<string, unknown>).sshRemote);
-  } catch {
-    return DEFAULT_SSH_REMOTE_SETTINGS;
+  const settings = readJsonObject(settingsPath);
+  if (!("sshRemote" in settings)) return DEFAULT_SSH_REMOTE_SETTINGS;
+  return parseSshRemoteSettings(settings.sshRemote);
+}
+
+/** Normalize one entry of the global `sshHosts` registry. Never throws. */
+export function parseSshHostEntry(value: unknown): SshHostEntry {
+  const settings = parseSshRemoteSettings(value);
+  return {
+    host: settings.host,
+    ...(settings.port !== undefined ? { port: settings.port } : {}),
+    ...(settings.user ? { user: settings.user } : {}),
+    ...(settings.identityFile ? { identityFile: settings.identityFile } : {}),
+  };
+}
+
+/** Normalize a whole `sshHosts` map, dropping entries without a host. */
+export function parseSshHosts(value: unknown): Record<string, SshHostEntry> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const hosts: Record<string, SshHostEntry> = {};
+  for (const [alias, raw] of Object.entries(value as Record<string, unknown>)) {
+    const trimmedAlias = alias.trim();
+    if (!trimmedAlias) continue;
+    const entry = parseSshHostEntry(raw);
+    if (entry.host) hosts[trimmedAlias] = entry;
   }
+  return hosts;
+}
+
+/** Read the shared host registry from `~/.pi/agent/settings.json`. */
+export function readGlobalSshHosts(): Record<string, SshHostEntry> {
+  return parseSshHosts(readJsonObject(globalSettingsPath()).sshHosts);
+}
+
+/**
+ * Merge a project binding with the global registry. A `hostRef` supplies the
+ * connection fields; anything the project still sets inline wins, so a project
+ * can override (say) the port of a shared host without cloning the entry.
+ */
+export function resolveSshRemoteSettings(
+  binding: SshRemoteSettings,
+  hosts: Record<string, SshHostEntry>,
+): SshRemoteSettings {
+  const entry = binding.hostRef ? hosts[binding.hostRef] : undefined;
+  if (!entry) return binding;
+  const host = binding.host || entry.host;
+  const port = binding.port ?? entry.port;
+  const user = binding.user || entry.user;
+  const identityFile = binding.identityFile || entry.identityFile;
+  return {
+    enabled: binding.enabled,
+    host,
+    hostRef: binding.hostRef,
+    ...(port !== undefined ? { port } : {}),
+    ...(user ? { user } : {}),
+    ...(binding.remotePath ? { remotePath: binding.remotePath } : {}),
+    ...(identityFile ? { identityFile } : {}),
+  };
+}
+
+/** The settings a session should actually connect with, registry applied. */
+export function readResolvedProjectSshRemoteSettings(cwd: string): SshRemoteSettings {
+  return resolveSshRemoteSettings(readProjectSshRemoteSettings(cwd), readGlobalSshHosts());
 }
 
 /** Normalize arbitrary stored/incoming JSON into settings. Never throws. */
@@ -55,6 +147,7 @@ export function parseSshRemoteSettings(value: unknown): SshRemoteSettings {
   const user = typeof raw.user === "string" ? raw.user.trim() : "";
   const remotePath = typeof raw.remotePath === "string" ? raw.remotePath.trim() : "";
   const identityFile = typeof raw.identityFile === "string" ? raw.identityFile.trim() : "";
+  const hostRef = typeof raw.hostRef === "string" ? raw.hostRef.trim() : "";
   const port =
     typeof raw.port === "number" && Number.isInteger(raw.port) && raw.port > 0 && raw.port < 65536
       ? raw.port
@@ -62,6 +155,7 @@ export function parseSshRemoteSettings(value: unknown): SshRemoteSettings {
   return {
     enabled: raw.enabled === true,
     host,
+    ...(hostRef ? { hostRef } : {}),
     ...(port !== undefined ? { port } : {}),
     ...(user ? { user } : {}),
     ...(remotePath ? { remotePath } : {}),
@@ -69,13 +163,26 @@ export function parseSshRemoteSettings(value: unknown): SshRemoteSettings {
   };
 }
 
+/**
+ * Shape the binding for `.pi/settings.json`. A `hostRef` binding deliberately
+ * drops the connection fields: the registry owns them, and duplicating a key
+ * path or username into every project is exactly what the alias avoids.
+ */
 export function serializeSshRemoteSettings(settings: SshRemoteSettings): Record<string, unknown> {
-  return { ...settings };
+  if (settings.hostRef) {
+    return {
+      enabled: settings.enabled,
+      hostRef: settings.hostRef,
+      ...(settings.remotePath ? { remotePath: settings.remotePath } : {}),
+    };
+  }
+  const { hostRef: _hostRef, ...inline } = settings;
+  return { ...inline };
 }
 
 /** Throws when settings cannot be enabled as-is (missing host). Call before persisting. */
 export function assertSshRemoteSettingsValid(settings: SshRemoteSettings): void {
-  if (settings.enabled && !settings.host) {
+  if (settings.enabled && !settings.host && !settings.hostRef) {
     throw new Error("Host is required when SSH remote execution is enabled");
   }
 }
@@ -140,6 +247,83 @@ export function sshExec(
       child.stdin?.end(options.input);
     }
   });
+}
+
+/**
+ * Parse `Host` blocks out of an OpenSSH client config. Wildcard patterns
+ * (`Host *`, `Host prod-?`) are skipped: they are defaults for other hosts,
+ * not connectable targets. `Include` directives are not followed — the picker
+ * offers these as suggestions, and anything missing can still be typed by hand.
+ */
+export function parseSshConfigHosts(text: string): SshConfigHost[] {
+  const hosts: SshConfigHost[] = [];
+  let current: SshConfigHost | null = null;
+  const flush = () => {
+    if (current) hosts.push({ ...current, host: current.host || current.alias });
+    current = null;
+  };
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const separated = line.replace(/^([A-Za-z]+)\s*=\s*/, "$1 ");
+    const match = /^(\S+)\s+(.*)$/.exec(separated);
+    if (!match) continue;
+    const keyword = match[1].toLowerCase();
+    const value = match[2].trim();
+    if (keyword === "host") {
+      flush();
+      const alias = value.split(/\s+/).find((pattern) => !/[*?!]/.test(pattern));
+      if (alias) current = { alias, host: "" };
+      continue;
+    }
+    if (!current) continue;
+    if (keyword === "hostname") current.host = value;
+    else if (keyword === "user") current.user = value;
+    else if (keyword === "identityfile") current.identityFile = value;
+    else if (keyword === "port") {
+      const port = Number.parseInt(value, 10);
+      if (Number.isInteger(port) && port > 0 && port < 65536) current.port = port;
+    }
+  }
+  flush();
+  return hosts;
+}
+
+/** Read `~/.ssh/config`, or an empty list when there is none. */
+export function readSshConfigHosts(): SshConfigHost[] {
+  const configPath = path.join(resolveHomeDir(), ".ssh", "config");
+  try {
+    if (!fs.existsSync(configPath)) return [];
+    return parseSshConfigHosts(fs.readFileSync(configPath, "utf8"));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * List the directories under `dirPath` on the remote host so the connect
+ * dialog can browse for a project root before any local folder exists. An
+ * empty `dirPath` lists the login home directory.
+ */
+export async function listSshRemoteDirectories(
+  settings: SshRemoteSettings,
+  dirPath?: string,
+): Promise<{ path: string; directories: string[] }> {
+  if (!settings.host) throw new Error("Host is required");
+  const target = dirPath?.trim();
+  // `cd "$HOME"` rather than a quoted `~`: shQuote deliberately blocks every
+  // expansion, so a literal tilde would not resolve on the remote side.
+  const cd = target ? `cd ${shQuote(target)}` : 'cd "$HOME"';
+  const output = await sshExec(settings, `${cd} && pwd && ls -1pA`);
+  const lines = output.toString("utf8").split("\n");
+  const resolvedPath = (lines.shift() || "").trim();
+  const directories = lines
+    .map((line) => line.trimEnd())
+    .filter((line) => line.endsWith("/"))
+    .map((line) => line.slice(0, -1))
+    .filter((name) => name && name !== "." && name !== "..")
+    .sort((a, b) => a.localeCompare(b));
+  return { path: resolvedPath, directories };
 }
 
 export async function testSshRemoteConnection(settings: SshRemoteSettings): Promise<{

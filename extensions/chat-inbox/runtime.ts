@@ -15,10 +15,14 @@ import {
   acquireConversationLock,
   appendConversationRecord,
   buildBaseRecordFields,
+  type ConversationLockInfo,
+  describeLockHolder,
   ensureConversationDirs,
+  holdsConversationLock,
   materializeAttachments,
   nextMessageId,
   normalizeInboundMessage,
+  readConversationLock,
   readConversationLog,
   releaseConversationLock,
 } from "./log.js";
@@ -74,34 +78,77 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+export interface ConversationRuntimeOptions {
+  /** Take the channel from whoever holds it. Reserved for explicit user intent. */
+  preempt?: boolean;
+  /** Fired once, when another instance has claimed the channel out from under us. */
+  onLockLost?: (holder: string) => void;
+}
+
 export class ConversationRuntime {
   readonly conversation: ResolvedConversation;
   private readonly ownerId: string;
+  private readonly options: ConversationRuntimeOptions;
   private records: ChatLogRecord[] = [];
   private nextRecordId = 1;
   private pendingJobs: PendingJob[] = [];
   private activeJob: PendingJob | undefined;
   private armedAfterRecordId: number | undefined;
+  private lockInfo: ConversationLockInfo | undefined;
+  private lockLost = false;
 
-  constructor(conversation: ResolvedConversation, ownerId: string) {
+  constructor(
+    conversation: ResolvedConversation,
+    ownerId: string,
+    options: ConversationRuntimeOptions = {},
+  ) {
     this.conversation = conversation;
     this.ownerId = ownerId;
+    this.options = options;
   }
 
   static async connect(
     conversation: ResolvedConversation,
     ownerId: string,
+    options: ConversationRuntimeOptions = {},
   ): Promise<ConversationRuntime> {
-    const runtime = new ConversationRuntime(conversation, ownerId);
+    const runtime = new ConversationRuntime(conversation, ownerId, options);
     await runtime.initialize();
     return runtime;
   }
 
   private async initialize(): Promise<void> {
     await ensureConversationDirs(this.conversation);
-    await acquireConversationLock(this.conversation, this.ownerId);
+    this.lockInfo = await acquireConversationLock(this.conversation, this.ownerId, {
+      preempt: this.options.preempt,
+    });
+    // Read the log only after the claim lands: the previous holder stops
+    // writing the moment it sees the new claim, so this ordering is what makes
+    // the Telegram cursor hand over without a gap or a replay.
     this.records = await readConversationLog(this.conversation);
     this.nextRecordId = this.records.reduce((max, record) => Math.max(max, record.recordId), 0) + 1;
+  }
+
+  getLockEpoch(): number | undefined {
+    return this.lockInfo?.epoch;
+  }
+
+  hasLostLock(): boolean {
+    return this.lockLost;
+  }
+
+  /**
+   * True while this instance still owns the channel. Every log write is fenced
+   * on this, so an evicted instance can never interleave records with — or
+   * collide on record ids with — the instance that replaced it.
+   */
+  async stillOwnsChannel(): Promise<boolean> {
+    if (this.lockLost) return false;
+    if (await holdsConversationLock(this.conversation, this.ownerId)) return true;
+    this.lockLost = true;
+    const holder = describeLockHolder(await readConversationLock(this.conversation));
+    this.options.onLockLost?.(holder);
+    return false;
   }
 
   armAfterCurrentTail(): void {
@@ -113,10 +160,13 @@ export class ConversationRuntime {
   }
 
   async disconnect(): Promise<void> {
-    await releaseConversationLock(this.conversation);
+    await releaseConversationLock(this.conversation, this.ownerId);
   }
 
   private async appendRecord(record: ChatLogRecord): Promise<void> {
+    // Fence rather than throw: eviction can land mid-turn, and the abort path
+    // must be able to unwind quietly instead of raising out of event handlers.
+    if (!(await this.stillOwnsChannel())) return;
     this.records.push(record);
     this.nextRecordId = Math.max(this.nextRecordId, record.recordId + 1);
     await appendConversationRecord(this.conversation, record);

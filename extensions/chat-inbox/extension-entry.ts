@@ -289,6 +289,7 @@ export default function (pi: ExtensionAPI) {
   let pendingChatDispatch = false;
   let pendingControlAction: (() => Promise<void>) | undefined;
   let activeTriggerMessageId: string | undefined;
+  let evictionNotice: string | undefined;
   let pendingLocalPrompt: string | undefined;
 
   function persistChatState(conversationId?: string): void {
@@ -509,9 +510,18 @@ export default function (pi: ExtensionAPI) {
       return false;
     }
     await disconnectRuntime(ctx, false);
+    evictionNotice = undefined;
     const result =
       (await runWithLoader(ctx, `Connecting ${conversation.conversationName}...`, async () => {
-        runtime = await ConversationRuntime.connect(conversation, ownerId);
+        // Only a deliberate connect takes the channel from another instance.
+        // Startup restore and the reconnect path must not, or two running
+        // Picots would evict each other in a loop and neither would poll.
+        runtime = await ConversationRuntime.connect(conversation, ownerId, {
+          preempt: interactive,
+          onLockLost: (holder) => {
+            void handleEviction(ctx, `taken over by ${holder}`);
+          },
+        });
         liveConnection = await connectLive(
           conversation,
           {
@@ -617,8 +627,12 @@ export default function (pi: ExtensionAPI) {
               if (runtime) await runtime.appendError(error.message);
               updateStatus(ctx, error.message);
             },
+            isStillOwner: async () => (runtime ? await runtime.stillOwnsChannel() : false),
+            onEvicted: async (reason) => {
+              await handleEviction(ctx, reason);
+            },
             onDisconnect: async () => {
-              if (!runtime) return;
+              if (!runtime || runtime.hasLostLock()) return;
               const cid = runtime.conversation.conversationId;
               updateStatus(ctx, "disconnected, reconnecting...");
               if (liveConnection) {
@@ -699,7 +713,11 @@ export default function (pi: ExtensionAPI) {
       return;
     }
     if (!runtime) {
-      ctx.ui.setStatus("chat", `${label} ${theme.fg("muted", "disconnected")}`);
+      const state = evictionNotice ?? "disconnected";
+      ctx.ui.setStatus(
+        "chat",
+        `${label} ${evictionNotice ? theme.fg("error", state) : theme.fg("muted", state)}`,
+      );
       return;
     }
     const status = runtime.getStatus();
@@ -891,6 +909,7 @@ export default function (pi: ExtensionAPI) {
     clearPersistedState = true,
   ): Promise<void> {
     stopTypingLoop();
+    if (clearPersistedState) evictionNotice = undefined;
     const connection = liveConnection;
     liveConnection = undefined;
     if (connection) await connection.disconnect().catch(() => undefined);
@@ -904,6 +923,24 @@ export default function (pi: ExtensionAPI) {
     await current.disconnect();
     if (clearPersistedState) persistChatState(undefined);
     updateStatus(ctx);
+  }
+
+  /**
+   * Another instance claimed this channel. Give it up quietly and stay down:
+   * the log is already fenced against us, so anything we still had in flight
+   * would be dropped on write anyway, and reconnecting would only evict the
+   * instance the user just moved to.
+   */
+  async function handleEviction(ctx: ExtensionContext, reason: string): Promise<void> {
+    if (evictionNotice) return;
+    evictionNotice = reason;
+    if (chatTurnInFlight) ctx.abort();
+    // Clearing the preview is a service call, not a log write, so it survives
+    // the fence — without it a half-streamed reply is stranded in the chat.
+    await liveConnection?.clearPreview().catch(() => undefined);
+    await disconnectRuntime(ctx, false);
+    updateStatus(ctx);
+    ctx.ui.notify(`pi-chat disconnected: ${reason}`, "warning");
   }
 
   pi.on("tool_call", async (event) => {

@@ -4,6 +4,7 @@
 
 @import url("shared.css");
 @import url("native/instance-swap.css");
+@import url("components/ssh-hosts-manager.css");
 @import url("components/super-agent-chat-header.css");
 @import url("components/super-agent-runtime.css");
 @import url("native/settings/cost-dashboard.css");
@@ -20,6 +21,7 @@
 @import url("native/session/session-info.css");
 @import url("native/session/info-panel.css");
 @import url("native/workspace/header-open-app.css");
+@import url("native/workspace/remote-workspace-dialog.css");
 @import url("native/extensions/command-palette.css");
 @import url("native/features/app-launcher.css");
 @import url("native/features/remote-access-approval.css");
@@ -224,6 +226,13 @@ body {
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   line-height: 1.35;
+}
+.git-panel-push-error {
+  margin: var(--space-0-5) 0 0;
+  color: var(--danger, #e54);
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 .git-panel-toolbar-actions {
   display: flex;

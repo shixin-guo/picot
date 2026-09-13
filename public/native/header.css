@@ -184,6 +184,29 @@
   white-space: nowrap;
 }
 
+/* Remote-workspace pill: this workspace's tools run over SSH on another host.
+   Same shape as the branch pill — it is workspace state, not a setting. */
+.ssh-remote-indicator {
+  /* Override the fixed square width from .ui-icon-button--sm */
+  width: auto;
+  max-width: min(280px, 32vw);
+  padding: 0 var(--space-2);
+  gap: var(--space-1);
+}
+
+.ssh-remote-indicator.hidden {
+  display: none;
+}
+
+.ssh-remote-indicator__label {
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  max-width: min(220px, 26vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Extension package update pill (hidden until the package manager reports updates) */
 .update-indicator {
   position: relative;

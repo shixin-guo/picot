@@ -127,9 +127,14 @@ impl NativePiManager {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         crate::pi_tls::apply_runtime_tls_env(&mut command);
+        // Own the whole tree, and leave a record of it: `pi` outlives a Picot
+        // that dies without running any teardown, and a wedged runtime will not
+        // even notice the stdin EOF that normally stops it.
+        crate::child_supervision::make_group_leader(&mut command);
         let child = command
             .spawn()
             .map_err(|error| format!("Cannot start embedded Pi native RPC process: {error}"))?;
+        crate::child_supervision::record_runtime(child.id());
         let (bridge, mut process) = PiRpcBridge::attach(child, MAX_RPC_FRAME_BYTES)?;
         if let Err(error) = self
             .inner

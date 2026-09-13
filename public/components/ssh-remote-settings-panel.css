@@ -35,3 +35,19 @@
   gap: var(--space-2);
   margin-top: var(--space-3);
 }
+
+.ssh-remote-summary {
+  margin: var(--space-2) 0 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+}
+
+.ssh-remote-binding {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.ssh-remote-binding.hidden {
+  display: none;
+}

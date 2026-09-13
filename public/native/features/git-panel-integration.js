@@ -73,6 +73,13 @@ export function setupGitPanel({
     else if (normalized.type === "git_commit_confirmation_required")
       panel.applyConfirmationToken(normalized.confirmationToken);
     else if (normalized.type === "git_commit_started") panel.setCommitInProgress(true);
+    else if (normalized.type === "git_push_started") panel.setPushInProgress(true);
+    else if (normalized.type === "git_push_result") {
+      panel.applyPushResult(normalized);
+      // A successful push moves the upstream, so the ahead/behind summary in
+      // the toolbar is stale until the next status read.
+      if (normalized.status === "succeeded") panel.refresh();
+    }
     else if (normalized.type === "git_commit_result") {
       panel.applyCommitResult(normalized);
       if (normalized.status === "succeeded") panel.refresh();

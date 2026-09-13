@@ -584,6 +584,8 @@ describe("picot config ssh remote operations", () => {
       ok: true,
       data: {
         config: { enabled: true, host: "example.com" },
+        resolved: { enabled: true, host: "example.com" },
+        hosts: {},
         trusted: false,
         path: settingsPath,
       },
@@ -605,6 +607,8 @@ describe("picot config ssh remote operations", () => {
       ok: true,
       data: {
         config: { enabled: false, host: "" },
+        resolved: { enabled: false, host: "" },
+        hosts: {},
         trusted: true,
         path: join(workspace, ".pi", "settings.json"),
       },
@@ -689,5 +693,98 @@ describe("picot config ssh remote operations", () => {
       data: { ok: true, message: "Connected", remotePath: "/srv/app", latencyMs: 12 },
     });
     expect(testSshRemoteConnection).toHaveBeenCalledWith({ enabled: true, host: "example.com" });
+  });
+
+  it("resolves a hostRef binding against the global registry", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    mkdirSync(join(home, ".pi", "agent"), { recursive: true });
+    writeFileSync(
+      join(home, ".pi", "agent", "settings.json"),
+      JSON.stringify({
+        sshHosts: { "gpu-box": { host: "10.0.0.5", user: "ubuntu", port: 2222 } },
+      }),
+      "utf8",
+    );
+    const workspace = join(home, "workspace");
+    mkdirSync(join(workspace, ".pi"), { recursive: true });
+    writeFileSync(
+      join(workspace, ".pi", "settings.json"),
+      JSON.stringify({ sshRemote: { enabled: true, hostRef: "gpu-box", remotePath: "/srv/app" } }),
+      "utf8",
+    );
+
+    const result = await handlePicotConfig(
+      "get_ssh_remote_config",
+      {},
+      { cwd: workspace, isProjectTrusted: () => true },
+    );
+
+    expect(result.ok).toBe(true);
+    expect((result as { data: { resolved: unknown } }).data.resolved).toEqual({
+      enabled: true,
+      host: "10.0.0.5",
+      hostRef: "gpu-box",
+      port: 2222,
+      user: "ubuntu",
+      remotePath: "/srv/app",
+    });
+  });
+
+  it("keeps credentials out of the project file when saving a hostRef binding", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    const workspace = join(home, "workspace");
+    mkdirSync(join(workspace, ".pi"), { recursive: true });
+    const settingsPath = join(workspace, ".pi", "settings.json");
+
+    await handlePicotConfig(
+      "set_ssh_remote_config",
+      {
+        config: {
+          enabled: true,
+          hostRef: "gpu-box",
+          host: "10.0.0.5",
+          identityFile: "~/.ssh/id_ed25519",
+          remotePath: "/srv/app",
+        },
+      },
+      { cwd: workspace, isProjectTrusted: () => true },
+    );
+
+    expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toEqual({
+      sshRemote: { enabled: true, hostRef: "gpu-box", remotePath: "/srv/app" },
+    });
+  });
+
+  it("saves and deletes hosts in the global registry", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    mkdirSync(join(home, ".pi", "agent"), { recursive: true });
+    const globalPath = join(home, ".pi", "agent", "settings.json");
+
+    await handlePicotConfig(
+      "set_ssh_host",
+      {
+        alias: "gpu-box",
+        config: { host: "10.0.0.5", user: "ubuntu", identityFile: "~/.ssh/id_ed25519" },
+      },
+      {},
+    );
+    expect(JSON.parse(readFileSync(globalPath, "utf8")).sshHosts).toEqual({
+      "gpu-box": { host: "10.0.0.5", user: "ubuntu", identityFile: "~/.ssh/id_ed25519" },
+    });
+
+    await expect(handlePicotConfig("get_ssh_hosts", {}, {})).resolves.toMatchObject({
+      ok: true,
+      data: { hosts: { "gpu-box": { host: "10.0.0.5" } } },
+    });
+
+    await handlePicotConfig("delete_ssh_host", { alias: "gpu-box" }, {});
+    expect(JSON.parse(readFileSync(globalPath, "utf8")).sshHosts).toEqual({});
+  });
+
+  it("rejects a registry entry without a host", async () => {
+    const { handlePicotConfig } = await loadConfigWithTempHome();
+    await expect(
+      handlePicotConfig("set_ssh_host", { alias: "gpu-box", config: { user: "ubuntu" } }, {}),
+    ).resolves.toEqual({ ok: false, error: "Host is required" });
   });
 });

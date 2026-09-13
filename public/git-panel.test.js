@@ -460,3 +460,98 @@ describe("GitPanel", () => {
     panel.closeCommitDialog();
   });
 });
+
+describe("GitPanel push", () => {
+  const snapshotWithBranch = (overrides = {}) => ({
+    snapshotId: "snap-1",
+    branch: "feature",
+    upstream: "origin/feature",
+    ahead: 2,
+    behind: 0,
+    entries: [],
+    counts: { staged: 0, changes: 0, untracked: 0, conflicted: 0 },
+    ...overrides,
+  });
+
+  it("sends a push command and disables the button while in flight", () => {
+    const push = vi.fn(() => "git-7");
+    const panel = new GitPanel({
+      container: document.querySelector("#panel"),
+      client: { command: vi.fn(), push },
+    });
+    panel.setSnapshot(snapshotWithBranch());
+    panel.container.querySelector(".git-panel-push").click();
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(panel.pushInProgress).toBe(true);
+    expect(panel.container.querySelector(".git-panel-push").disabled).toBe(true);
+  });
+
+  it("ignores a second click while a push is already running", () => {
+    const push = vi.fn(() => "git-7");
+    const panel = new GitPanel({
+      container: document.querySelector("#panel"),
+      client: { command: vi.fn(), push },
+    });
+    panel.setSnapshot(snapshotWithBranch());
+    panel.push();
+    panel.push();
+    expect(push).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables push on a detached HEAD", () => {
+    const panel = new GitPanel({
+      container: document.querySelector("#panel"),
+      client: { command: vi.fn(), push: vi.fn() },
+    });
+    panel.setSnapshot(snapshotWithBranch({ branch: null, headState: "detached" }));
+    expect(panel.container.querySelector(".git-panel-push").disabled).toBe(true);
+  });
+
+  it("clears the in-flight state and shows no error after a successful push", () => {
+    const panel = new GitPanel({
+      container: document.querySelector("#panel"),
+      client: { command: vi.fn(), push: vi.fn(() => "git-7") },
+    });
+    panel.setSnapshot(snapshotWithBranch());
+    panel.push();
+    panel.applyPushResult({ status: "succeeded", remote: "origin", branch: "feature" });
+    expect(panel.pushInProgress).toBe(false);
+    expect(panel.container.querySelector(".git-panel-push-error")).toBeNull();
+    expect(panel.container.querySelector(".git-panel-push").disabled).toBe(false);
+  });
+
+  it("maps backend failure codes onto localized copy", () => {
+    const panel = new GitPanel({
+      container: document.querySelector("#panel"),
+      client: { command: vi.fn(), push: vi.fn(() => "git-7") },
+    });
+    panel.setSnapshot(snapshotWithBranch());
+    panel.applyPushResult({ status: "failed", error: "push_no_remote" });
+    expect(panel.container.querySelector(".git-panel-push-error").textContent).toBe(
+      enMessages.git.pushNoRemote,
+    );
+  });
+
+  it("passes an unrecognized git error through as text", () => {
+    const panel = new GitPanel({
+      container: document.querySelector("#panel"),
+      client: { command: vi.fn(), push: vi.fn(() => "git-7") },
+    });
+    panel.setSnapshot(snapshotWithBranch());
+    panel.applyPushResult({ status: "failed", error: "! [rejected] feature -> feature" });
+    const error = panel.container.querySelector(".git-panel-push-error");
+    expect(error.textContent).toBe("! [rejected] feature -> feature");
+    expect(panel.container.querySelector("script")).toBeNull();
+  });
+
+  it("drops a stale error when the next push starts", () => {
+    const panel = new GitPanel({
+      container: document.querySelector("#panel"),
+      client: { command: vi.fn(), push: vi.fn(() => "git-7") },
+    });
+    panel.setSnapshot(snapshotWithBranch());
+    panel.applyPushResult({ status: "failed", error: "push_no_remote" });
+    panel.push();
+    expect(panel.container.querySelector(".git-panel-push-error")).toBeNull();
+  });
+});

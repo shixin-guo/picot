@@ -50,6 +50,9 @@ export class GitClient {
   aiCommitMessage() {
     return this.command({}, "git_ai_commit_message");
   }
+  push() {
+    return this.command({ type: "push" });
+  }
   commit(snapshotId, message, confirmationToken = null) {
     return this.command({ type: "commit", snapshotId, message, confirmationToken });
   }

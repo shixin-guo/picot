@@ -3,8 +3,8 @@ import {
   copyFile,
   lstat,
   mkdir,
-  open,
   readFile,
+  rename,
   unlink,
   writeFile,
 } from "node:fs/promises";
@@ -122,44 +122,123 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
+// The lock is a claim, not a mutex: the newest *explicit* connect always wins
+// (`preempt`), and the previous holder is expected to notice it lost ownership
+// and stand down. A crashed — or, as seen in practice, a spinning orphaned —
+// holder can therefore never keep a channel offline forever, which a
+// liveness-only check could not guarantee: a process being alive says nothing
+// about it still polling. `epoch` only ever grows, so a holder that slept
+// through a takeover can tell "still mine" from "reclaimed by someone else"
+// even when the newer holder has already released the lock.
+export interface ConversationLockInfo {
+  ownerId: string;
+  pid?: number;
+  epoch: number;
+  claimedAt: string;
+}
+
+function parseLockContent(content: string): ConversationLockInfo | undefined {
+  const trimmed = content.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed) as Partial<ConversationLockInfo>;
+      if (typeof parsed.ownerId !== "string" || !parsed.ownerId) return undefined;
+      return {
+        ownerId: parsed.ownerId,
+        pid: typeof parsed.pid === "number" ? parsed.pid : extractOwnerPid(parsed.ownerId),
+        epoch: typeof parsed.epoch === "number" && parsed.epoch > 0 ? parsed.epoch : 1,
+        claimedAt: typeof parsed.claimedAt === "string" ? parsed.claimedAt : "",
+      };
+    } catch {
+      return undefined;
+    }
+  }
+  // Pre-epoch lock files held a bare owner id. Adopt them as epoch 1 rather
+  // than treating them as corrupt, so an upgrade cannot strand a channel.
+  const ownerId = trimmed.split("\n")[0]?.trim();
+  if (!ownerId) return undefined;
+  return { ownerId, pid: extractOwnerPid(ownerId), epoch: 1, claimedAt: "" };
+}
+
+export async function readConversationLock(
+  conversation: ResolvedConversation,
+): Promise<ConversationLockInfo | undefined> {
+  try {
+    return parseLockContent(await readFile(conversation.lockPath, "utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
+export function describeLockHolder(info: ConversationLockInfo | undefined): string {
+  if (!info) return "another pi-chat session";
+  const parts: string[] = [];
+  if (info.pid !== undefined) parts.push(`pid ${info.pid}`);
+  if (info.claimedAt) parts.push(`since ${info.claimedAt}`);
+  return parts.length > 0 ? `${info.ownerId} (${parts.join(", ")})` : info.ownerId;
+}
+
+async function writeLock(
+  conversation: ResolvedConversation,
+  info: ConversationLockInfo,
+): Promise<void> {
+  // Write-then-rename so a reader never observes a half-written claim.
+  const staging = `${conversation.lockPath}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(staging, `${JSON.stringify(info)}\n`, "utf8");
+  try {
+    await rename(staging, conversation.lockPath);
+  } catch (error) {
+    await unlink(staging).catch(() => undefined);
+    throw error;
+  }
+}
+
 export async function acquireConversationLock(
   conversation: ResolvedConversation,
   owner: string,
-): Promise<void> {
+  options: { preempt?: boolean } = {},
+): Promise<ConversationLockInfo> {
   await ensureConversationDirs(conversation);
-  try {
-    const handle = await open(conversation.lockPath, "wx");
-    try {
-      await handle.writeFile(`${owner}\n`, "utf8");
-    } finally {
-      await handle.close();
-    }
-    return;
-  } catch (error) {
-    const code =
-      error && typeof error === "object" && "code" in error
-        ? String((error as { code?: string }).code)
-        : undefined;
-    if (code !== "EEXIST") throw error;
+  const existing = await readConversationLock(conversation);
+  const claim = (epoch: number): ConversationLockInfo => ({
+    ownerId: owner,
+    pid: process.pid,
+    epoch,
+    claimedAt: new Date().toISOString(),
+  });
+  if (!existing) {
+    const info = claim(1);
+    await writeLock(conversation, info);
+    return info;
   }
-  const existingOwner = (await readFile(conversation.lockPath, "utf8")).trim();
-  const existingPid = extractOwnerPid(existingOwner);
-  if (existingPid !== undefined && !isPidAlive(existingPid)) {
-    await unlink(conversation.lockPath).catch(() => undefined);
-    const handle = await open(conversation.lockPath, "wx");
-    try {
-      await handle.writeFile(`${owner}\n`, "utf8");
-    } finally {
-      await handle.close();
-    }
-    return;
-  }
-  throw new Error(
-    `Conversation is already locked by ${existingOwner || "another pi-chat session"}`,
-  );
+  if (existing.ownerId === owner) return existing;
+  const takeable =
+    options.preempt === true || (existing.pid !== undefined && !isPidAlive(existing.pid));
+  if (!takeable)
+    throw new Error(`Conversation is already locked by ${describeLockHolder(existing)}`);
+  const info = claim(existing.epoch + 1);
+  await writeLock(conversation, info);
+  return info;
 }
 
-export async function releaseConversationLock(conversation: ResolvedConversation): Promise<void> {
+export async function holdsConversationLock(
+  conversation: ResolvedConversation,
+  owner: string,
+): Promise<boolean> {
+  const info = await readConversationLock(conversation);
+  // A vanished lock counts as lost: whoever removed it is entitled to reclaim
+  // it, and continuing to write under it would race that claim.
+  return info?.ownerId === owner;
+}
+
+export async function releaseConversationLock(
+  conversation: ResolvedConversation,
+  owner?: string,
+): Promise<void> {
+  // Never delete a claim that is no longer ours — that would hand a third
+  // session the channel out from under the instance that just took over.
+  if (owner !== undefined && !(await holdsConversationLock(conversation, owner))) return;
   await unlink(conversation.lockPath).catch(() => undefined);
 }
 

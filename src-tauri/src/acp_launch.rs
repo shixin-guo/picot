@@ -204,7 +204,10 @@ mod tests {
         clear_overrides();
         let spec = resolve_preset("claude-code", PathBuf::from("/workspace")).unwrap();
         assert_eq!(spec.command, "npx");
-        assert_eq!(spec.args, vec!["-y", "@agentclientprotocol/claude-agent-acp"]);
+        assert_eq!(
+            spec.args,
+            vec!["-y", "@agentclientprotocol/claude-agent-acp"]
+        );
         assert_eq!(spec.label, "Claude Code");
         assert_eq!(spec.cwd, PathBuf::from("/workspace"));
     }
@@ -214,10 +217,22 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         clear_overrides();
         for (id, label, expected_args) in [
-            ("gemini", "Gemini CLI", vec!["-y", "@google/gemini-cli", "--experimental-acp"]),
-            ("codex", "Codex", vec!["-y", "@agentclientprotocol/codex-acp"]),
+            (
+                "gemini",
+                "Gemini CLI",
+                vec!["-y", "@google/gemini-cli", "--experimental-acp"],
+            ),
+            (
+                "codex",
+                "Codex",
+                vec!["-y", "@agentclientprotocol/codex-acp"],
+            ),
             ("cursor", "Cursor", vec!["-y", "cursor-agent-acp"]),
-            ("qwen", "Qwen Code", vec!["-y", "@qwen-code/qwen-code", "--experimental-acp"]),
+            (
+                "qwen",
+                "Qwen Code",
+                vec!["-y", "@qwen-code/qwen-code", "--experimental-acp"],
+            ),
         ] {
             let spec = resolve_preset(id, PathBuf::from("/w")).unwrap();
             assert_eq!(spec.command, "npx", "{id}");
@@ -279,10 +294,7 @@ mod tests {
         unsafe {
             std::env::set_var("PICOT_ACP_CURSOR_CMD", "cursor-agent-acp");
         }
-        let ids: Vec<_> = detected_presets("")
-            .into_iter()
-            .map(|(id, _)| id)
-            .collect();
+        let ids: Vec<_> = detected_presets("").into_iter().map(|(id, _)| id).collect();
         assert_eq!(ids, vec!["cursor"]);
         clear_overrides();
     }

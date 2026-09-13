@@ -96,7 +96,12 @@ import {
 import { NativeFileBrowser } from "./workspace/file-browser.js";
 import { setupHeaderOpenApp } from "./workspace/header-open-app.js";
 import { setupProjectHeader } from "./workspace/project-header.js";
+import { setupRemoteWorkspaceDialog } from "./workspace/remote-workspace-dialog.js";
 import { createSessionStatus } from "./workspace/session-status.js";
+import {
+  refreshSshRemoteIndicator,
+  setupSshRemoteIndicator,
+} from "./workspace/ssh-remote-indicator.js";
 import {
   createSessionViaHost,
   openSessionInProjectViaHost,
@@ -1154,6 +1159,11 @@ window.addEventListener("picot:session-created", (event) => {
 });
 
 setupOpenFolderButton({ onError: showError });
+setupRemoteWorkspaceDialog({
+  buttonEl: document.getElementById("open-remote-btn"),
+  onError: showError,
+});
+setupSshRemoteIndicator();
 setupAppKeyboardShortcuts({
   input,
   abort: abortCurrentRun,
@@ -1234,6 +1244,12 @@ try {
     sessionId: target.sessionId,
     elapsedMs: Math.round(performance.now() - snapshotStartedAt),
     totalElapsedMs: Math.round(performance.now() - initialLoadStartedAt),
+  });
+  // Deliberately not awaited (and not part of the Promise.all below): the pill
+  // probe waits for the config gateway to become ready, which must never gate
+  // session adoption. A stale probe cannot win, so a late answer is harmless.
+  refreshSshRemoteIndicator({ call: window.__picotConfigCall }).catch((error) => {
+    console.warn("[Native] Failed to probe the remote workspace binding:", error);
   });
   await Promise.all([
     loadCommands()
@@ -2199,6 +2215,9 @@ async function adoptTarget(nextTarget, { updateRoute = true } = {}) {
       workspaceId: nextTarget.workspaceId,
     }).catch((error) => {
       console.warn("[Native] Failed to load project header info:", error);
+    });
+    refreshSshRemoteIndicator({ call: window.__picotConfigCall }).catch((error) => {
+      console.warn("[Native] Failed to probe the remote workspace binding:", error);
     });
   }
   // The Info panel's tree belongs to the active session: bump the sequence

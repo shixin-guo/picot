@@ -10,6 +10,11 @@ description = "Allow opening the native folder picker to spawn a new workspace w
 commands.allow = ["open_folder_as_workspace"]
 
 [[permission]]
+identifier = "allow-open-remote-workspace"
+description = "Allow creating a remote workspace anchor and opening its window."
+commands.allow = ["open_remote_workspace"]
+
+[[permission]]
 identifier = "allow-open-new-session-in-workspace"
 description = "Allow opening a fresh session in the current workspace window."
 commands.allow = ["open_new_session_in_workspace"]
@@ -43,6 +48,7 @@ commands.allow = ["install_beta_update"]
 description = "Default set of Picot app command permissions."
 permissions = [
   "allow-open-folder-as-workspace",
+  "allow-open-remote-workspace",
   "allow-open-new-session-in-workspace",
   "allow-open-session-in-project",
   "allow-show-task-completion-notification",

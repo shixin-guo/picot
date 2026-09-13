@@ -70,6 +70,9 @@ afterEach(() => {
   delete globalThis.ResizeObserver;
 });
 
+// Booting the whole native entry is inherently slow (seconds, not
+// milliseconds); the 5s default timeout is marginal once the suite runs it
+// alongside everything else.
 test("installs the mention popup and controller on the native main composer", async () => {
   await import("./app.js?at-file-mention-regression");
 
@@ -87,4 +90,4 @@ test("installs the mention popup and controller on the native main composer", as
     const calls = globalThis.fetch.mock.calls.map(([url]) => String(url));
     expect(calls.some((url) => url.includes("/api/file-mentions"))).toBe(true);
   });
-});
+}, 20000);

@@ -201,6 +201,42 @@ pub async fn dispatch(
                 "workspaceGeneration": generation,
             }))
         }
+        "push" => {
+            // Push crosses the network, so it runs on a blocking worker and
+            // reports through an event instead of holding the dispatch future
+            // open for as long as the remote takes to answer.
+            let service = service.clone();
+            let events = events.clone();
+            let owner = owner.to_owned();
+            let event_request_id = request_id.to_owned();
+            tokio::task::spawn_blocking(move || {
+                let frame = match service.push(&root) {
+                    Ok(outcome) => json!({
+                        "type": "git_push_result",
+                        "requestId": event_request_id,
+                        "workspaceGeneration": generation,
+                        "status": "succeeded",
+                        "remote": outcome.remote,
+                        "branch": outcome.branch,
+                        "setUpstream": outcome.set_upstream,
+                        "output": outcome.output,
+                    }),
+                    Err(error) => json!({
+                        "type": "git_push_result",
+                        "requestId": event_request_id,
+                        "workspaceGeneration": generation,
+                        "status": "failed",
+                        "error": error,
+                    }),
+                };
+                let _ = events.send((owner, frame));
+            });
+            Ok(json!({
+                "type": "git_push_started",
+                "requestId": request_id,
+                "workspaceGeneration": generation,
+            }))
+        }
         "commit" => {
             let snapshot_id = frame
                 .pointer("/command/snapshotId")

@@ -36,6 +36,7 @@ import {
 } from "./oauth-login-operations";
 import { buildPackageSkillInventory } from "./package-skill-inventory";
 import { writePasteOffloadFile } from "./paste-offload";
+import { resolveHomeDir, resolvePiAgentRoot } from "./pi-agent-paths";
 import {
   buildTelegramDmConfig,
   buildTelegramDoctorReport,
@@ -55,7 +56,13 @@ import {
 } from "./skill-inventory";
 import {
   assertSshRemoteSettingsValid,
+  listSshRemoteDirectories,
+  parseSshHostEntry,
+  parseSshHosts,
   parseSshRemoteSettings,
+  readSshConfigHosts,
+  resolveSshRemoteSettings,
+  type SshHostEntry,
   serializeSshRemoteSettings,
   testSshRemoteConnection,
 } from "./ssh-remote";
@@ -198,43 +205,6 @@ function errMessage(e: unknown): string {
   } catch {
     return String(e);
   }
-}
-
-function resolveHomeDir(): string {
-  const candidates: string[] = [];
-  const add = (value?: string) => {
-    if (typeof value === "string" && value.trim()) candidates.push(path.resolve(value.trim()));
-  };
-  add(process.env.HOME);
-  add(process.env.USERPROFILE);
-  if (process.env.HOMEDRIVE && process.env.HOMEPATH) {
-    add(`${process.env.HOMEDRIVE}${process.env.HOMEPATH}`);
-  }
-  add(os.homedir());
-  return candidates[0] || os.homedir();
-}
-
-function resolvePiAgentRoot(): string {
-  const candidates: string[] = [];
-  const add = (value?: string) => {
-    if (typeof value === "string" && value.trim()) candidates.push(path.resolve(value.trim()));
-  };
-  add(process.env.HOME);
-  add(process.env.USERPROFILE);
-  if (process.env.HOMEDRIVE && process.env.HOMEPATH) {
-    add(`${process.env.HOMEDRIVE}${process.env.HOMEPATH}`);
-  }
-  add(os.homedir());
-  for (const home of candidates) {
-    const candidate = path.join(home, ".pi", "agent");
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  const appData = process.env.APPDATA;
-  if (typeof appData === "string" && appData.trim()) {
-    const roaming = path.join(path.resolve(appData), "pi", "agent");
-    if (fs.existsSync(roaming)) return roaming;
-  }
-  return path.join(candidates[0] || os.homedir(), ".pi", "agent");
 }
 
 const HOME_DIR = resolveHomeDir();
@@ -752,6 +722,15 @@ function resolveSettingsPath(
     scope: "project",
     path: path.join(cwd, PROJECT_CONFIG_DIR_NAME, "settings.json"),
   };
+}
+
+/**
+ * The shared `sshHosts` registry from the global agent settings. Read through
+ * `readSettingsObject` (rather than ssh-remote's own reader) so every config op
+ * sees the same file this module writes.
+ */
+function readGlobalSshHostRegistry(): Record<string, SshHostEntry> {
+  return parseSshHosts(readSettingsObject(AGENT_CONFIG_PATH).sshHosts);
 }
 
 function getProjectSettings(
@@ -1275,19 +1254,25 @@ export async function handlePicotConfig(
       case "set_default_auto_compaction":
         return { ok: true, data: setDefaultAutoCompaction(params.enabled, params.scope, ctx) };
 
-      // SSH Remote (Settings → SSH Remote): project-scoped only, since a
-      // remote host/path is tied to one workspace. Reads are unrestricted so
-      // an untrusted project's form still renders (with a "trust required"
+      // Remote workspace binding (Settings → Remote Workspace): which host this
+      // ONE project runs on, so it stays in the project's own settings.json.
+      // The connection itself can live in the global `sshHosts` registry and be
+      // referenced by alias (see get_ssh_hosts). Reads are unrestricted so an
+      // untrusted project's form still renders (with a "trust required"
       // banner); writes require project trust like other project settings.
       case "get_ssh_remote_config": {
         const cwd = asString(ctx.cwd);
         if (!cwd) throw new Error("Active workspace is required");
         const settingsPath = path.join(cwd, PROJECT_CONFIG_DIR_NAME, "settings.json");
         const settings = readSettingsObject(settingsPath);
+        const config = parseSshRemoteSettings(settings.sshRemote);
+        const hosts = readGlobalSshHostRegistry();
         return {
           ok: true,
           data: {
-            config: parseSshRemoteSettings(settings.sshRemote),
+            config,
+            resolved: resolveSshRemoteSettings(config, hosts),
+            hosts,
             trusted: Boolean(ctx.isProjectTrusted?.()),
             path: settingsPath,
           },
@@ -1305,8 +1290,57 @@ export async function handlePicotConfig(
       }
 
       case "test_ssh_remote_config": {
-        const config = parseSshRemoteSettings(params.config ?? params);
+        const config = resolveSshRemoteSettings(
+          parseSshRemoteSettings(params.config ?? params),
+          readGlobalSshHostRegistry(),
+        );
         return { ok: true, data: await testSshRemoteConnection(config) };
+      }
+
+      case "list_ssh_remote_dir": {
+        const config = resolveSshRemoteSettings(
+          parseSshRemoteSettings(params.config ?? params),
+          readGlobalSshHostRegistry(),
+        );
+        const dirPath = asString(params.path);
+        return { ok: true, data: await listSshRemoteDirectories(config, dirPath) };
+      }
+
+      // The saved-host registry is global on purpose: a key path and username
+      // belong to a machine, not to one checkout, and the connect dialog offers
+      // them for any new project.
+      case "get_ssh_hosts":
+        return {
+          ok: true,
+          data: {
+            hosts: readGlobalSshHostRegistry(),
+            sshConfigHosts: readSshConfigHosts(),
+            path: AGENT_CONFIG_PATH,
+          },
+        };
+
+      case "set_ssh_host": {
+        const alias = asString(params.alias).trim();
+        if (!alias) throw new Error("A host name is required");
+        const entry = parseSshHostEntry(params.config ?? params);
+        if (!entry.host) throw new Error("Host is required");
+        const settings = readSettingsObject(AGENT_CONFIG_PATH);
+        const hosts = parseSshHosts(settings.sshHosts);
+        hosts[alias] = entry;
+        settings.sshHosts = hosts;
+        writeSettingsObject(AGENT_CONFIG_PATH, settings);
+        return { ok: true, data: { alias, hosts, path: AGENT_CONFIG_PATH } };
+      }
+
+      case "delete_ssh_host": {
+        const alias = asString(params.alias).trim();
+        if (!alias) throw new Error("A host name is required");
+        const settings = readSettingsObject(AGENT_CONFIG_PATH);
+        const hosts = parseSshHosts(settings.sshHosts);
+        delete hosts[alias];
+        settings.sshHosts = hosts;
+        writeSettingsObject(AGENT_CONFIG_PATH, settings);
+        return { ok: true, data: { hosts, path: AGENT_CONFIG_PATH } };
       }
 
       case "read_models_config":

@@ -53,6 +53,8 @@ pub struct InMemoryPiProcess {
 
 pub struct PiRpcProcess {
     child: Arc<StdMutex<Child>>,
+    /// Present for a real spawned process; `None` for the in-memory test double.
+    tree: Option<Arc<StdMutex<crate::child_supervision::ChildTree>>>,
     diagnostics: std::sync::mpsc::Receiver<String>,
 }
 
@@ -61,6 +63,7 @@ impl PiRpcBridge {
         mut child: Child,
         max_frame_bytes: usize,
     ) -> Result<(Self, PiRpcProcess), String> {
+        let child_pid = child.id();
         let mut stdin = child
             .stdin
             .take()
@@ -126,6 +129,9 @@ impl PiRpcBridge {
         Ok((
             Self { inner },
             PiRpcProcess {
+                tree: Some(Arc::new(StdMutex::new(
+                    crate::child_supervision::ChildTree::attach(child_pid),
+                ))),
                 child: Arc::new(StdMutex::new(child)),
                 diagnostics: diagnostic_rx,
             },
@@ -223,12 +229,26 @@ impl PiRpcProcess {
             .map_err(|error| format!("Cannot wait for Pi RPC process: {error}"))
     }
 
+    /// Stop the runtime and everything it spawned. Killing only the direct
+    /// child would leave its descendants running with no one to reap them.
     pub fn kill(&mut self) -> Result<(), String> {
-        self.child
+        if let Some(tree) = &self.tree {
+            if let Ok(mut tree) = tree.lock() {
+                tree.terminate();
+                crate::child_supervision::forget_runtime(tree.pid());
+            }
+        }
+        let mut child = self
+            .child
             .lock()
-            .map_err(|_| "Pi RPC process lock poisoned".to_string())?
+            .map_err(|_| "Pi RPC process lock poisoned".to_string())?;
+        let result = child
             .kill()
-            .map_err(|error| format!("Cannot stop Pi RPC process: {error}"))
+            .map_err(|error| format!("Cannot stop Pi RPC process: {error}"));
+        // Reap it, or the terminated runtime lingers as a zombie for as long
+        // as Picot runs.
+        let _ = child.wait();
+        result
     }
 
     /// Everything `pi` has written to stderr and we have not reported yet.
