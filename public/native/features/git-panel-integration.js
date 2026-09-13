@@ -73,14 +73,20 @@ export function setupGitPanel({
       if (diff && normalized.requestId === latestCommitDiffRequest) {
         filePreviewPanel?.openDiff?.({ ...latestCommitDiffDescriptor, ...diff });
       }
-    } else if (normalized.type === "git_ai_commit_message")
+    } else if (normalized.type === "git_ai_commit_message") {
+      if (normalized.requestId !== panel.pendingAiRequestId) return;
       panel.applyAiResult(normalized.snapshot, normalized.message);
-    else if (normalized.type === "git_ai_commit_message_failed")
+    } else if (normalized.type === "git_ai_commit_message_failed") {
+      if (normalized.requestId !== panel.pendingAiRequestId) return;
       panel.applyAiFailure(normalized.error);
-    else if (normalized.type === "git_commit_confirmation_required")
+    } else if (normalized.type === "git_commit_confirmation_required") {
+      if (normalized.requestId !== panel.pendingCommitRequestId) return;
       panel.applyConfirmationToken(normalized.confirmationToken);
-    else if (normalized.type === "git_commit_started") panel.setCommitInProgress(true);
-    else if (normalized.type === "git_commit_result") {
+    } else if (normalized.type === "git_commit_started") {
+      if (normalized.requestId !== panel.pendingCommitRequestId) return;
+      panel.setCommitInProgress(true);
+    } else if (normalized.type === "git_commit_result") {
+      if (normalized.requestId !== panel.pendingCommitRequestId) return;
       panel.applyCommitResult(normalized);
       if (normalized.status === "succeeded") panel.refresh();
     } else if (normalized.type === "git_command_ack") panel.refresh();
@@ -104,7 +110,10 @@ export function setupGitPanel({
         // itself proves the workspace is not a repository, hide the header
         // pill immediately instead of leaving an entry that cannot work.
         document.getElementById("diff-sidebar-toggle")?.classList.add("hidden");
-      } else {
+      } else if (
+        panel.isStatusFailure(normalized.requestId) ||
+        normalized.requestId === panel.pendingCommitRequestId
+      ) {
         panel.applyCommitFailure(normalized.error);
       }
     }

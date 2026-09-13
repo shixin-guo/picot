@@ -890,7 +890,6 @@ fn setup_native_runtime(app: &AppHandle, static_dir: PathBuf) -> Result<(), Stri
             runtimes.clone(),
             remote_auth,
             std::collections::HashMap::from([(target.workspace_id.clone(), PathBuf::from(&cwd))]),
-<<<<<<< HEAD
             Some(app.clone()),
             Some(Arc::clone(&metadata)),
         )
@@ -1053,8 +1052,8 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        choose_latest_existing_boot_target, is_invalid_working_directory_error, resolve_static_dir,
-        select_fresh_startup_target, session_dir_name, set_press_and_hold_enabled,
+        choose_latest_existing_boot_target, resolve_static_dir, select_fresh_startup_target,
+        session_dir_name, set_press_and_hold_enabled,
     };
     use std::fs;
     use std::path::{Path, PathBuf};

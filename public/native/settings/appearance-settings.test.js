@@ -200,10 +200,38 @@ describe("setupAppearanceSettings", () => {
     const controls = setupAppearanceSettings({ preferences, terminal });
 
     await expect(controls.reconcile()).resolves.toBeUndefined();
+    expect(preferences.set).not.toHaveBeenCalled();
 
     document.querySelector('#settings-chat-font-size [data-level="small"]').click();
     await Promise.resolve();
     // Local application still happens despite the persistence failure.
+    expect(document.documentElement.style.getPropertyValue("--chat-font-size")).toBe("14px");
+  });
+
+  test("does not let a DB read overwrite a newer local setting", async () => {
+    saveAppearanceCookie({ chatFontSize: "medium" });
+    let resolveRead;
+    const read = new Promise((resolve) => {
+      resolveRead = resolve;
+    });
+    const preferences = {
+      get: vi.fn(async (key) => {
+        if (key === "ui.chatFontSize") {
+          await read;
+          return "xlarge";
+        }
+        return null;
+      }),
+      set: vi.fn(async () => {}),
+    };
+    const controls = setupAppearanceSettings({ preferences, terminal: fakeTerminal() });
+    const reconciliation = controls.reconcile();
+
+    document.querySelector('#settings-chat-font-size [data-level="small"]').click();
+    resolveRead();
+    await reconciliation;
+
+    expect(loadAppearanceCookie().chatFontSize).toBe("small");
     expect(document.documentElement.style.getPropertyValue("--chat-font-size")).toBe("14px");
   });
 });

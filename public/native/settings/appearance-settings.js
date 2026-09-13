@@ -104,6 +104,12 @@ export function setupAppearanceSettings({ preferences, terminal } = {}) {
   const persist = (key, value) => {
     preferences?.set(key, value).catch(() => {});
   };
+  const localChangeVersions = new Map();
+  let reconcileRunId = 0;
+
+  function markLocalChange(field) {
+    localChangeVersions.set(field, (localChangeVersions.get(field) || 0) + 1);
+  }
 
   function renderControls() {
     const cookie = loadAppearanceCookie();
@@ -142,6 +148,7 @@ export function setupAppearanceSettings({ preferences, terminal } = {}) {
   }
 
   function setFontLevel(key, level) {
+    markLocalChange(key);
     saveAppearanceCookie({ [key]: level });
     applyDom();
     persist(PREFERENCE_KEYS[key], level);
@@ -153,6 +160,7 @@ export function setupAppearanceSettings({ preferences, terminal } = {}) {
 
   function setPreviewTheme(mode) {
     const normalized = normalizePreviewThemeMode(mode);
+    markLocalChange("previewTheme");
     saveAppearanceCookie({ previewTheme: normalized });
     applyDom();
     persist(PREFERENCE_KEYS.previewTheme, normalized);
@@ -161,6 +169,7 @@ export function setupAppearanceSettings({ preferences, terminal } = {}) {
 
   function setTerminalTheme(mode) {
     const normalized = normalizeThemeMode(mode);
+    markLocalChange("terminalThemeMode");
     saveAppearanceCookie({ terminalThemeMode: normalized });
     terminal?.applyPreferences?.({ themeMode: normalized });
     persist(PREFERENCE_KEYS.terminalThemeMode, normalized);
@@ -169,6 +178,7 @@ export function setupAppearanceSettings({ preferences, terminal } = {}) {
 
   function setScrollback(value) {
     const normalized = normalizeScrollbackLimit(value);
+    markLocalChange("terminalScrollbackLimit");
     saveAppearanceCookie({ terminalScrollbackLimit: normalized });
     if (scrollbackInput) scrollbackInput.value = String(normalized);
     terminal?.applyPreferences?.({ scrollbackLimit: normalized });
@@ -177,6 +187,7 @@ export function setupAppearanceSettings({ preferences, terminal } = {}) {
 
   function setSmoothScroll(value) {
     const normalized = normalizeSmoothScrollDuration(value);
+    markLocalChange("terminalSmoothScrollDuration");
     saveAppearanceCookie({ terminalSmoothScrollDuration: normalized });
     if (smoothScrollInput) smoothScrollInput.value = String(normalized);
     terminal?.applyPreferences?.({ smoothScrollDuration: normalized });
@@ -184,6 +195,7 @@ export function setupAppearanceSettings({ preferences, terminal } = {}) {
   }
 
   function setWebgl(enabled) {
+    markLocalChange("terminalWebglRenderer");
     saveAppearanceCookie({ terminalWebglRenderer: enabled });
     if (webglToggle) {
       webglToggle.classList.toggle("on", enabled);
@@ -230,7 +242,17 @@ export function setupAppearanceSettings({ preferences, terminal } = {}) {
    * from the cookie so a fresh install converges without user action.
    */
   async function reconcile() {
-    const cookie = loadAppearanceCookie();
+    const runId = ++reconcileRunId;
+    const startedVersions = new Map(localChangeVersions);
+    const isCurrent = (field) =>
+      runId === reconcileRunId && localChangeVersions.get(field) === startedVersions.get(field);
+    const readPreference = async (key) => {
+      try {
+        return { ok: true, value: await preferences?.get(key) };
+      } catch {
+        return { ok: false, value: undefined };
+      }
+    };
     const entries = [
       { key: PREFERENCE_KEYS.chatFontSize, field: "chatFontSize", normalize: normalizeFontLevel },
       {
@@ -265,32 +287,32 @@ export function setupAppearanceSettings({ preferences, terminal } = {}) {
       },
     ];
     for (const entry of entries) {
-      let stored = null;
-      try {
-        stored = await preferences?.get(entry.key);
-      } catch {
-        stored = null;
-      }
-      if (stored === null || stored === undefined) {
-        persist(entry.key, cookie[entry.field]);
+      const result = await readPreference(entry.key);
+      if (!isCurrent(entry.field) || !result.ok) continue;
+      const current = loadAppearanceCookie();
+      if (result.value === null || result.value === undefined) {
+        persist(entry.key, current[entry.field]);
         continue;
       }
-      const normalized = entry.normalize(stored);
-      if (normalized !== cookie[entry.field]) {
+      const normalized = entry.normalize(result.value);
+      if (normalized !== current[entry.field]) {
         saveAppearanceCookie({ [entry.field]: normalized });
       }
     }
     // WebGL: DB boolean wins; otherwise the cookie's explicit choice (or
-    // absence, deferring to the platform default) stays.
-    let storedWebgl;
-    try {
-      storedWebgl = await preferences?.get(PREFERENCE_KEYS.terminalWebglRenderer);
-    } catch {
-      storedWebgl = null;
+    // absence, deferring to the platform default) stays. A failed read must
+    // not be mistaken for a missing preference and must never trigger a write.
+    const webglResult = await readPreference(PREFERENCE_KEYS.terminalWebglRenderer);
+    if (isCurrent("terminalWebglRenderer") && webglResult.ok) {
+      const current = loadAppearanceCookie();
+      if (
+        typeof webglResult.value === "boolean" &&
+        webglResult.value !== current.terminalWebglRenderer
+      ) {
+        saveAppearanceCookie({ terminalWebglRenderer: webglResult.value });
+      }
     }
-    if (typeof storedWebgl === "boolean" && storedWebgl !== cookie.terminalWebglRenderer) {
-      saveAppearanceCookie({ terminalWebglRenderer: storedWebgl });
-    }
+    if (runId !== reconcileRunId) return;
     applyDom();
     renderControls();
     const updated = loadAppearanceCookie();
@@ -312,6 +334,7 @@ export function setupAppearanceSettings({ preferences, terminal } = {}) {
     },
     reconcile,
     dispose: () => {
+      reconcileRunId += 1;
       observer.disconnect();
       unsubscribeLocale();
     },
