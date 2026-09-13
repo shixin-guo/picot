@@ -72,12 +72,25 @@
     "comparison": {
       "staged": "Staged",
       "changes": "Changes",
-      "untracked": "Untracked"
+      "untracked": "Untracked",
+      "commit": "Commit"
     },
     "toggleChanges": "Toggle Git changes",
     "closeChanges": "Close Git changes",
     "changesWithBranch": "Git changes — {branch}",
-    "changesHeading": "Changes"
+    "changesHeading": "Changes",
+    "fallback": {
+      "binary": "This file is binary and cannot be displayed",
+      "copy": "This file was only copied in this commit",
+      "rename": "This file was only renamed in this commit"
+    },
+    "copyHash": "Copy hash",
+    "history": "History",
+    "historyEmpty": "No history yet",
+    "historySelectHint": "Select a commit to view details",
+    "messageTruncated": "Commit message truncated",
+    "filesTruncated": "Some changed files are omitted",
+    "justNow": "Just now"
   },
   "usage": {
     "contextTokens": "Context: {used}k / {limit}k tokens",
@@ -117,7 +130,11 @@
     "searchPlaceholder": "Search models…",
     "emptyTitle": "No models available",
     "emptyHelp": "No API keys configured. Set a key in Settings → Models.",
-    "openSettings": "Open Settings"
+    "openSettings": "Open Settings",
+    "scoped": "Scoped models",
+    "allEnabled": "All enabled models",
+    "addScoped": "Add to scoped models",
+    "removeScoped": "Remove from scoped models"
   },
   "queue": {
     "queued": "Queued",
@@ -860,7 +877,46 @@
     "installedHelp": "Manage the extension packages configured for this installation: enable, disable, update, or remove.",
     "copyConfigPath": "Copy path",
     "configPathCopied": "Copied",
-    "configPathCopyFailed": "Copy failed"
+    "configPathCopyFailed": "Copy failed",
+    "theme": "Theme",
+    "chat": {
+      "title": "Chat",
+      "fontSize": "Font size",
+      "fontSizeDescription": "Text size for chat messages."
+    },
+    "preview": {
+      "title": "File preview",
+      "theme": "Preview theme",
+      "themeDescription": "Follow the Picot theme, or force light or dark for code and markdown previews.",
+      "themeSystem": "System",
+      "themeLight": "Light",
+      "themeDark": "Dark",
+      "fontSize": "Font size",
+      "fontSizeDescription": "Text size for code editors and markdown previews."
+    },
+    "terminal": {
+      "title": "Terminal",
+      "theme": "Terminal theme",
+      "themeDescription": "Follow the Picot theme, or force light or dark.",
+      "themeSystem": "System",
+      "themeLight": "Light",
+      "themeDark": "Dark",
+      "fontSize": "Font size",
+      "fontSizeDescription": "Terminal text size.",
+      "scrollback": "Scrollback",
+      "scrollbackDescription": "Number of terminal history lines to retain.",
+      "smoothScroll": "Smooth scroll duration",
+      "smoothScrollDescription": "Animation duration in milliseconds; 0 disables it.",
+      "webgl": "WebGL renderer",
+      "webglDescription": "Render the terminal on the GPU. Disable it if text looks blurry."
+    },
+    "fontLevel": {
+      "small": "Small",
+      "normal": "Normal",
+      "medium": "Medium",
+      "large": "Large",
+      "xlarge": "Extra large"
+    }
   },
   "cost": {
     "documentTitle": "Picot - Usage",

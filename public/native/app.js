@@ -30,7 +30,7 @@ import { setupComposerImageAttachments } from "./composer/composer-images.js";
 import { setupComposerPasteOffload } from "./composer/composer-paste-offload.js";
 import { setupComposerSlashMenu } from "./composer/composer-slash-menu.js";
 import { setupComposerSubmitHandling } from "./composer/composer-submit.js";
-import { isSelectedModel } from "./composer/model-selection.js";
+import { isSelectedModel, splitModelsByScope } from "./composer/model-selection.js";
 import { renderQueuedMessages } from "./composer/queued-messages.js";
 import {
   buildCommandCatalog,
@@ -79,6 +79,7 @@ import {
 import { HostControlGateway } from "./transport/control-gateway.js";
 import { HostDataGateway } from "./transport/data-gateway.js";
 import { createOauthGateway } from "./transport/oauth-gateway.js";
+import { PreferenceGateway } from "./transport/preference-gateway.js";
 import { HostRuntimeAdapter, resolveHostWebSocketUrl } from "./transport/runtime-adapter.js";
 import { routeRuntimeFrame } from "./transport/runtime-frame-routing.js";
 import { RuntimeGateway } from "./transport/runtime-gateway.js";
@@ -262,6 +263,9 @@ const sessionUiState = new SessionUiStateStore({
 });
 let currentModelContextWindow = 0;
 let availableModels = [];
+// Ordered provider/model ids from Pi's global enabledModels (composer
+// favorites). Rendered as the dropdown's first section when available.
+let scopedModelIds = [];
 let target = provisionalTargetFromRoute(route);
 let configGatewayTargetReady = false;
 let resolveConfigGatewayReady;
@@ -346,7 +350,7 @@ const adapter = new HostRuntimeAdapter({
   clientType: remoteAuth.clientType,
   deviceToken: remoteAuth.deviceToken,
 });
-setupTerminalPanel({
+const terminalIntegration = setupTerminalPanel({
   adapter,
   getWorkspaceId: () => target.workspaceId,
 });
@@ -356,6 +360,7 @@ const data = new HostDataGateway(adapter, {
   deviceToken: remoteAuth.deviceToken,
 });
 const control = new HostControlGateway(adapter);
+const preferences = new PreferenceGateway(adapter);
 const config = new ConfigGateway({
   runtime,
   getTarget: () => target,
@@ -1021,6 +1026,8 @@ setupCommandPalette({
 const settingsPanel = setupSettingsPanel({
   data,
   control,
+  preferences,
+  terminal: terminalIntegration,
   getWorkspaceId: () => target.workspaceId,
   configGateway: config,
   oauthGateway,
@@ -2591,14 +2598,17 @@ function renderEmptyModelDropdown(container) {
   container.appendChild(empty);
 }
 
-function buildModelDropdownItem(model) {
-  const item = document.createElement("button");
-  item.type = "button";
+function buildModelDropdownItem(model, isScoped) {
+  const item = document.createElement("div");
   const selected = isSelectedModel(model, {
     provider: currentModelProvider,
     modelId: currentModelId,
   });
   item.className = `model-dropdown-item${selected ? " active" : ""}`;
+
+  const main = document.createElement("button");
+  main.type = "button";
+  main.className = "model-dropdown-item-main";
 
   const nameWrap = document.createElement("span");
   nameWrap.className = "model-dropdown-item-name";
@@ -2617,8 +2627,8 @@ function buildModelDropdownItem(model) {
     ? `${(Number(model.contextWindow) / 1000).toFixed(0)}k`
     : "";
 
-  item.append(nameWrap, context);
-  item.addEventListener("click", async () => {
+  main.append(nameWrap, context);
+  main.addEventListener("click", async () => {
     closeModelDropdown();
     try {
       await runtime.request(
@@ -2638,6 +2648,36 @@ function buildModelDropdownItem(model) {
     }
   });
 
+  const star = document.createElement("button");
+  star.type = "button";
+  star.className = `model-dropdown-star${isScoped ? " active" : ""}`;
+  star.textContent = isScoped ? "\u2605" : "\u2606";
+  star.setAttribute("aria-label", t(isScoped ? "models.removeScoped" : "models.addScoped"));
+  star.addEventListener("click", async (event) => {
+    // Starring only changes the preference — it must never switch the model.
+    event.stopPropagation();
+    try {
+      const response = await config.call("set_scoped_model", {
+        provider: model.provider,
+        modelId: model.id,
+        enabled: !isScoped,
+      });
+      if (response?.ok && Array.isArray(response.data?.modelIds)) {
+        scopedModelIds = response.data.modelIds;
+        const container = modelDropdownMenu?.querySelector(".model-dropdown-items");
+        if (container && !modelDropdownMenu.classList.contains("hidden")) {
+          renderModelDropdownItems(
+            container,
+            modelDropdownMenu.querySelector(".model-dropdown-search")?.value ?? "",
+          );
+        }
+      }
+    } catch {
+      // An unavailable config bridge leaves the current menu state intact.
+    }
+  });
+
+  item.append(main, star);
   return item;
 }
 
@@ -2661,8 +2701,30 @@ function renderModelDropdownItems(container, filter = "") {
     return;
   }
 
-  for (const model of matchingModels) {
-    container.appendChild(buildModelDropdownItem(model));
+  const { scoped, remaining } = splitModelsByScope(matchingModels, scopedModelIds);
+  appendModelSection(container, t("models.scoped"), scoped, true);
+  appendModelSection(container, t("models.allEnabled"), remaining, false);
+}
+
+function appendModelSection(container, label, models, isScoped) {
+  if (models.length === 0) return;
+  const heading = document.createElement("div");
+  heading.className = "model-dropdown-section";
+  heading.textContent = label;
+  container.appendChild(heading);
+  for (const model of models) {
+    container.appendChild(buildModelDropdownItem(model, isScoped));
+  }
+}
+
+async function loadScopedModelIds() {
+  try {
+    const response = await config.call("list_scoped_models");
+    if (response?.ok && Array.isArray(response.data?.modelIds)) {
+      scopedModelIds = response.data.modelIds;
+    }
+  } catch {
+    // An unavailable config bridge degrades to the ungrouped enabled list.
   }
 }
 
@@ -2681,6 +2743,13 @@ function renderModelDropdownMenu() {
   modelDropdownMenu.appendChild(itemsContainer);
 
   renderModelDropdownItems(itemsContainer);
+  // Scoped ids arrive async: rerender once loaded (the enabled list is shown
+  // immediately so the menu never blocks on the config bridge).
+  void loadScopedModelIds().then(() => {
+    if (!modelDropdownMenu.classList.contains("hidden")) {
+      renderModelDropdownItems(itemsContainer, search.value);
+    }
+  });
 
   search.addEventListener("input", () => renderModelDropdownItems(itemsContainer, search.value));
   search.addEventListener("keydown", (event) => {

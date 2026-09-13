@@ -349,21 +349,75 @@
 }
 
 .model-dropdown-item {
-  appearance: none;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-1);
   width: 100%;
-  padding: var(--space-2) var(--space-3);
-  background: transparent;
-  border: 0;
+  padding: 0 var(--space-1) 0 var(--space-3);
   border-radius: var(--radius-md);
   color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  transition: background var(--duration) var(--ease);
+}
+
+.model-dropdown-item:hover {
+  background: var(--bg-glass-hover);
+}
+
+.model-dropdown-item.active {
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+/* Main select button fills the row; the star is a sibling control so a
+   nested interactive element never sits inside another button. */
+.model-dropdown-item-main {
+  appearance: none;
+  display: flex;
+  flex: 1;
+  justify-content: space-between;
+  align-items: center;
+  min-width: 0;
+  padding: var(--space-2) 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
   font: inherit;
   font-size: var(--font-size-sm);
   text-align: left;
   cursor: pointer;
-  transition: background var(--duration) var(--ease);
+}
+
+.model-dropdown-section {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  color: var(--text-dim);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+}
+
+.model-dropdown-star {
+  appearance: none;
+  flex: 0 0 auto;
+  padding: var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--font-size-lg);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.model-dropdown-star:hover,
+.model-dropdown-star.active {
+  color: var(--accent-text);
+}
+
+.model-dropdown-star:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .model-dropdown-empty {
@@ -380,15 +434,6 @@
 
 .model-dropdown-empty-action {
   margin-top: var(--space-2);
-}
-
-.model-dropdown-item:hover {
-  background: var(--bg-glass-hover);
-}
-
-.model-dropdown-item.active {
-  background: var(--accent-subtle);
-  color: var(--accent-text);
 }
 
 .model-dropdown-item-ctx {

@@ -72,12 +72,25 @@
     "comparison": {
       "staged": "Preparado",
       "changes": "Cambios",
-      "untracked": "Sin seguimiento"
+      "untracked": "Sin seguimiento",
+      "commit": "Commit"
     },
     "toggleChanges": "Mostrar u ocultar cambios de Git",
     "closeChanges": "Cerrar cambios de Git",
     "changesWithBranch": "Cambios de Git — {branch}",
-    "changesHeading": "Cambios"
+    "changesHeading": "Cambios",
+    "fallback": {
+      "binary": "Este archivo es binario y no se puede mostrar",
+      "copy": "Este archivo solo se copió en este commit",
+      "rename": "Este archivo solo se renombró en este commit"
+    },
+    "copyHash": "Copiar hash",
+    "history": "Historial",
+    "historyEmpty": "Aún no hay historial",
+    "historySelectHint": "Selecciona un commit para ver detalles",
+    "messageTruncated": "Mensaje de commit truncado",
+    "filesTruncated": "Algunos archivos modificados se omiten",
+    "justNow": "Justo ahora"
   },
   "usage": {
     "contextTokens": "Contexto: {used}k / {limit}k tokens",
@@ -117,7 +130,11 @@
     "searchPlaceholder": "Buscar modelos…",
     "emptyTitle": "No hay modelos disponibles",
     "emptyHelp": "No hay claves API configuradas. Establece una clave en Ajustes → Modelos.",
-    "openSettings": "Abrir ajustes"
+    "openSettings": "Abrir ajustes",
+    "scoped": "Modelos con favoritos",
+    "allEnabled": "Todos los modelos habilitados",
+    "addScoped": "Añadir a modelos con favoritos",
+    "removeScoped": "Quitar de modelos con favoritos"
   },
   "queue": {
     "queued": "En cola",
@@ -860,7 +877,46 @@
     "installedHelp": "Gestiona los paquetes de extensión configurados para esta instalación: habilita, deshabilita, actualiza o elimina.",
     "copyConfigPath": "Copiar ruta",
     "configPathCopied": "Copiado",
-    "configPathCopyFailed": "Error al copiar"
+    "configPathCopyFailed": "Error al copiar",
+    "theme": "Tema",
+    "chat": {
+      "title": "Chat",
+      "fontSize": "Tamaño de fuente",
+      "fontSizeDescription": "Tamaño del texto de los mensajes del chat."
+    },
+    "preview": {
+      "title": "Vista previa de archivos",
+      "theme": "Tema de vista previa",
+      "themeDescription": "Seguir el tema de Picot, o forzar claro u oscuro para las vistas previas de código y markdown.",
+      "themeSystem": "Sistema",
+      "themeLight": "Claro",
+      "themeDark": "Oscuro",
+      "fontSize": "Tamaño de fuente",
+      "fontSizeDescription": "Tamaño del texto para editores de código y vistas previas markdown."
+    },
+    "terminal": {
+      "title": "Terminal",
+      "theme": "Tema de la terminal",
+      "themeDescription": "Seguir el tema de Picot, o forzar claro u oscuro.",
+      "themeSystem": "Sistema",
+      "themeLight": "Claro",
+      "themeDark": "Oscuro",
+      "fontSize": "Tamaño de fuente",
+      "fontSizeDescription": "Tamaño del texto de la terminal.",
+      "scrollback": "Desplazamiento",
+      "scrollbackDescription": "Número de líneas del historial de la terminal.",
+      "smoothScroll": "Duración del desplazamiento suave",
+      "smoothScrollDescription": "Duración de la animación en milisegundos; 0 la desactiva.",
+      "webgl": "Renderizador WebGL",
+      "webglDescription": "Renderiza la terminal en la GPU. Desactívalo si el texto se ve borroso."
+    },
+    "fontLevel": {
+      "small": "Pequeño",
+      "normal": "Normal",
+      "medium": "Mediano",
+      "large": "Grande",
+      "xlarge": "Extra grande"
+    }
   },
   "cost": {
     "documentTitle": "Picot - Uso",

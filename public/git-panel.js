@@ -2,6 +2,7 @@
 // ABOUTME: Renders untrusted repository paths with DOM text nodes and delegates writes to GitClient.
 
 import { createFileTypeIcon } from "./file-type-icons.js";
+import { GitHistoryPanel } from "./git-history-panel.js";
 import { t } from "./i18n.js";
 import { createIcon, setButtonIcon } from "./icons.js";
 import { bindDialogEscape } from "./ui/dialog-escape.js";
@@ -32,9 +33,32 @@ function createToolbarIconButton({ className, icon, label, variant, disabled = f
 const GROUPS = ["staged", "changes", "untracked", "conflicted"];
 
 export class GitPanel {
-  constructor({ container, client, openDiff, onDiffRequest, onStatus, fileList } = {}) {
-    this.container = container;
+  constructor({
+    container,
+    client,
+    openDiff,
+    onDiffRequest,
+    onHistoryDiffRequest,
+    onStatus,
+    fileList,
+  } = {}) {
+    this.outerContainer = container;
     this.client = client;
+    this._subTab = "changes";
+    this.subTabBar = document.createElement("div");
+    this.subTabBar.className = "git-subtab-bar";
+    this.subTabBar.setAttribute("role", "tablist");
+    this.container = document.createElement("div");
+    this.container.className = "git-subtab-pane git-changes-pane";
+    this.historyContainer = document.createElement("div");
+    this.historyContainer.className = "git-subtab-pane git-history-pane hidden";
+    this.historyPanel = new GitHistoryPanel({
+      container: this.historyContainer,
+      client,
+      onDiffRequest: onHistoryDiffRequest,
+    });
+    this.outerContainer.replaceChildren(this.subTabBar, this.container, this.historyContainer);
+    this._renderSubTabBar();
     this.openDiff = openDiff;
     this.onDiffRequest = onDiffRequest;
     this.onStatus = onStatus;
@@ -57,6 +81,7 @@ export class GitPanel {
     this.snapshot = snapshot;
     this.notGitRepo = false;
     this.pendingStatusRequestId = null;
+    this.historyPanel?.setUnavailable(false);
     const valid = new Set(
       (snapshot?.entries || []).flatMap((entry) =>
         this.groupsFor(entry).map(
@@ -78,7 +103,34 @@ export class GitPanel {
   setNotGitRepo(value = true) {
     this.notGitRepo = value;
     this.pendingStatusRequestId = null;
+    this.historyPanel?.setUnavailable(value);
     this.render();
+  }
+  _renderSubTabBar() {
+    for (const name of ["changes", "history"]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "git-subtab";
+      button.dataset.subtab = name;
+      button.setAttribute("role", "tab");
+      button.setAttribute("aria-selected", String(name === this._subTab));
+      button.textContent = name === "changes" ? t("git.comparison.changes") : t("git.history");
+      button.addEventListener("click", () => this.setSubTab(name));
+      this.subTabBar.append(button);
+    }
+  }
+  setSubTab(name) {
+    if (name !== "changes" && name !== "history") return;
+    const wasHistory = this._subTab === "history";
+    this._subTab = name;
+    const isHistory = name === "history";
+    this.container.classList.toggle("hidden", isHistory);
+    this.historyContainer.classList.toggle("hidden", !isHistory);
+    for (const button of this.subTabBar.querySelectorAll(".git-subtab")) {
+      button.setAttribute("aria-selected", String(button.dataset.subtab === name));
+    }
+    this.historyPanel.setActive(isHistory);
+    if (isHistory && !wasHistory) this.historyPanel.refresh();
   }
   /** True only for the failure of the most recent status probe, so stale or
    *  concurrent non-status failures (diff/write/commit) cannot flip the panel

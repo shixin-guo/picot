@@ -66,19 +66,33 @@ export function setupGitPanel({
     client.resolveResponse(normalized);
     if (normalized.type === "git_status") panel.setSnapshot(normalized.snapshot);
     else if (normalized.type === "git_diff") filePreviewPanel?.openDiff?.(normalized.diff);
-    else if (normalized.type === "git_ai_commit_message")
+    else if (normalized.type === "git_log") panel.historyPanel?.applyLog(normalized);
+    else if (normalized.type === "git_log_detail") panel.historyPanel?.applyLogDetail(normalized);
+    else if (normalized.type === "git_commit_diff") {
+      const diff = normalized.diff;
+      if (diff && normalized.requestId === latestCommitDiffRequest) {
+        filePreviewPanel?.openDiff?.({ ...latestCommitDiffDescriptor, ...diff });
+      }
+    } else if (normalized.type === "git_ai_commit_message") {
+      if (normalized.requestId !== panel.pendingAiRequestId) return;
       panel.applyAiResult(normalized.snapshot, normalized.message);
-    else if (normalized.type === "git_ai_commit_message_failed")
+    } else if (normalized.type === "git_ai_commit_message_failed") {
+      if (normalized.requestId !== panel.pendingAiRequestId) return;
       panel.applyAiFailure(normalized.error);
-    else if (normalized.type === "git_commit_confirmation_required")
+    } else if (normalized.type === "git_commit_confirmation_required") {
+      if (normalized.requestId !== panel.pendingCommitRequestId) return;
       panel.applyConfirmationToken(normalized.confirmationToken);
-    else if (normalized.type === "git_commit_started") panel.setCommitInProgress(true);
-    else if (normalized.type === "git_commit_result") {
+    } else if (normalized.type === "git_commit_started") {
+      if (normalized.requestId !== panel.pendingCommitRequestId) return;
+      panel.setCommitInProgress(true);
+    } else if (normalized.type === "git_commit_result") {
+      if (normalized.requestId !== panel.pendingCommitRequestId) return;
       panel.applyCommitResult(normalized);
       if (normalized.status === "succeeded") panel.refresh();
     } else if (normalized.type === "git_command_ack") panel.refresh();
     else if (normalized.type === "git_command_failed") {
       client.consumeWriteFailure(normalized);
+      panel.historyPanel?.handleFailure(normalized.requestId);
       if (isGitUnavailableError(normalized.error)) {
         panel.setSnapshot(null);
       } else if (
@@ -96,12 +110,17 @@ export function setupGitPanel({
         // itself proves the workspace is not a repository, hide the header
         // pill immediately instead of leaving an entry that cannot work.
         document.getElementById("diff-sidebar-toggle")?.classList.add("hidden");
-      } else {
+      } else if (
+        panel.isStatusFailure(normalized.requestId) ||
+        normalized.requestId === panel.pendingCommitRequestId
+      ) {
         panel.applyCommitFailure(normalized.error);
       }
     }
   };
 
+  let latestCommitDiffRequest = null;
+  let latestCommitDiffDescriptor = null;
   const panel = new GitPanel({
     container,
     fileList,
@@ -113,6 +132,10 @@ export function setupGitPanel({
         ...descriptor,
         id: createDiffTabId(descriptor.comparison, descriptor.pathBytesBase64),
       });
+    },
+    onHistoryDiffRequest: (requestId, descriptor) => {
+      latestCommitDiffRequest = requestId;
+      latestCommitDiffDescriptor = descriptor || null;
     },
   });
 
@@ -159,6 +182,7 @@ export function setupGitPanel({
     },
     destroy() {
       unsubscribe?.();
+      panel.historyPanel?.clearSession();
       panel.destroy();
     },
   };

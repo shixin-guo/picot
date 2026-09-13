@@ -193,6 +193,79 @@ describe("picot config default settings operations", () => {
       unknown: true,
     });
   });
+
+  it("updates scoped models atomically while preserving unrelated settings", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    const settingsPath = join(home, ".pi", "agent", "settings.json");
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({ enabledModels: ["anthropic/old:high", "openai/keep"], unknown: true }),
+      "utf8",
+    );
+
+    await expect(
+      handlePicotConfig(
+        "set_scoped_model",
+        { provider: "anthropic", modelId: "new", enabled: true },
+        {},
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      data: {
+        provider: "anthropic",
+        modelId: "new",
+        enabled: true,
+        // Persisted thinking-level suffixes are stripped from the ids the
+        // composer consumes.
+        modelIds: ["anthropic/old", "openai/keep", "anthropic/new"],
+      },
+    });
+    // The unrelated key and the existing suffix survive untouched.
+    expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toEqual({
+      enabledModels: ["anthropic/old:high", "openai/keep", "anthropic/new"],
+      unknown: true,
+    });
+
+    await expect(handlePicotConfig("list_scoped_models", {}, {})).resolves.toEqual({
+      ok: true,
+      data: { modelIds: ["anthropic/old", "openai/keep", "anthropic/new"] },
+    });
+
+    // Removal matches provider/model even with a persisted suffix.
+    await expect(
+      handlePicotConfig(
+        "set_scoped_model",
+        { provider: "anthropic", modelId: "old", enabled: false },
+        {},
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      data: {
+        provider: "anthropic",
+        modelId: "old",
+        enabled: false,
+        modelIds: ["openai/keep", "anthropic/new"],
+      },
+    });
+
+    // Removing the final entry deletes the key instead of persisting [].
+    await expect(
+      handlePicotConfig(
+        "set_scoped_model",
+        { provider: "openai", modelId: "keep", enabled: false },
+        {},
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      handlePicotConfig(
+        "set_scoped_model",
+        { provider: "anthropic", modelId: "new", enabled: false },
+        {},
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toEqual({ unknown: true });
+  });
 });
 
 describe("picot config skills operations", () => {
@@ -419,6 +492,12 @@ describe("picot config custom provider operations", () => {
     const registry = {
       runtime: { credentials },
       refresh: vi.fn(async () => undefined),
+      // Remaining CatalogRegistry surface is irrelevant to this operation but
+      // must be present for the type.
+      getAll: vi.fn(() => []),
+      getAvailable: vi.fn(async () => []),
+      getProviderAuthStatus: vi.fn(() => ({ configured: false, source: "none", label: "" })),
+      getProviderDisplayName: vi.fn((provider: string) => provider),
     };
 
     const result = await handlePicotConfig(

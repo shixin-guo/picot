@@ -31,6 +31,15 @@ export class GitClient {
   diff(snapshotId, group, pathBytesBase64, comparison) {
     return this.command({ type: "diff", snapshotId, group, pathBytesBase64, comparison });
   }
+  log(limit = 50, before = null) {
+    return this.command({ type: "log", limit, before });
+  }
+  logDetail(oid) {
+    return this.command({ type: "log_detail", oid });
+  }
+  commitDiff(commitOid, pathBytesBase64) {
+    return this.command({ type: "commit_diff", commitOid, pathBytesBase64 });
+  }
   write(operation, snapshotId, entries) {
     const requestId = this.command({ type: operation, snapshotId, entries });
     if (requestId) this.pendingWrites.add(requestId);

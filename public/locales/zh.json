@@ -72,12 +72,25 @@
     "comparison": {
       "staged": "已暂存",
       "changes": "修改",
-      "untracked": "未跟踪"
+      "untracked": "未跟踪",
+      "commit": "提交"
     },
     "toggleChanges": "切换 Git 变更",
     "closeChanges": "关闭 Git 变更",
     "changesWithBranch": "Git 变更 — {branch}",
-    "changesHeading": "变更"
+    "changesHeading": "变更",
+    "fallback": {
+      "binary": "该文件为二进制文件，无法显示",
+      "copy": "该文件在此提交中仅被复制",
+      "rename": "该文件在此提交中仅被重命名"
+    },
+    "copyHash": "复制哈希",
+    "history": "历史",
+    "historyEmpty": "暂无提交历史",
+    "historySelectHint": "选择一个提交查看详情",
+    "messageTruncated": "提交信息已截断",
+    "filesTruncated": "部分变更文件已被省略",
+    "justNow": "刚刚"
   },
   "usage": {
     "contextTokens": "上下文：{used}k / {limit}k 令牌",
@@ -117,7 +130,11 @@
     "searchPlaceholder": "搜索模型…",
     "emptyTitle": "无可用模型",
     "emptyHelp": "未配置 API 密钥。请在设置 → 模型 中设置密钥。",
-    "openSettings": "打开设置"
+    "openSettings": "打开设置",
+    "scoped": "常用模型",
+    "allEnabled": "其他已启用模型",
+    "addScoped": "加入常用模型",
+    "removeScoped": "移出常用模型"
   },
   "queue": {
     "queued": "排队中",
@@ -860,7 +877,46 @@
     "installedHelp": "管理为此安装配置的扩展包：启用、禁用、更新或移除。",
     "copyConfigPath": "复制路径",
     "configPathCopied": "已复制",
-    "configPathCopyFailed": "复制失败"
+    "configPathCopyFailed": "复制失败",
+    "theme": "主题",
+    "chat": {
+      "title": "聊天",
+      "fontSize": "字体大小",
+      "fontSizeDescription": "聊天消息的文字大小。"
+    },
+    "preview": {
+      "title": "文件预览",
+      "theme": "预览主题",
+      "themeDescription": "跟随 Picot 主题，或为代码与 Markdown 预览强制浅色 / 深色。",
+      "themeSystem": "跟随系统",
+      "themeLight": "浅色",
+      "themeDark": "深色",
+      "fontSize": "字体大小",
+      "fontSizeDescription": "代码编辑器和 Markdown 预览的文字大小。"
+    },
+    "terminal": {
+      "title": "终端",
+      "theme": "终端主题",
+      "themeDescription": "跟随 Picot 主题，或强制浅色 / 深色。",
+      "themeSystem": "跟随系统",
+      "themeLight": "浅色",
+      "themeDark": "深色",
+      "fontSize": "字体大小",
+      "fontSizeDescription": "终端文字大小。",
+      "scrollback": "回滚行数",
+      "scrollbackDescription": "终端保留的历史行数。",
+      "smoothScroll": "平滑滚动时长",
+      "smoothScrollDescription": "动画时长（毫秒）；0 表示禁用。",
+      "webgl": "WebGL 渲染器",
+      "webglDescription": "使用 GPU 渲染终端。若文字模糊请关闭。"
+    },
+    "fontLevel": {
+      "small": "小",
+      "normal": "标准",
+      "medium": "中",
+      "large": "大",
+      "xlarge": "特大"
+    }
   },
   "cost": {
     "documentTitle": "Picot - 使用量",

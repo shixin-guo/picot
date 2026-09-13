@@ -20,6 +20,17 @@ beforeEach(async () => {
 });
 
 describe("git diff renderer", () => {
+  it("localizes rename, copy, and binary fallback reasons", () => {
+    const container = document.createElement("div");
+    const renderer = createGitDiffRenderer({
+      patch: "raw",
+      fallbackReason: "rename",
+      displayPath: "new.txt",
+    });
+    renderer.mount(container);
+    expect(container.textContent).toContain(enMessages.git.fallback.rename);
+  });
+
   it("renders patch lines with fixed gutters as text", () => {
     const container = document.createElement("div");
     const renderer = createGitDiffRenderer({ patch: "@@ -1 +1 @@\n-old\n+new" });

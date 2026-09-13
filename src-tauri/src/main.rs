@@ -497,6 +497,26 @@ fn open_fresh_session_for_focused_workspace(app: &AppHandle) -> Result<(), Strin
     open_fresh_session_at_path(app, Some(&focused_window), &cwd)
 }
 
+// With a native menu bar installed, macOS wires WKWebView's text-input
+// context fully — including the "Press and Hold" accent picker, which
+// swallows key auto-repeat and pops the diacritic popover (hold "u" → ü…).
+// Terminal-style repeat requires the picker off; the flag lives in this
+// app's own defaults domain, so the change is scoped to Picot only. Must run
+// before the first webview creates its NSTextInputContext.
+#[cfg(target_os = "macos")]
+fn set_press_and_hold_enabled(setter: impl FnOnce(bool)) {
+    setter(false);
+}
+
+#[cfg(target_os = "macos")]
+fn disable_press_and_hold_accents() {
+    use objc2_foundation::{NSString, NSUserDefaults};
+    set_press_and_hold_enabled(|enabled| {
+        let key = NSString::from_str("ApplePressAndHoldEnabled");
+        NSUserDefaults::standardUserDefaults().setBool_forKey(enabled, &key);
+    });
+}
+
 // Native menus belong in the macOS system menu bar. On Windows/Linux, Tauri
 // draws the same items inside the window as File/Edit/Window/Help, which we
 // do not want. New Session (Ctrl+N) is handled in the frontend.
@@ -871,6 +891,7 @@ fn setup_native_runtime(app: &AppHandle, static_dir: PathBuf) -> Result<(), Stri
             remote_auth,
             std::collections::HashMap::from([(target.workspace_id.clone(), PathBuf::from(&cwd))]),
             Some(app.clone()),
+            Some(Arc::clone(&metadata)),
         )
         .await?;
         runtimes.spawn(target.clone(), launch)?;
@@ -908,6 +929,9 @@ fn main() {
     if let Err(error) = fix_path_env::fix_all_vars() {
         eprintln!("[picot] failed to sync login-shell environment: {error}");
     }
+
+    #[cfg(target_os = "macos")]
+    disable_press_and_hold_accents();
 
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
@@ -1029,7 +1053,7 @@ fn main() {
 mod tests {
     use super::{
         choose_latest_existing_boot_target, resolve_static_dir, select_fresh_startup_target,
-        session_dir_name,
+        session_dir_name, set_press_and_hold_enabled,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1041,6 +1065,13 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("picot-{label}-{suffix}"))
+    }
+
+    #[test]
+    fn press_and_hold_helper_disables_accent_picker() {
+        let mut value = true;
+        set_press_and_hold_enabled(|enabled| value = enabled);
+        assert!(!value);
     }
 
     #[test]

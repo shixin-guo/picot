@@ -47,6 +47,40 @@
         document.documentElement.dataset.theme = savedTheme;
       })();
     </script>
+    <script id="appearance-bootstrap">
+      // Resolve appearance font sizes and the forced preview theme before the
+      // first paint, from the picot-appearance cookie cache. Must run before
+      // the stylesheet links below so the first paint already carries the
+      // saved sizes. Deliberately dependency-free: inline scripts cannot
+      // import appearance-preferences.js.
+      (() => {
+        const LEVELS = ["small", "normal", "medium", "large", "xlarge"];
+        const CHAT_PX = { small: 14, normal: 16, medium: 18, large: 20, xlarge: 22 };
+        const PREVIEW_PX = { small: 11, normal: 13, medium: 15, large: 17, xlarge: 19 };
+        let saved = null;
+        try {
+          const prefix = "picot-appearance=";
+          const entry = document.cookie
+            .split("; ")
+            .find((cookie) => cookie.startsWith(prefix));
+          if (entry) saved = JSON.parse(decodeURIComponent(entry.slice(prefix.length)));
+        } catch (_e) {
+          saved = null;
+        }
+        const level = (value) => (LEVELS.includes(value) ? value : "normal");
+        const chat = saved ? level(saved.chatFontSize) : "normal";
+        const preview = saved ? level(saved.previewFontSize) : "normal";
+        document.documentElement.style.setProperty("--chat-font-size", `${CHAT_PX[chat]}px`);
+        document.documentElement.style.setProperty(
+          "--preview-font-size",
+          `${PREVIEW_PX[preview]}px`,
+        );
+        const mode = saved && ["light", "dark"].includes(saved.previewTheme)
+          ? saved.previewTheme
+          : null;
+        if (mode) document.documentElement.dataset.previewTheme = mode;
+      })();
+    </script>
     <link rel="stylesheet" href="style-theme.css" />
     <link rel="stylesheet" href="design-system.css" />
     <link rel="stylesheet" href="style.css" />
@@ -1568,6 +1602,13 @@
         </button>
         <button
           class="settings-nav-item"
+          data-settings-tab="appearance"
+          data-i18n="settings.appearance"
+        >
+          Appearance
+        </button>
+        <button
+          class="settings-nav-item"
           data-settings-tab="extensions"
           data-i18n="migrated.index.text.extensions"
         >
@@ -1639,11 +1680,10 @@
             <div class="settings-section">
               <div
                 class="settings-section-title"
-                data-i18n="settings.appearance"
+                data-i18n="settings.language.title"
               >
-                Appearance
+                Language
               </div>
-              <div class="theme-grid" id="theme-grid"></div>
               <div class="settings-row" id="setting-language">
                 <span class="settings-label settings-label-stack">
                   <span
@@ -1882,6 +1922,444 @@
                   role="switch"
                   aria-label="Receive beta updates"
                   data-i18n-aria-label="migrated.index.ariaLabel.receiveBetaUpdates"
+                  aria-checked="false"
+                ></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-tab" data-settings-panel="appearance">
+          <div class="settings-header">
+            <h3 data-i18n="settings.appearance">Appearance</h3>
+          </div>
+          <div class="settings-body">
+            <div class="settings-section">
+              <div class="settings-section-title" data-i18n="settings.theme">
+                Theme
+              </div>
+              <div class="theme-grid" id="theme-grid"></div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-section-title" data-i18n="settings.chat.title">
+                Chat
+              </div>
+              <div class="settings-row" id="setting-chat-font-size">
+                <span class="settings-label settings-label-stack">
+                  <span
+                    class="settings-label-main"
+                    data-i18n="settings.chat.fontSize"
+                    >Font size</span
+                  >
+                  <span
+                    class="settings-label-sub"
+                    data-i18n="settings.chat.fontSizeDescription"
+                    >Text size for chat messages.</span
+                  >
+                </span>
+                <div
+                  class="thinking-effort"
+                  id="settings-chat-font-size"
+                  role="radiogroup"
+                  aria-label="Font size"
+                  data-i18n-aria-label="settings.chat.fontSize"
+                >
+                  <div class="thinking-effort-ends">
+                    <span data-i18n="settings.fontLevel.small">Small</span>
+                    <span
+                      class="thinking-effort-name"
+                      id="settings-chat-font-size-name"
+                      data-i18n="settings.fontLevel.normal"
+                      >Normal</span
+                    >
+                    <span data-i18n="settings.fontLevel.xlarge">Extra large</span>
+                  </div>
+                  <div
+                    class="thinking-effort-track"
+                    id="settings-chat-font-size-steps"
+                  >
+                    <span
+                      class="thinking-effort-thumb"
+                      id="settings-chat-font-size-marker"
+                      aria-hidden="true"
+                    ></span>
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="small"
+                      name="settings-chat-font-size-level"
+                      value="small"
+                      aria-label="small"
+                      data-i18n-aria-label="settings.fontLevel.small"
+                      title="small"
+                      data-i18n-title="settings.fontLevel.small"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="normal"
+                      name="settings-chat-font-size-level"
+                      value="normal"
+                      checked
+                      aria-label="normal"
+                      data-i18n-aria-label="settings.fontLevel.normal"
+                      title="normal"
+                      data-i18n-title="settings.fontLevel.normal"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="medium"
+                      name="settings-chat-font-size-level"
+                      value="medium"
+                      aria-label="medium"
+                      data-i18n-aria-label="settings.fontLevel.medium"
+                      title="medium"
+                      data-i18n-title="settings.fontLevel.medium"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="large"
+                      name="settings-chat-font-size-level"
+                      value="large"
+                      aria-label="large"
+                      data-i18n-aria-label="settings.fontLevel.large"
+                      title="large"
+                      data-i18n-title="settings.fontLevel.large"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="xlarge"
+                      name="settings-chat-font-size-level"
+                      value="xlarge"
+                      aria-label="xlarge"
+                      data-i18n-aria-label="settings.fontLevel.xlarge"
+                      title="xlarge"
+                      data-i18n-title="settings.fontLevel.xlarge"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-section-title" data-i18n="settings.preview.title">
+                File preview
+              </div>
+              <div class="settings-row" id="setting-preview-theme">
+                <span class="settings-label settings-label-stack">
+                  <span
+                    class="settings-label-main"
+                    data-i18n="settings.preview.theme"
+                    >Preview theme</span
+                  >
+                  <span
+                    class="settings-label-sub"
+                    data-i18n="settings.preview.themeDescription"
+                    >Follow the Picot theme, or force light or dark for code
+                    and markdown previews.</span
+                  >
+                </span>
+                <select
+                  class="ui-select settings-preview-theme-select"
+                  id="settings-preview-theme-select"
+                  aria-label="Preview theme"
+                  data-i18n-aria-label="settings.preview.theme"
+                ></select>
+              </div>
+              <div class="settings-row" id="setting-preview-font-size">
+                <span class="settings-label settings-label-stack">
+                  <span
+                    class="settings-label-main"
+                    data-i18n="settings.preview.fontSize"
+                    >Font size</span
+                  >
+                  <span
+                    class="settings-label-sub"
+                    data-i18n="settings.preview.fontSizeDescription"
+                    >Text size for code editors and markdown previews.</span
+                  >
+                </span>
+                <div
+                  class="thinking-effort"
+                  id="settings-preview-font-size"
+                  role="radiogroup"
+                  aria-label="Font size"
+                  data-i18n-aria-label="settings.preview.fontSize"
+                >
+                  <div class="thinking-effort-ends">
+                    <span data-i18n="settings.fontLevel.small">Small</span>
+                    <span
+                      class="thinking-effort-name"
+                      id="settings-preview-font-size-name"
+                      data-i18n="settings.fontLevel.normal"
+                      >Normal</span
+                    >
+                    <span data-i18n="settings.fontLevel.xlarge">Extra large</span>
+                  </div>
+                  <div
+                    class="thinking-effort-track"
+                    id="settings-preview-font-size-steps"
+                  >
+                    <span
+                      class="thinking-effort-thumb"
+                      id="settings-preview-font-size-marker"
+                      aria-hidden="true"
+                    ></span>
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="small"
+                      name="settings-preview-font-size-level"
+                      value="small"
+                      aria-label="small"
+                      data-i18n-aria-label="settings.fontLevel.small"
+                      title="small"
+                      data-i18n-title="settings.fontLevel.small"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="normal"
+                      name="settings-preview-font-size-level"
+                      value="normal"
+                      checked
+                      aria-label="normal"
+                      data-i18n-aria-label="settings.fontLevel.normal"
+                      title="normal"
+                      data-i18n-title="settings.fontLevel.normal"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="medium"
+                      name="settings-preview-font-size-level"
+                      value="medium"
+                      aria-label="medium"
+                      data-i18n-aria-label="settings.fontLevel.medium"
+                      title="medium"
+                      data-i18n-title="settings.fontLevel.medium"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="large"
+                      name="settings-preview-font-size-level"
+                      value="large"
+                      aria-label="large"
+                      data-i18n-aria-label="settings.fontLevel.large"
+                      title="large"
+                      data-i18n-title="settings.fontLevel.large"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="xlarge"
+                      name="settings-preview-font-size-level"
+                      value="xlarge"
+                      aria-label="xlarge"
+                      data-i18n-aria-label="settings.fontLevel.xlarge"
+                      title="xlarge"
+                      data-i18n-title="settings.fontLevel.xlarge"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-section-title" data-i18n="settings.terminal.title">
+                Terminal
+              </div>
+              <div class="settings-row" id="setting-terminal-theme">
+                <span class="settings-label settings-label-stack">
+                  <span
+                    class="settings-label-main"
+                    data-i18n="settings.terminal.theme"
+                    >Terminal theme</span
+                  >
+                  <span
+                    class="settings-label-sub"
+                    data-i18n="settings.terminal.themeDescription"
+                    >Follow the Picot theme, or force light or dark.</span
+                  >
+                </span>
+                <select
+                  class="ui-select settings-terminal-theme-select"
+                  id="settings-terminal-theme-select"
+                  aria-label="Terminal theme"
+                  data-i18n-aria-label="settings.terminal.theme"
+                ></select>
+              </div>
+              <div class="settings-row" id="setting-terminal-font-size">
+                <span class="settings-label settings-label-stack">
+                  <span
+                    class="settings-label-main"
+                    data-i18n="settings.terminal.fontSize"
+                    >Font size</span
+                  >
+                  <span
+                    class="settings-label-sub"
+                    data-i18n="settings.terminal.fontSizeDescription"
+                    >Terminal text size.</span
+                  >
+                </span>
+                <div
+                  class="thinking-effort"
+                  id="settings-terminal-font-size"
+                  role="radiogroup"
+                  aria-label="Font size"
+                  data-i18n-aria-label="settings.terminal.fontSize"
+                >
+                  <div class="thinking-effort-ends">
+                    <span data-i18n="settings.fontLevel.small">Small</span>
+                    <span
+                      class="thinking-effort-name"
+                      id="settings-terminal-font-size-name"
+                      data-i18n="settings.fontLevel.normal"
+                      >Normal</span
+                    >
+                    <span data-i18n="settings.fontLevel.xlarge">Extra large</span>
+                  </div>
+                  <div
+                    class="thinking-effort-track"
+                    id="settings-terminal-font-size-steps"
+                  >
+                    <span
+                      class="thinking-effort-thumb"
+                      id="settings-terminal-font-size-marker"
+                      aria-hidden="true"
+                    ></span>
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="small"
+                      name="settings-terminal-font-size-level"
+                      value="small"
+                      aria-label="small"
+                      data-i18n-aria-label="settings.fontLevel.small"
+                      title="small"
+                      data-i18n-title="settings.fontLevel.small"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="normal"
+                      name="settings-terminal-font-size-level"
+                      value="normal"
+                      checked
+                      aria-label="normal"
+                      data-i18n-aria-label="settings.fontLevel.normal"
+                      title="normal"
+                      data-i18n-title="settings.fontLevel.normal"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="medium"
+                      name="settings-terminal-font-size-level"
+                      value="medium"
+                      aria-label="medium"
+                      data-i18n-aria-label="settings.fontLevel.medium"
+                      title="medium"
+                      data-i18n-title="settings.fontLevel.medium"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="large"
+                      name="settings-terminal-font-size-level"
+                      value="large"
+                      aria-label="large"
+                      data-i18n-aria-label="settings.fontLevel.large"
+                      title="large"
+                      data-i18n-title="settings.fontLevel.large"
+                    />
+                    <input
+                      type="radio"
+                      class="thinking-effort-dot"
+                      data-level="xlarge"
+                      name="settings-terminal-font-size-level"
+                      value="xlarge"
+                      aria-label="xlarge"
+                      data-i18n-aria-label="settings.fontLevel.xlarge"
+                      title="xlarge"
+                      data-i18n-title="settings.fontLevel.xlarge"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="settings-row" id="setting-terminal-scrollback">
+                <span class="settings-label settings-label-stack">
+                  <span
+                    class="settings-label-main"
+                    data-i18n="settings.terminal.scrollback"
+                    >Scrollback</span
+                  >
+                  <span
+                    class="settings-label-sub"
+                    data-i18n="settings.terminal.scrollbackDescription"
+                    >Number of terminal history lines to retain.</span
+                  >
+                </span>
+                <input
+                  class="ui-input settings-terminal-number"
+                  id="settings-terminal-scrollback-input"
+                  type="number"
+                  min="100"
+                  max="50000"
+                  step="100"
+                  inputmode="numeric"
+                  aria-label="Scrollback lines"
+                  data-i18n-aria-label="settings.terminal.scrollback"
+                />
+              </div>
+              <div class="settings-row" id="setting-terminal-smooth-scroll">
+                <span class="settings-label settings-label-stack">
+                  <span
+                    class="settings-label-main"
+                    data-i18n="settings.terminal.smoothScroll"
+                    >Smooth scroll duration</span
+                  >
+                  <span
+                    class="settings-label-sub"
+                    data-i18n="settings.terminal.smoothScrollDescription"
+                    >Animation duration in milliseconds; 0 disables it.</span
+                  >
+                </span>
+                <input
+                  class="ui-input settings-terminal-number"
+                  id="settings-terminal-smooth-scroll-input"
+                  type="number"
+                  min="0"
+                  max="1000"
+                  step="10"
+                  inputmode="numeric"
+                  aria-label="Smooth scroll duration"
+                  data-i18n-aria-label="settings.terminal.smoothScroll"
+                />
+              </div>
+              <div class="settings-row" id="setting-terminal-webgl">
+                <span class="settings-label settings-label-stack">
+                  <span
+                    class="settings-label-main"
+                    data-i18n="settings.terminal.webgl"
+                    >WebGL renderer</span
+                  >
+                  <span
+                    class="settings-label-sub"
+                    data-i18n="settings.terminal.webglDescription"
+                    >Render the terminal on the GPU. Disable it if text looks
+                    blurry.</span
+                  >
+                </span>
+                <button
+                  type="button"
+                  class="settings-toggle"
+                  id="toggle-terminal-webgl"
+                  role="switch"
+                  aria-label="WebGL renderer"
+                  data-i18n-aria-label="settings.terminal.webgl"
                   aria-checked="false"
                 ></button>
               </div>

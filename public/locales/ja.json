@@ -72,12 +72,25 @@
     "comparison": {
       "staged": "ステージ済み",
       "changes": "変更",
-      "untracked": "未追跡"
+      "untracked": "未追跡",
+      "commit": "コミット"
     },
     "toggleChanges": "Git の変更を切り替え",
     "closeChanges": "Git の変更を閉じる",
     "changesWithBranch": "Git の変更 — {branch}",
-    "changesHeading": "変更"
+    "changesHeading": "変更",
+    "fallback": {
+      "binary": "このファイルはバイナリのため表示できません",
+      "copy": "このファイルはこのコミットでコピーされただけです",
+      "rename": "このファイルはこのコミットでリネームされただけです"
+    },
+    "copyHash": "ハッシュをコピー",
+    "history": "履歴",
+    "historyEmpty": "履歴はまだありません",
+    "historySelectHint": "コミットを選択すると詳細が表示されます",
+    "messageTruncated": "コミットメッセージが切り詰められました",
+    "filesTruncated": "一部の変更ファイルは省略されています",
+    "justNow": "たった今"
   },
   "usage": {
     "contextTokens": "コンテキスト：{used}k / {limit}k トークン",
@@ -117,7 +130,11 @@
     "searchPlaceholder": "モデルを検索…",
     "emptyTitle": "利用可能なモデルがありません",
     "emptyHelp": "APIキーが設定されていません。設定 → モデル でキーを設定してください。",
-    "openSettings": "設定を開く"
+    "openSettings": "設定を開く",
+    "scoped": "スコープ済みモデル",
+    "allEnabled": "有効なモデルすべて",
+    "addScoped": "スコープ済みモデルに追加",
+    "removeScoped": "スコープ済みモデルから削除"
   },
   "queue": {
     "queued": "キュー中",
@@ -860,7 +877,46 @@
     "installedHelp": "このインストールに設定された拡張パッケージを管理します: 有効化、無効化、更新、削除。",
     "copyConfigPath": "パスをコピー",
     "configPathCopied": "コピーしました",
-    "configPathCopyFailed": "コピーに失敗しました"
+    "configPathCopyFailed": "コピーに失敗しました",
+    "theme": "テーマ",
+    "chat": {
+      "title": "チャット",
+      "fontSize": "フォントサイズ",
+      "fontSizeDescription": "チャットメッセージの文字サイズ。"
+    },
+    "preview": {
+      "title": "ファイルプレビュー",
+      "theme": "プレビューテーマ",
+      "themeDescription": "Picot テーマに従うか、コードとマークダウンプレビューのライト/ダークを強制します。",
+      "themeSystem": "システム",
+      "themeLight": "ライト",
+      "themeDark": "ダーク",
+      "fontSize": "フォントサイズ",
+      "fontSizeDescription": "コードエディターとマークダウンプレビューの文字サイズ。"
+    },
+    "terminal": {
+      "title": "ターミナル",
+      "theme": "ターミナルテーマ",
+      "themeDescription": "Picot テーマに従うか、ライト/ダークを強制します。",
+      "themeSystem": "システム",
+      "themeLight": "ライト",
+      "themeDark": "ダーク",
+      "fontSize": "フォントサイズ",
+      "fontSizeDescription": "ターミナルの文字サイズ。",
+      "scrollback": "スクロールバック",
+      "scrollbackDescription": "保持するターミナル履歴の行数。",
+      "smoothScroll": "スムーススクロール時間",
+      "smoothScrollDescription": "アニメーションの時間（ミリ秒）。0 で無効。",
+      "webgl": "WebGL レンダラー",
+      "webglDescription": "ターミナルを GPU で描画します。文字が滲む場合は無効にしてください。"
+    },
+    "fontLevel": {
+      "small": "小",
+      "normal": "標準",
+      "medium": "中",
+      "large": "大",
+      "xlarge": "特大"
+    }
   },
   "cost": {
     "documentTitle": "Picot - 使用量",
