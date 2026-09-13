@@ -610,7 +610,7 @@
     "title": "Picot 无法启动",
     "descriptionPre": "Picot 内置的",
     "descriptionPost": "运行时启动失败。",
-    "help": "这通常意味着安装不完整或已损坏。重新安装 Picot 通常可以解决。重新安装或重启后点击「重试启动」。",
+    "help": "这通常是因为上次打开的项目文件夹已被删除，或 Picot 安装不完整。点击「重试启动」再试一次；如果仍然失败，请重新安装 Picot。",
     "retry": "重试启动",
     "tauriUnavailable": "此窗口中 Tauri 运行时不可用。",
     "starting": "正在启动 Pi 运行时...",

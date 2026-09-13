@@ -610,7 +610,7 @@
     "title": "Picot could not start",
     "descriptionPre": "The embedded",
     "descriptionPost": "runtime that ships with Picot failed to launch.",
-    "help": "This usually means the installation is incomplete or corrupted. Reinstalling Picot normally fixes it. Click Retry startup after reinstalling or rebooting.",
+    "help": "This can happen if the last project folder was deleted, or if the Picot installation is incomplete. Click Retry startup to try again. Reinstall Picot if it keeps failing.",
     "retry": "Retry startup",
     "tauriUnavailable": "Tauri runtime is unavailable in this window.",
     "starting": "Starting Pi runtime...",
