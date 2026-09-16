@@ -6,6 +6,7 @@ import { HostDataGateway } from "../transport/data-gateway.js";
 import { HostRuntimeAdapter, resolveHostWebSocketUrl } from "../transport/runtime-adapter.js";
 import { sessionScopedClientId } from "../utils/random-id.js";
 import { appRoutePath } from "../utils/router.js";
+import { setupRemoteWorkspaceDialog } from "../workspace/remote-workspace-dialog.js";
 import { setupOpenFolderButton } from "../workspace/workspace-actions.js";
 import {
   claimDeviceAccess,
@@ -40,6 +41,13 @@ async function startLauncher() {
   }
 
   setupOpenFolderButton({ onError: showLauncherError });
+  // The launcher has no pi session, so the dialog opens in manual-entry mode
+  // (see remote-workspace-dialog.js) — enough to open a remote project when
+  // there is no local one at all.
+  setupRemoteWorkspaceDialog({
+    buttonEl: document.getElementById("open-remote-btn"),
+    onError: showLauncherError,
+  });
 
   const adapter = new HostRuntimeAdapter({
     url: resolveHostWebSocketUrl(window),

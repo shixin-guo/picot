@@ -1,6 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod acp_launch;
+mod acp_manager;
 mod appimage_env;
+mod child_supervision;
 mod git_pi_runner;
 mod git_service;
 mod host_data;
@@ -17,6 +20,7 @@ mod pi_rpc_bridge;
 mod pi_tls;
 mod pi_web_remote;
 mod remote_auth;
+mod remote_workspace;
 mod runtime_coordinator;
 mod session_ui_profile_store;
 mod settings_store;
@@ -28,6 +32,7 @@ mod terminal_profiles;
 mod terminal_registry;
 mod terminal_state_store;
 mod window_owner;
+mod windows_child;
 
 use host_server::HostServer;
 use metadata_store::MetadataStore;
@@ -37,6 +42,7 @@ use remote_auth::RemoteAuth;
 use runtime_coordinator::RuntimeTarget;
 use serde_json::Value;
 use skill_source_registry::SkillSourceRegistry;
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
@@ -132,6 +138,28 @@ async fn open_folder_as_workspace(
         .to_path_buf();
     open_workspace_at_path(&app, Some(&window), &path, None)?;
     Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// Open a workspace that lives on a remote host. There is no local checkout to
+/// pick, so the anchor directory is created for the user (see
+/// `remote_workspace`), its `sshRemote` binding written, and the window opened
+/// there — read/write/edit/bash then run over SSH from the first message.
+#[tauri::command]
+async fn open_remote_workspace(
+    app: AppHandle,
+    window: WebviewWindow,
+    connection: remote_workspace::RemoteWorkspaceRequest,
+    password: Option<String>,
+) -> Result<String, String> {
+    let root = remote_workspace::remotes_root()?;
+    let anchor = remote_workspace::prepare_remote_anchor(&connection, &root)?;
+    // Deliberately not part of the binding: a password stays in memory and is
+    // injected into the workspace's pi process at spawn (native_pi_manager).
+    if let Some(password) = password.as_deref() {
+        remote_workspace::stash_password(&anchor, password.trim());
+    }
+    open_workspace_at_path(&app, Some(&window), &anchor, None)?;
+    Ok(anchor.to_string_lossy().into_owned())
 }
 
 /// Open a brand-new session in the given workspace (identified by its
@@ -250,6 +278,20 @@ async fn ensure_agent_inbox_session(app: AppHandle) -> Result<(), String> {
         return Ok(());
     }
     let _ = spawn_fresh_runtime(&runtimes, &launcher.launch, &cwd, workspace_id)?;
+    Ok(())
+}
+
+/// Retry native startup from the bootstrap error window after a failed launch.
+/// If startup already succeeded, just close the bootstrap window.
+#[tauri::command]
+fn retry_startup(app: AppHandle, window: WebviewWindow) -> Result<(), String> {
+    if app.try_state::<HostServer>().is_some() {
+        let _ = window.close();
+        return Ok(());
+    }
+    let static_dir = find_static_dir(&app);
+    setup_native_runtime(&app, static_dir)?;
+    let _ = window.close();
     Ok(())
 }
 
@@ -482,6 +524,26 @@ fn open_fresh_session_for_focused_workspace(app: &AppHandle) -> Result<(), Strin
     open_fresh_session_at_path(app, Some(&focused_window), &cwd)
 }
 
+// With a native menu bar installed, macOS wires WKWebView's text-input
+// context fully — including the "Press and Hold" accent picker, which
+// swallows key auto-repeat and pops the diacritic popover (hold "u" → ü…).
+// Terminal-style repeat requires the picker off; the flag lives in this
+// app's own defaults domain, so the change is scoped to Picot only. Must run
+// before the first webview creates its NSTextInputContext.
+#[cfg(target_os = "macos")]
+fn set_press_and_hold_enabled(setter: impl FnOnce(bool)) {
+    setter(false);
+}
+
+#[cfg(target_os = "macos")]
+fn disable_press_and_hold_accents() {
+    use objc2_foundation::{NSString, NSUserDefaults};
+    set_press_and_hold_enabled(|enabled| {
+        let key = NSString::from_str("ApplePressAndHoldEnabled");
+        NSUserDefaults::standardUserDefaults().setBool_forKey(enabled, &key);
+    });
+}
+
 // Native menus belong in the macOS system menu bar. On Windows/Linux, Tauri
 // draws the same items inside the window as File/Edit/Window/Help, which we
 // do not want. New Session (Ctrl+N) is handled in the frontend.
@@ -610,7 +672,7 @@ fn resolve_static_dir(
         .unwrap_or_else(|| PathBuf::from("public"))
 }
 
-fn find_static_dir(app: &tauri::App) -> PathBuf {
+fn find_static_dir(app: &AppHandle) -> PathBuf {
     resolve_static_dir(
         app.path().resource_dir().ok(),
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -773,6 +835,18 @@ fn extract_session_cwd(session_path: &Path) -> Option<String> {
     None
 }
 
+fn choose_latest_existing_boot_target(
+    session_cwds_newest_first: impl IntoIterator<Item = (String, String)>,
+) -> Option<(String, String)> {
+    for (cwd, session_path) in session_cwds_newest_first {
+        if Path::new(&cwd).is_dir() {
+            return Some((cwd, session_path));
+        }
+        log::info!("[picot-native] startup skipped missing workspace {cwd} from {session_path}");
+    }
+    None
+}
+
 fn find_latest_session_boot_target() -> Option<(String, String)> {
     let sessions_root = dirs::home_dir()?.join(".pi/agent/sessions");
     if !sessions_root.exists() {
@@ -783,16 +857,19 @@ fn find_latest_session_boot_target() -> Option<(String, String)> {
         return None;
     }
 
-    let latest = list_session_files(&sessions_root)
+    let mut ranked: Vec<(std::time::SystemTime, PathBuf)> = list_session_files(&sessions_root)
         .into_iter()
         .filter_map(|path| {
             let mtime = fs::metadata(&path).ok()?.modified().ok()?;
             Some((mtime, path))
         })
-        .max_by_key(|(mtime, _)| *mtime)?;
-    let session_path = latest.1;
-    let cwd = extract_session_cwd(&session_path)?;
-    Some((cwd, session_path.to_string_lossy().to_string()))
+        .collect();
+    ranked.sort_by_key(|(mtime, _)| Reverse(*mtime));
+    let candidates = ranked.into_iter().filter_map(|(_, session_path)| {
+        let cwd = extract_session_cwd(&session_path)?;
+        Some((cwd, session_path.to_string_lossy().into_owned()))
+    });
+    choose_latest_existing_boot_target(candidates)
 }
 
 fn select_fresh_startup_target(
@@ -800,12 +877,14 @@ fn select_fresh_startup_target(
     latest_session: Option<(String, String)>,
 ) -> (String, Option<String>) {
     let cwd = latest_session
-        .map(|(session_cwd, _session_path)| session_cwd)
+        .and_then(|(session_cwd, _session_path)| {
+            Path::new(&session_cwd).is_dir().then_some(session_cwd)
+        })
         .unwrap_or(home_cwd);
     (cwd, None)
 }
 
-fn setup_native_runtime(app: &mut tauri::App, static_dir: PathBuf) -> Result<(), String> {
+fn setup_native_runtime(app: &AppHandle, static_dir: PathBuf) -> Result<(), String> {
     let home_cwd = dirs::home_dir()
         .unwrap_or_default()
         .to_string_lossy()
@@ -838,13 +917,14 @@ fn setup_native_runtime(app: &mut tauri::App, static_dir: PathBuf) -> Result<(),
             runtimes.clone(),
             remote_auth,
             std::collections::HashMap::from([(target.workspace_id.clone(), PathBuf::from(&cwd))]),
-            Some(app.handle().clone()),
+            Some(app.clone()),
+            Some(Arc::clone(&metadata)),
         )
         .await?;
         runtimes.spawn(target.clone(), launch)?;
         Ok::<HostServer, String>(host)
     })?;
-    if let Err(error) = open_native_workspace_window(app.handle(), host.origin(), &target) {
+    if let Err(error) = open_native_workspace_window(app, host.origin(), &target) {
         runtimes.stop_all();
         return Err(error);
     }
@@ -877,6 +957,16 @@ fn main() {
         eprintln!("[picot] failed to sync login-shell environment: {error}");
     }
 
+    // Runtimes left behind by a Picot that was killed outright: no teardown of
+    // ours ran for those, so this is the only chance to collect them.
+    let swept = child_supervision::sweep_orphans();
+    if swept > 0 {
+        log::info!("[picot-native] cleaned up {swept} orphaned pi runtime(s) from a previous run");
+    }
+
+    #[cfg(target_os = "macos")]
+    disable_press_and_hold_accents();
+
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
     let builder = builder.menu(build_app_menu).on_menu_event(|app, event| {
@@ -898,10 +988,12 @@ fn main() {
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             open_folder_as_workspace,
+            open_remote_workspace,
             open_new_session_in_workspace,
             open_session_in_project,
             show_task_completion_notification,
             ensure_agent_inbox_session,
+            retry_startup,
             check_beta_update,
             install_beta_update
         ])
@@ -913,10 +1005,11 @@ fn main() {
                 .build(),
         )
         .setup(|app| {
-            let static_dir = find_static_dir(app);
-            if let Err(error) = setup_native_runtime(app, static_dir) {
+            let handle = app.handle().clone();
+            let static_dir = find_static_dir(&handle);
+            if let Err(error) = setup_native_runtime(&handle, static_dir) {
                 log::error!("[picot-native] startup failed: {error}");
-                if let Err(window_error) = open_bootstrap_window(&app.handle().clone(), &error) {
+                if let Err(window_error) = open_bootstrap_window(&handle, &error) {
                     log::error!(
                         "[picot-native] failed to open bootstrap window after startup error: {window_error}"
                     );
@@ -983,17 +1076,60 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle: &tauri::AppHandle, event| {
+            if let tauri::RunEvent::Ready = event {
+                install_termination_handlers(app_handle.clone());
+            }
             if let tauri::RunEvent::Exit = event {
                 if let Some(manager) = app_handle.try_state::<NativePiManagerState>() {
                     manager.stop_all();
                 }
+                child_supervision::clear_registry();
             }
         });
 }
 
+/// Tear runtimes down on the signals that otherwise skip `RunEvent::Exit`
+/// entirely: Ctrl-C under `tauri dev`, a logout or shutdown (SIGTERM), and a
+/// closing terminal (SIGHUP). Nothing can be done about SIGKILL — that case is
+/// what the startup sweep exists for.
+#[cfg(unix)]
+fn install_termination_handlers(app_handle: tauri::AppHandle) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static INSTALLED: AtomicBool = AtomicBool::new(false);
+    if INSTALLED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    for signal in [
+        tokio::signal::unix::SignalKind::terminate(),
+        tokio::signal::unix::SignalKind::interrupt(),
+        tokio::signal::unix::SignalKind::hangup(),
+    ] {
+        let app_handle = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            let Ok(mut stream) = tokio::signal::unix::signal(signal) else {
+                return;
+            };
+            if stream.recv().await.is_none() {
+                return;
+            }
+            if let Some(manager) = app_handle.try_state::<NativePiManagerState>() {
+                manager.stop_all();
+            }
+            child_supervision::clear_registry();
+            app_handle.exit(0);
+        });
+    }
+}
+
+#[cfg(not(unix))]
+fn install_termination_handlers(_app_handle: tauri::AppHandle) {}
+
 #[cfg(test)]
 mod tests {
-    use super::{resolve_static_dir, select_fresh_startup_target, session_dir_name};
+    use super::{
+        choose_latest_existing_boot_target, resolve_static_dir, select_fresh_startup_target,
+        session_dir_name, set_press_and_hold_enabled,
+    };
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1004,6 +1140,13 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("picot-{label}-{suffix}"))
+    }
+
+    #[test]
+    fn press_and_hold_helper_disables_accent_picker() {
+        let mut value = true;
+        set_press_and_hold_enabled(|enabled| value = enabled);
+        assert!(!value);
     }
 
     #[test]
@@ -1046,13 +1189,51 @@ mod tests {
 
     #[test]
     fn keeps_the_latest_workspace_but_never_resumes_its_session_on_app_start() {
+        let workspace = unique_temp_dir("startup-ws");
+        fs::create_dir_all(&workspace).unwrap();
+        let cwd = workspace.to_string_lossy().into_owned();
+        let selected = select_fresh_startup_target(
+            "/home/user".to_string(),
+            Some((cwd.clone(), "/sessions/old-session.jsonl".to_string())),
+        );
+        assert_eq!(selected, (cwd, None));
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn falls_back_to_home_when_latest_session_workspace_is_gone() {
         let selected = select_fresh_startup_target(
             "/home/user".to_string(),
             Some((
-                "/work/project".to_string(),
+                "/definitely-missing-picot-workspace/does-not-exist".to_string(),
                 "/sessions/old-session.jsonl".to_string(),
             )),
         );
-        assert_eq!(selected, ("/work/project".to_string(), None));
+        assert_eq!(selected, ("/home/user".to_string(), None));
+    }
+
+    #[test]
+    fn skips_deleted_workspace_and_uses_next_existing_session() {
+        let gone = unique_temp_dir("gone-ws");
+        let live = unique_temp_dir("live-ws");
+        fs::create_dir_all(&live).unwrap();
+        let picked = choose_latest_existing_boot_target(vec![
+            (
+                gone.to_string_lossy().into_owned(),
+                "newer-missing.jsonl".to_string(),
+            ),
+            (
+                live.to_string_lossy().into_owned(),
+                "older-live.jsonl".to_string(),
+            ),
+        ]);
+        assert_eq!(
+            picked,
+            Some((
+                live.to_string_lossy().into_owned(),
+                "older-live.jsonl".to_string()
+            ))
+        );
+        let _ = fs::remove_dir_all(live);
     }
 }

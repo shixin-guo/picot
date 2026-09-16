@@ -3,6 +3,7 @@ import {
   requestPermission,
   sendNotification,
 } from "@tauri-apps/plugin-notification";
+import { extractRuntimeEventError } from "../session/assistant-error.js";
 
 const SETTINGS_KEY = "picot-settings-task-notifications";
 
@@ -44,8 +45,9 @@ export function createTaskCompletionNotifications({
   storage = globalThis.localStorage,
   notificationApi = { isPermissionGranted, requestPermission, sendNotification },
   resolveTask = () => null,
-  title = (task) => task?.name || task?.firstMessage || "Task completed",
-  body = () => "Your task has finished.",
+  title = (task, error) =>
+    task?.name || task?.firstMessage || (error ? "Task failed" : "Task completed"),
+  body = (_task, error) => error || "Your task has finished.",
   showNotification = (notification) => notificationApi.sendNotification(notification),
   onError = (error) => console.warn("[Notifications] Failed to show notification:", error),
   logger = console,
@@ -54,7 +56,7 @@ export function createTaskCompletionNotifications({
 
   const enabled = () => storage?.getItem(SETTINGS_KEY) !== "false";
 
-  async function showCompletion(target) {
+  async function showCompletion(target, error = null) {
     const notificationTarget = describeTarget(target);
     if (!enabled()) {
       return;
@@ -69,7 +71,13 @@ export function createTaskCompletionNotifications({
       return;
     }
     const task = resolveTask(target);
-    await showNotification({ title: title(task), body: body(task), target, task });
+    await showNotification({
+      title: title(task, error),
+      body: body(task, error),
+      target,
+      task,
+      error,
+    });
   }
 
   function handleRuntimeFrame(frame) {
@@ -91,7 +99,8 @@ export function createTaskCompletionNotifications({
       logger.warn("[Notifications] completion skipped: no matching agent start", { key });
       return;
     }
-    void showCompletion(frame.target).catch(onError);
+    const error = extractRuntimeEventError(frame.event);
+    void showCompletion(frame.target, error).catch(onError);
   }
 
   return { handleRuntimeFrame };

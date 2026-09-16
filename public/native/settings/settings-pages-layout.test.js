@@ -24,6 +24,37 @@ describe("settings page split", () => {
     expect(document.querySelector('[data-settings-panel="models"]')).not.toBeNull();
   });
 
+  test("owns theme and display controls in a dedicated Appearance panel", () => {
+    const dom = new JSDOM(html, { url: "http://localhost" });
+    const { document } = dom.window;
+
+    const appearanceTab = document.querySelector('[data-settings-tab="appearance"]');
+    expect(appearanceTab).not.toBeNull();
+    expect(appearanceTab.dataset.i18n).toBe("settings.appearance");
+    const general = document.querySelector('[data-settings-panel="general"]');
+    const appearance = document.querySelector('[data-settings-panel="appearance"]');
+    expect(appearance).not.toBeNull();
+    // Theme grid moves out of General; language and Agent rows stay.
+    expect(appearance.querySelector("#theme-grid")).not.toBeNull();
+    expect(general.querySelector("#theme-grid")).toBeNull();
+    expect(general.querySelector("#setting-language")).not.toBeNull();
+    expect(general.querySelector("#toggle-auto-compact")).not.toBeNull();
+    // Chat / preview / terminal display controls live on the Appearance page.
+    expect(appearance.querySelector("#settings-chat-font-size")).not.toBeNull();
+    expect(appearance.querySelector("#settings-preview-theme-select")).not.toBeNull();
+    expect(appearance.querySelector("#settings-preview-font-size")).not.toBeNull();
+    expect(appearance.querySelector("#settings-terminal-theme-select")).not.toBeNull();
+    expect(appearance.querySelector("#settings-terminal-font-size")).not.toBeNull();
+    expect(appearance.querySelector("#settings-terminal-scrollback-input")).not.toBeNull();
+    expect(appearance.querySelector("#settings-terminal-smooth-scroll-input")).not.toBeNull();
+    expect(appearance.querySelector("#toggle-terminal-webgl")).not.toBeNull();
+    // Nav order: Appearance sits right after General.
+    const tabs = [...document.querySelectorAll(".settings-nav-item")].map(
+      (item) => item.dataset.settingsTab,
+    );
+    expect(tabs.indexOf("appearance")).toBe(tabs.indexOf("general") + 1);
+  });
+
   test("splits Configuration and Models panels by ownership", () => {
     const dom = new JSDOM(html, { url: "http://localhost" });
     const { document } = dom.window;

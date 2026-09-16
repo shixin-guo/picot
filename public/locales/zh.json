@@ -52,6 +52,12 @@
     "unstage": "取消暂存",
     "discard": "丢弃修改",
     "aiCommitMessage": "生成 AI 提交说明",
+    "push": "推送",
+    "pushing": "推送中…",
+    "pushFailed": "推送失败。",
+    "pushDetachedHead": "HEAD 处于分离状态，无法推送。请先检出一个分支。",
+    "pushNoRemote": "此仓库未配置远程地址。",
+    "pushBusy": "此工作区正在执行其他 Git 操作，请稍后重试。",
     "commit": "提交",
     "stats": "+{additions} −{deletions} · 已暂存 {staged} · 修改 {changes} · 未跟踪 {untracked}",
     "summary": "{branch} · {upstream} · ↑{ahead} ↓{behind}",
@@ -72,12 +78,25 @@
     "comparison": {
       "staged": "已暂存",
       "changes": "修改",
-      "untracked": "未跟踪"
+      "untracked": "未跟踪",
+      "commit": "提交"
     },
     "toggleChanges": "切换 Git 变更",
     "closeChanges": "关闭 Git 变更",
     "changesWithBranch": "Git 变更 — {branch}",
-    "changesHeading": "变更"
+    "changesHeading": "变更",
+    "fallback": {
+      "binary": "该文件为二进制文件，无法显示",
+      "copy": "该文件在此提交中仅被复制",
+      "rename": "该文件在此提交中仅被重命名"
+    },
+    "copyHash": "复制哈希",
+    "history": "历史",
+    "historyEmpty": "暂无提交历史",
+    "historySelectHint": "选择一个提交查看详情",
+    "messageTruncated": "提交信息已截断",
+    "filesTruncated": "部分变更文件已被省略",
+    "justNow": "刚刚"
   },
   "usage": {
     "contextTokens": "上下文：{used}k / {limit}k 令牌",
@@ -117,7 +136,11 @@
     "searchPlaceholder": "搜索模型…",
     "emptyTitle": "无可用模型",
     "emptyHelp": "未配置 API 密钥。请在设置 → 模型 中设置密钥。",
-    "openSettings": "打开设置"
+    "openSettings": "打开设置",
+    "scoped": "常用模型",
+    "allEnabled": "其他已启用模型",
+    "addScoped": "加入常用模型",
+    "removeScoped": "移出常用模型"
   },
   "queue": {
     "queued": "排队中",
@@ -168,7 +191,9 @@
     "processToolCall": "{count} 次工具调用",
     "processToolCalls": "{count} 次工具调用",
     "providerError": "模型请求失败。",
-    "turnFiles": "本轮修改的文件（{count}）："
+    "turnFiles": "本轮修改的文件（{count}）：",
+    "responseTime": "响应耗时",
+    "subagentUnavailableOverSsh": "ACP 子代理（#claude、#codex 等）在本地运行，无法访问远程（SSH）工作区的文件，因此在此不可用。"
   },
   "tools": {
     "copyOutput": "复制输出",
@@ -481,6 +506,7 @@
     "remoteSessionConnected": "已连接 {machine} · 原生远端会话",
     "newRemoteSession": "在 {path} 新建会话",
     "remoteBadge": "远端",
+    "remoteWorkspace": "远程工作区",
     "archived": "已归档",
     "unavailable": "不可用",
     "showMore": "显示更多",
@@ -612,7 +638,7 @@
     "title": "Picot 无法启动",
     "descriptionPre": "Picot 内置的",
     "descriptionPost": "运行时启动失败。",
-    "help": "这通常意味着安装不完整或已损坏。重新安装 Picot 通常可以解决。重新安装或重启后点击「重试启动」。",
+    "help": "这通常是因为上次打开的项目文件夹已被删除，或 Picot 安装不完整。点击「重试启动」再试一次；如果仍然失败，请重新安装 Picot。",
     "retry": "重试启动",
     "tauriUnavailable": "此窗口中 Tauri 运行时不可用。",
     "starting": "正在启动 Pi 运行时...",
@@ -648,6 +674,7 @@
     "taskNotificationsDescription": "任务完成时显示操作系统通知。",
     "taskCompleteTitle": "任务已完成",
     "taskCompleteMessage": "你的任务已完成。",
+    "taskFailedTitle": "任务失败",
     "piVersion": "Pi 版本",
     "picotVersion": "Picot 版本",
     "checkForUpdates": "检查更新",
@@ -869,7 +896,46 @@
     "installedHelp": "管理为此安装配置的扩展包：启用、禁用、更新或移除。",
     "copyConfigPath": "复制路径",
     "configPathCopied": "已复制",
-    "configPathCopyFailed": "复制失败"
+    "configPathCopyFailed": "复制失败",
+    "theme": "主题",
+    "chat": {
+      "title": "聊天",
+      "fontSize": "字体大小",
+      "fontSizeDescription": "聊天消息的文字大小。"
+    },
+    "preview": {
+      "title": "文件预览",
+      "theme": "预览主题",
+      "themeDescription": "跟随 Picot 主题，或为代码与 Markdown 预览强制浅色 / 深色。",
+      "themeSystem": "跟随系统",
+      "themeLight": "浅色",
+      "themeDark": "深色",
+      "fontSize": "字体大小",
+      "fontSizeDescription": "代码编辑器和 Markdown 预览的文字大小。"
+    },
+    "terminal": {
+      "title": "终端",
+      "theme": "终端主题",
+      "themeDescription": "跟随 Picot 主题，或强制浅色 / 深色。",
+      "themeSystem": "跟随系统",
+      "themeLight": "浅色",
+      "themeDark": "深色",
+      "fontSize": "字体大小",
+      "fontSizeDescription": "终端文字大小。",
+      "scrollback": "回滚行数",
+      "scrollbackDescription": "终端保留的历史行数。",
+      "smoothScroll": "平滑滚动时长",
+      "smoothScrollDescription": "动画时长（毫秒）；0 表示禁用。",
+      "webgl": "WebGL 渲染器",
+      "webglDescription": "使用 GPU 渲染终端。若文字模糊请关闭。"
+    },
+    "fontLevel": {
+      "small": "小",
+      "normal": "标准",
+      "medium": "中",
+      "large": "大",
+      "xlarge": "特大"
+    }
   },
   "cost": {
     "documentTitle": "Picot - 使用量",
@@ -1203,6 +1269,21 @@
     "loadingProjects": "正在加载项目…",
     "projectRunning": "{name} · 运行中"
   },
+  "sshRemote": {
+    "hostLabel": "主机",
+    "hostPlaceholder": "192.168.1.50 或 my-server.example.com",
+    "portLabel": "端口",
+    "portPlaceholder": "22",
+    "userLabel": "用户名",
+    "userPlaceholder": "ubuntu",
+    "identityFileLabel": "密钥文件",
+    "identityFilePlaceholder": "~/.ssh/id_ed25519",
+    "testConnection": "测试连接",
+    "testing": "正在测试连接…",
+    "testOk": "已连接 — 远程路径:{path}",
+    "testFailed": "连接失败:{message}",
+    "hostRequired": "主机不能为空。"
+  },
   "remoteApproval": {
     "title": "远程访问请求",
     "unknownDevice": "未知浏览器",
@@ -1232,5 +1313,41 @@
     "roleAssistant": "助手",
     "toggleAria": "切换会话信息面板",
     "closeAria": "关闭会话信息面板"
+  },
+  "remoteWorkspace": {
+    "openRemote": "连接远程主机",
+    "dialogTitle": "连接远程主机",
+    "dialogHelp": "Picot 直接在项目所在的位置打开它。读取、写入、编辑和 bash 都通过 SSH 在远程主机上执行，本地不需要副本。",
+    "savedHost": "已保存的主机",
+    "enterManually": "— 输入新主机 —",
+    "fromSshConfig": "来自 ~/.ssh/config",
+    "saveAs": "将此主机保存为",
+    "saveAsPlaceholder": "gpu-box（留空则不保存）",
+    "password": "密码",
+    "passwordHelp": "仅在该主机没有配置密钥时需要。密码只在内存中保留用于本次连接，不会写入磁盘。",
+    "remotePath": "远程项目路径",
+    "remotePathPlaceholder": "/home/ubuntu/my-project",
+    "browse": "浏览…",
+    "parentDirectory": "↑ 上一级目录",
+    "listing": "正在列出远程目录…",
+    "connecting": "正在打开远程工作区…",
+    "connect": "连接",
+    "cancel": "取消",
+    "remotePathRequired": "需要填写远程绝对路径。",
+    "needsSession": "已保存主机、连接测试和目录浏览需要已打开的工作区。你仍然可以直接填写主机和路径并连接。",
+    "reauthRequired": "此连接需要重新输入密码——此前的登录凭据已不可用。请在下方重新连接。",
+    "channelUnavailable": "配置通道不可用",
+    "indicatorTitle": "正在 {target} 上运行 — 点击可更改",
+    "indicatorFallbackTitle": "正在远程主机上运行"
+  },
+  "sshHosts": {
+    "edit": "编辑",
+    "delete": "删除",
+    "confirmDelete": "确认删除",
+    "deleteWarning": "删除 {alias}？绑定到它的项目将失去连接信息。",
+    "deleted": "已删除 {alias}。",
+    "aliasRequired": "请填写名称。",
+    "save": "保存主机",
+    "saved": "主机已保存。"
   }
 }

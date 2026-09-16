@@ -105,8 +105,9 @@
   align-self: flex-start;
 }
 
-/* Timestamp + cost share one styling: same font size, colour, tabular numerals. */
+/* Timestamp + duration + cost share one styling: same font size, colour, tabular numerals. */
 .message-time,
+.message-duration,
 .message-usage {
   font-size: var(--font-size-sm);
   color: var(--text-placeholder);
@@ -127,7 +128,7 @@
   border-radius: var(--radius-lg);
   word-wrap: break-word;
   overflow-wrap: anywhere;
-  font-size: var(--font-size-md);
+  font-size: var(--chat-font-size, var(--font-size-md));
   line-height: 1.6;
 }
 
@@ -136,8 +137,10 @@
   background: var(--user-bubble);
   color: var(--user-bubble-text);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  /* design-token-ignore: user bubble uses a bespoke 12px radius between --radius-md and --radius */
+  border-radius: 12px;
   border-bottom-right-radius: 6px;
+  padding: var(--space-1) var(--space-2);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   box-shadow: var(--shadow-sm);

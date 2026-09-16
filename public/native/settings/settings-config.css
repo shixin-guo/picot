@@ -187,12 +187,13 @@
 }
 
 .models-provider-add {
-  border: 1px dashed var(--border);
   flex-shrink: 0;
   justify-content: center;
   padding: var(--space-2);
   margin-top: var(--space-2);
   font-size: var(--font-size-sm);
+  border: 1px dashed var(--border);
+  border-color: var(--accent);
 }
 
 .models-provider-add:hover {
@@ -288,6 +289,16 @@
 .models-config-toolbar {
   margin-top: 0;
   margin-bottom: var(--space-2);
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.models-config-toolbar .models-config-source-button {
+  margin-right: auto;
+}
+
+.models-config-toolbar-status:not(.hidden) {
+  margin-right: var(--space-1);
 }
 
 .models-config-models-section {

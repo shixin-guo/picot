@@ -74,6 +74,9 @@ afterEach(() => {
   delete globalThis.ResizeObserver;
 });
 
+// Booting the whole native entry is inherently slow (seconds, not
+// milliseconds); the 5s default timeout is marginal once the suite runs it
+// alongside everything else.
 test("native entry initializes i18n before rendering welcome and settings language", async () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
@@ -90,4 +93,4 @@ test("native entry initializes i18n before rendering welcome and settings langua
     document.querySelectorAll("#settings-language-select option"),
   ).map((option) => option.value);
   expect(languageOptions).toEqual(["system", "en", "zh", "ja", "es"]);
-});
+}, 20000);

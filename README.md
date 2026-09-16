@@ -23,6 +23,7 @@ Picot ships a known-good build of the `pi` runtime **inside the .app bundle**, s
 - [Features](#features)
 - [For Developers](#for-developers)
 - [Upstream](#upstream)
+- [Contributors](#contributors)
 - [License](#license)
 
 ---
@@ -41,9 +42,15 @@ Windows (PowerShell):
 irm https://raw.githubusercontent.com/shixin-guo/picot/main/scripts/install.ps1 | iex
 ```
 
-The Linux installer picks a `.deb` or `.rpm` for your package manager. On distros with
-neither — or to install per-user without `sudo` — add `--appimage` to get the AppImage in
-`~/.local/bin`:
+The Linux installer picks a `.deb` or `.rpm` for your package manager — **prefer these**.
+They link against your system's own WebKitGTK, so they track your distro and work on
+current releases like Fedora 43.
+
+The AppImage is a fallback for distros with neither `apt` nor `dnf`/`rpm`, or for a
+per-user install without `sudo`. It **bundles** WebKitGTK, so on a bleeding-edge distro it
+can crash on startup (a `SIGSEGV` inside the bundled JavaScriptCore) when the bundled
+engine is older than the host's system libraries. If a `.deb`/`.rpm` exists for your
+system, use it instead.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/shixin-guo/picot/main/scripts/install.sh | bash -s -- --appimage
@@ -360,6 +367,18 @@ Picot is a maintained fork of **Tau**, adapted for Pi-first, local development w
 - **Embedded pi runtime** — no separate global install; Picot ships its own binary
 - **Protocol v2 host bridge** — typed routing for runtime, data, auth, and extension UI frames
 - **Host data plane** — Rust serves session and workspace data directly to the native UI
+
+---
+
+## Contributors
+
+Avatars are generated on the fly from the GitHub API — no list to maintain.
+
+<a href="https://github.com/shixin-guo/picot/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=shixin-guo/picot" alt="Contributors" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
 
 ---
 

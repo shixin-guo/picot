@@ -2,6 +2,7 @@
 // ABOUTME: Renders untrusted repository paths with DOM text nodes and delegates writes to GitClient.
 
 import { createFileTypeIcon } from "./file-type-icons.js";
+import { GitHistoryPanel } from "./git-history-panel.js";
 import { t } from "./i18n.js";
 import { createIcon, setButtonIcon } from "./icons.js";
 import { bindDialogEscape } from "./ui/dialog-escape.js";
@@ -32,9 +33,32 @@ function createToolbarIconButton({ className, icon, label, variant, disabled = f
 const GROUPS = ["staged", "changes", "untracked", "conflicted"];
 
 export class GitPanel {
-  constructor({ container, client, openDiff, onDiffRequest, onStatus, fileList } = {}) {
-    this.container = container;
+  constructor({
+    container,
+    client,
+    openDiff,
+    onDiffRequest,
+    onHistoryDiffRequest,
+    onStatus,
+    fileList,
+  } = {}) {
+    this.outerContainer = container;
     this.client = client;
+    this._subTab = "changes";
+    this.subTabBar = document.createElement("div");
+    this.subTabBar.className = "git-subtab-bar";
+    this.subTabBar.setAttribute("role", "tablist");
+    this.container = document.createElement("div");
+    this.container.className = "git-subtab-pane git-changes-pane";
+    this.historyContainer = document.createElement("div");
+    this.historyContainer.className = "git-subtab-pane git-history-pane hidden";
+    this.historyPanel = new GitHistoryPanel({
+      container: this.historyContainer,
+      client,
+      onDiffRequest: onHistoryDiffRequest,
+    });
+    this.outerContainer.replaceChildren(this.subTabBar, this.container, this.historyContainer);
+    this._renderSubTabBar();
     this.openDiff = openDiff;
     this.onDiffRequest = onDiffRequest;
     this.onStatus = onStatus;
@@ -52,11 +76,15 @@ export class GitPanel {
     this.commitInProgress = false;
     this.pendingCommitRequestId = null;
     this.pendingAiRequestId = null;
+    this.pushInProgress = false;
+    this.pushError = null;
+    this.pendingPushRequestId = null;
   }
   setSnapshot(snapshot) {
     this.snapshot = snapshot;
     this.notGitRepo = false;
     this.pendingStatusRequestId = null;
+    this.historyPanel?.setUnavailable(false);
     const valid = new Set(
       (snapshot?.entries || []).flatMap((entry) =>
         this.groupsFor(entry).map(
@@ -78,7 +106,34 @@ export class GitPanel {
   setNotGitRepo(value = true) {
     this.notGitRepo = value;
     this.pendingStatusRequestId = null;
+    this.historyPanel?.setUnavailable(value);
     this.render();
+  }
+  _renderSubTabBar() {
+    for (const name of ["changes", "history"]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "git-subtab";
+      button.dataset.subtab = name;
+      button.setAttribute("role", "tab");
+      button.setAttribute("aria-selected", String(name === this._subTab));
+      button.textContent = name === "changes" ? t("git.comparison.changes") : t("git.history");
+      button.addEventListener("click", () => this.setSubTab(name));
+      this.subTabBar.append(button);
+    }
+  }
+  setSubTab(name) {
+    if (name !== "changes" && name !== "history") return;
+    const wasHistory = this._subTab === "history";
+    this._subTab = name;
+    const isHistory = name === "history";
+    this.container.classList.toggle("hidden", isHistory);
+    this.historyContainer.classList.toggle("hidden", !isHistory);
+    for (const button of this.subTabBar.querySelectorAll(".git-subtab")) {
+      button.setAttribute("aria-selected", String(button.dataset.subtab === name));
+    }
+    this.historyPanel.setActive(isHistory);
+    if (isHistory && !wasHistory) this.historyPanel.refresh();
   }
   /** True only for the failure of the most recent status probe, so stale or
    *  concurrent non-status failures (diff/write/commit) cannot flip the panel
@@ -311,6 +366,37 @@ export class GitPanel {
     this.pendingCommitRequestId = requestId || null;
     return requestId;
   }
+  push() {
+    if (this.pushInProgress) return null;
+    // Clear the previous outcome first so a retry never renders a stale error
+    // next to an in-flight push.
+    this.pushError = null;
+    this.pushInProgress = true;
+    const requestId = this.client?.push();
+    this.pendingPushRequestId = requestId || null;
+    if (!requestId) this.pushInProgress = false;
+    this.render();
+    return requestId;
+  }
+  setPushInProgress(inProgress) {
+    this.pushInProgress = Boolean(inProgress);
+    this.render();
+  }
+  applyPushResult(result) {
+    this.pushInProgress = false;
+    this.pendingPushRequestId = null;
+    this.pushError = result?.status === "succeeded" ? null : this.pushErrorText(result?.error);
+    this.render();
+  }
+  /** Map the backend's stable failure codes onto localized copy, and pass
+   *  git's own stderr through unchanged when there is no code for it. */
+  pushErrorText(error) {
+    if (error === "push_detached_head") return t("git.pushDetachedHead");
+    if (error === "push_no_remote") return t("git.pushNoRemote");
+    if (error === "busy") return t("git.pushBusy");
+    const text = typeof error === "string" ? error.trim() : "";
+    return text || t("git.pushFailed");
+  }
   write(operation, entries = [], contextGroup = null) {
     const snapshotId = this.snapshot?.snapshotId;
     // The caller supplies the group context (the group the user clicked in).
@@ -471,9 +557,28 @@ export class GitPanel {
       binary: snapshot.changeStats?.binaryFileCount || 0,
     });
     details.append(stats);
+    if (this.pushError) {
+      const pushError = document.createElement("p");
+      pushError.className = "git-panel-push-error";
+      pushError.setAttribute("role", "alert");
+      pushError.textContent = this.pushError;
+      details.append(pushError);
+    }
     toolbar.append(details);
     const actions = document.createElement("div");
     actions.className = "git-panel-toolbar-actions";
+    actions.append(
+      createToolbarIconButton({
+        className: "git-panel-push",
+        icon: "arrow-up",
+        label: this.pushInProgress ? t("git.pushing") : t("git.push"),
+        variant: "ui-icon-button--ghost",
+        // Nothing to publish from a detached HEAD, and a push already in
+        // flight holds the workspace write slot.
+        disabled: this.pushInProgress || !snapshot.branch,
+        onClick: () => this.push(),
+      }),
+    );
     actions.append(
       createToolbarIconButton({
         className: "git-panel-commit",

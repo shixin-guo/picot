@@ -259,7 +259,7 @@ export function registerCustomUiBridge(pi: ExtensionAPI, options?: { enabled?: b
 
   pi.registerCommand("picot-custom-ui", {
     description: "Picot internal: deliver input to a custom extension UI panel",
-    handler: (rawArguments, ctx) => {
+    handler: async (rawArguments, ctx) => {
       ensurePatched(ctx);
       let request: { id?: string; data?: string; cancel?: boolean };
       try {

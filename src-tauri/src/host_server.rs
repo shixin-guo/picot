@@ -1,11 +1,14 @@
 #![cfg_attr(not(test), allow(dead_code))]
 
+use crate::acp_launch;
+use crate::acp_manager::AcpAgentManager;
 use crate::host_data::{HostDataError, HostDataPlane, WriteFileResult};
 use crate::host_git;
 use crate::host_router::{ClientKind, HostRouter, RoutedAction, PROTOCOL_VERSION};
 use crate::markitdown_preview::{
     ConversionOutcome, DependencyReason, MarkitdownPreviewService, INPUT_BYTE_CAP,
 };
+use crate::metadata_store::MetadataStore;
 use crate::model_health::{self, ModelTestOutcome, ModelTestRequest};
 use crate::native_pi_manager::NativePiManager;
 use crate::pi_launch::{
@@ -97,6 +100,12 @@ fn fingerprint_static_dir(static_dir: &std::path::Path) -> String {
 struct HostState {
     router: Mutex<HostRouter>,
     runtimes: NativePiManager,
+    // External Agent Client Protocol agents (Claude Code today), spawned as
+    // scoped subagents for a single task via `acp_task_start`. These never own
+    // a session — the Pi `runtimes` backend keeps the conversation — they are
+    // throwaway task runtimes the frontend drives with `acp_prompt` and retires
+    // with `acp_task_stop`.
+    acp: AcpAgentManager,
     auth: Arc<Mutex<RemoteAuth>>,
     session_owners: Mutex<std::collections::HashMap<RuntimeTarget, String>>,
     data: HostDataPlane,
@@ -116,6 +125,9 @@ struct HostState {
     // to restore the composer's model + thinking level when a session is
     // reopened. Optional so the constructor stays infallible in tests.
     session_ui_profiles: Arc<crate::session_ui_profile_store::SessionUiProfileStore>,
+    // Global display preferences (ui.* keys). None in tests and remote-only
+    // setups, where preference operations degrade to a host error.
+    metadata: Option<Arc<Mutex<MetadataStore>>>,
     install_secret: String,
     app_handle: Option<tauri::AppHandle>,
 }
@@ -133,15 +145,21 @@ impl HostServer {
         auth: Arc<Mutex<RemoteAuth>>,
         app_handle: Option<tauri::AppHandle>,
     ) -> Result<Self, String> {
-        Self::start_with_workspaces(static_dir, runtimes, auth, HashMap::new(), app_handle).await
+        Self::start_with_workspaces(static_dir, runtimes, auth, HashMap::new(), app_handle, None)
+            .await
     }
 
+    /// Same as [`Self::start`] but additionally exposes the metadata store to
+    /// authenticated host preference operations (`ui.*` keys). `start` passes
+    /// `None`, so tests keep an infallible constructor.
+    #[allow(clippy::too_many_arguments)]
     pub async fn start_with_workspaces(
         static_dir: PathBuf,
         runtimes: NativePiManager,
         auth: Arc<Mutex<RemoteAuth>>,
         workspace_roots: HashMap<String, PathBuf>,
         app_handle: Option<tauri::AppHandle>,
+        metadata: Option<Arc<Mutex<MetadataStore>>>,
     ) -> Result<Self, String> {
         let mut data = HostDataPlane::new(workspace_roots)
             .map_err(|error| format!("Cannot initialize Host data plane: {error:?}"))?;
@@ -215,6 +233,7 @@ impl HostServer {
         let state = Arc::new(HostState {
             router: Mutex::new(HostRouter::new()),
             runtimes,
+            acp: AcpAgentManager::new(),
             auth,
             session_owners: Mutex::new(std::collections::HashMap::new()),
             data,
@@ -227,9 +246,21 @@ impl HostServer {
             git_events,
             skill_registry,
             session_ui_profiles,
+            metadata,
             install_secret,
             app_handle,
         });
+        // Prewarm the cost-metrics cache in the background: one full scan at
+        // startup parses every file the Usage dashboard can need, so the first
+        // Settings → Usage open answers from cache instead of parsing hundreds
+        // of MB of session jsonl on the request path. Guarded off in test
+        // builds: the suite starts real servers against the user's real
+        // session root, and a background full scan there starves the
+        // timing-sensitive spawn/route tests of CPU.
+        if !cfg!(test) {
+            let data = state.data.clone();
+            std::thread::spawn(move || data.prewarm_cost_metrics());
+        }
         let index = static_dir.join("index.html");
         // Serve this build's JS/CSS/HTML under a version-stamped path
         // (`/v/<version>/...`) and point index.html's `<base>` at it. The
@@ -1125,6 +1156,7 @@ async fn handle_websocket(mut socket: WebSocket, state: Arc<HostState>, loopback
     }
 
     let mut runtime_events = state.runtimes.subscribe();
+    let mut acp_events = state.acp.subscribe();
     let mut terminal_events = state.terminal_events.subscribe();
     let mut git_events = state.git_events.subscribe();
     let mut subscriptions = HashSet::new();
@@ -1262,6 +1294,27 @@ async fn handle_websocket(mut socket: WebSocket, state: Arc<HostState>, loopback
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }
+            event = acp_events.recv() => {
+                match event {
+                    Ok(event) if subscriptions.contains(&event.target) => {
+                        if send_frame(runtime_event_frame(event)).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                        let outgoing = structured_error(
+                            None,
+                            "event_sequence_gap",
+                            "ACP runtime events were missed; switch agents again to resync",
+                        );
+                        if send_frame(outgoing).is_err() {
+                            break;
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
             event = terminal_events.recv() => {
                 match event {
                     Ok((owner, outgoing)) if owner == terminal_owner => {
@@ -1305,7 +1358,7 @@ const RUNTIME_INTERACTIVE_REQUEST_TIMEOUT: Duration = Duration::from_secs(15 * 6
 
 fn runtime_request_timeout(command: &Value) -> Duration {
     match command.get("type").and_then(Value::as_str) {
-        Some("prompt") => RUNTIME_INTERACTIVE_REQUEST_TIMEOUT,
+        Some("prompt") | Some("acp_prompt") => RUNTIME_INTERACTIVE_REQUEST_TIMEOUT,
         _ => RUNTIME_REQUEST_TIMEOUT,
     }
 }
@@ -1481,6 +1534,29 @@ async fn dispatch(
                     "sourcePreservingFork": false,
                 }));
             }
+            if frame.get("type").and_then(Value::as_str) == Some("runtime_rebind_session_request") {
+                let target: RuntimeTarget = serde_json::from_value(
+                    frame
+                        .get("target")
+                        .cloned()
+                        .ok_or(("invalid_target", "Runtime target is required".into()))?,
+                )
+                .map_err(|_| ("invalid_target", "Runtime target is invalid".into()))?;
+                let new_session_id = frame
+                    .get("newSessionId")
+                    .and_then(Value::as_str)
+                    .ok_or(("invalid_session_id", "newSessionId is required".into()))?;
+                let rebound = state
+                    .runtimes
+                    .rebind_session_id(&target, new_session_id)
+                    .map_err(|message| ("session_rebind_failed", message))?;
+                return Ok(json!({
+                    "type": "runtime_response",
+                    "requestId": request_id,
+                    "acceptance": "completed",
+                    "response": { "success": true, "data": { "target": rebound } },
+                }));
+            }
             if frame.get("type").and_then(Value::as_str) != Some("runtime_request") {
                 return Err((
                     "unsupported_runtime_request",
@@ -1498,6 +1574,32 @@ async fn dispatch(
                 .get("command")
                 .cloned()
                 .ok_or(("invalid_command", "Runtime command is required".into()))?;
+            if state.acp.owns(&target) {
+                if command.get("type").and_then(Value::as_str) == Some("acp_permission_response") {
+                    state
+                        .acp
+                        .respond_permission(&target, command)
+                        .await
+                        .map_err(|message| ("acp_permission_response_failed", message))?;
+                    return Ok(json!({
+                        "type": "runtime_response",
+                        "requestId": request_id,
+                        "acceptance": "completed",
+                        "response": { "success": true },
+                    }));
+                }
+                let response = state
+                    .acp
+                    .request(&target, command.clone(), runtime_request_timeout(&command))
+                    .await
+                    .map_err(|message| ("runtime_request_failed", message))?;
+                return Ok(json!({
+                    "type": "runtime_response",
+                    "requestId": request_id,
+                    "acceptance": "accepted",
+                    "response": response,
+                }));
+            }
             if command.get("type").and_then(Value::as_str) == Some("extension_ui_response") {
                 let is_owner = state
                     .session_owners
@@ -1780,6 +1882,107 @@ async fn dispatch(
     }
 }
 
+/// Preference operations are limited to `ui.*` keys: this migration only
+/// exposes display preferences to the browser, and a prefix check keeps a
+/// compromised client from probing other metadata rows.
+fn preference_key(frame: &Value) -> Result<String, (&'static str, String)> {
+    let key = frame
+        .get("key")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or(("invalid_preference", "key is required".into()))?;
+    if !key.starts_with("ui.") {
+        return Err((
+            "invalid_preference",
+            "Only ui.* preference keys are supported".into(),
+        ));
+    }
+    Ok(key.to_owned())
+}
+
+fn dispatch_preference_operation(
+    state: &HostState,
+    request_id: &str,
+    operation: &str,
+    frame: &Value,
+) -> Result<Value, (&'static str, String)> {
+    let store = state.metadata.as_ref().ok_or((
+        "host_operation_failed",
+        "Preference store is not available".into(),
+    ))?;
+    let key = preference_key(frame)?;
+    let response = |operation: &str, fields: &[(&str, Value)]| {
+        let mut object = serde_json::Map::new();
+        object.insert("type".into(), Value::from("host_response"));
+        object.insert("requestId".into(), Value::from(request_id));
+        object.insert("operation".into(), Value::from(operation));
+        for (name, value) in fields {
+            object.insert((*name).into(), value.clone());
+        }
+        Value::Object(object)
+    };
+    match operation {
+        "get_preference" => {
+            let value = store
+                .lock()
+                .map_err(|_| {
+                    (
+                        "host_operation_failed",
+                        "Preference store is poisoned".into(),
+                    )
+                })?
+                .preference_get(&key)
+                .map_err(|message| ("host_operation_failed", message))?;
+            Ok(response(
+                operation,
+                &[
+                    ("key", Value::from(key)),
+                    ("value", value.unwrap_or(Value::Null)),
+                ],
+            ))
+        }
+        "set_preference" => {
+            let value = frame
+                .get("value")
+                .cloned()
+                .filter(|value| !value.is_null())
+                .ok_or(("invalid_preference", "value is required".into()))?;
+            store
+                .lock()
+                .map_err(|_| {
+                    (
+                        "host_operation_failed",
+                        "Preference store is poisoned".into(),
+                    )
+                })?
+                .preference_set(&key, &value)
+                .map_err(|message| ("host_operation_failed", message))?;
+            Ok(response(
+                operation,
+                &[("key", Value::from(key)), ("value", value)],
+            ))
+        }
+        "remove_preference" => {
+            let removed = store
+                .lock()
+                .map_err(|_| {
+                    (
+                        "host_operation_failed",
+                        "Preference store is poisoned".into(),
+                    )
+                })?
+                .preference_remove(&key)
+                .map_err(|message| ("host_operation_failed", message))?;
+            Ok(response(
+                operation,
+                &[("key", Value::from(key)), ("removed", Value::from(removed))],
+            ))
+        }
+        _ => unreachable!("dispatch_preference_operation called with unknown operation"),
+    }
+}
+
 async fn dispatch_host_operation(
     state: &HostState,
     client_id: &str,
@@ -1788,6 +1991,9 @@ async fn dispatch_host_operation(
     frame: &Value,
 ) -> Result<Value, (&'static str, String)> {
     match operation {
+        "get_preference" | "set_preference" | "remove_preference" => {
+            dispatch_preference_operation(state, request_id, operation, frame)
+        }
         "list_pi_packages" => {
             let resolver = state.pi_launch.clone();
             let packages = tokio::task::spawn_blocking(move || resolver.list_pi_packages())
@@ -1897,6 +2103,21 @@ async fn dispatch_host_operation(
             "operation": "list_installed_apps",
             "apps": list_installed_apps(),
         })),
+        // ACP subagents whose underlying CLI is present on this machine — the
+        // composer's `#` picker only offers these.
+        "acp_list_agents" => {
+            let path_env = crate::pi_launch::build_augmented_path();
+            let agents: Vec<Value> = acp_launch::detected_presets(&path_env)
+                .into_iter()
+                .map(|(id, label)| json!({ "id": id, "label": label }))
+                .collect();
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "acp_list_agents",
+                "agents": agents,
+            }))
+        }
         "open_in_app" => {
             let path = frame
                 .get("path")
@@ -2350,6 +2571,75 @@ async fn dispatch_host_operation(
                 "requestId": request_id,
                 "operation": "restart_runtime",
                 "instanceId": new_instance,
+                "ok": true,
+            }))
+        }
+        // Spawn an external ACP agent (Claude Code, ...) as a scoped *subagent*
+        // for one task. Unlike the removed `switch_session_agent`, this never
+        // touches `state.runtimes`: the session's Pi backend keeps running and
+        // owns the conversation, while the returned task target is a throwaway
+        // runtime the frontend drives with one or more `acp_prompt` turns
+        // (follow-ups reuse the same session) and tears down with
+        // `acp_task_stop` once the user ends the run. The synthetic session id
+        // keeps concurrent runs from colliding in the ACP coordinator.
+        "acp_task_start" => {
+            let workspace_id = frame
+                .get("workspaceId")
+                .and_then(Value::as_str)
+                .ok_or(("invalid_workspace", "workspaceId is required".into()))?
+                .to_owned();
+            let session_id = frame
+                .get("sessionId")
+                .and_then(Value::as_str)
+                .ok_or(("invalid_session", "sessionId is required".into()))?
+                .to_owned();
+            let agent_id = frame
+                .get("agentId")
+                .and_then(Value::as_str)
+                .unwrap_or("claude-code")
+                .to_owned();
+
+            let cwd = state.data.workspace_root_path(&workspace_id).map_err(|_| {
+                (
+                    "workspace_not_found",
+                    "Could not resolve workspace root".into(),
+                )
+            })?;
+            let run_id = uuid::Uuid::new_v4().simple().to_string();
+            let task_session_id = format!("{session_id}::acp::{run_id}");
+            let instance_id = format!("acp-task-{run_id}");
+            let target = RuntimeTarget::new(workspace_id, task_session_id, instance_id);
+
+            let spec = acp_launch::resolve_preset(&agent_id, cwd)
+                .map_err(|message| ("unknown_acp_agent", message))?;
+            state
+                .acp
+                .spawn(target.clone(), spec)
+                .await
+                .map_err(|message| ("acp_task_start_failed", message))?;
+
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "acp_task_start",
+                "target": target,
+                "agentId": agent_id,
+            }))
+        }
+        "acp_task_stop" => {
+            let target: RuntimeTarget = serde_json::from_value(
+                frame
+                    .get("target")
+                    .cloned()
+                    .ok_or(("invalid_target", "Runtime target is required".into()))?,
+            )
+            .map_err(|_| ("invalid_target", "Runtime target is invalid".into()))?;
+            // Best effort: a run whose process already exited is not an error.
+            let _ = state.acp.stop(&target);
+            Ok(json!({
+                "type": "host_response",
+                "requestId": request_id,
+                "operation": "acp_task_stop",
                 "ok": true,
             }))
         }
@@ -3251,6 +3541,163 @@ mod tests {
             RUNTIME_REQUEST_TIMEOUT
         );
         assert_eq!(runtime_request_timeout(&json!({})), RUNTIME_REQUEST_TIMEOUT);
+    }
+
+    #[tokio::test]
+    async fn routes_preference_operations_through_host_requests() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp = std::env::temp_dir().join(format!("picot-host-pref-{nonce}"));
+        let public = temp.join("public");
+        fs::create_dir_all(&public).unwrap();
+        fs::write(public.join("index.html"), "Picot").unwrap();
+        let metadata = Arc::new(Mutex::new(
+            MetadataStore::open(&temp.join("picot.sqlite3")).unwrap(),
+        ));
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(
+            MetadataStore::open(&temp.join("auth.sqlite3")).unwrap(),
+        )))));
+        let runtimes = NativePiManager::new(32);
+        let host = HostServer::start_with_workspaces(
+            public,
+            runtimes,
+            auth,
+            std::collections::HashMap::new(),
+            None,
+            Some(Arc::clone(&metadata)),
+        )
+        .await
+        .unwrap();
+        let ws_url = host.origin().replace("http://", "ws://") + "/v2/ws";
+        let (mut socket, _) = tokio_tungstenite::connect_async(ws_url).await.unwrap();
+        socket
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                json!({
+                    "type": "hello",
+                    "protocolVersion": 2,
+                    "clientType": "desktop",
+                    "clientId": "desktop-a"
+                })
+                .to_string(),
+            ))
+            .await
+            .unwrap();
+        socket.next().await.unwrap().unwrap();
+
+        async fn preference_request(
+            socket: &mut tokio_tungstenite::WebSocketStream<
+                tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+            >,
+            frame: serde_json::Value,
+        ) -> serde_json::Value {
+            use futures_util::{SinkExt, StreamExt};
+            socket
+                .send(tokio_tungstenite::tungstenite::Message::Text(
+                    frame.to_string(),
+                ))
+                .await
+                .unwrap();
+            loop {
+                let message =
+                    tokio::time::timeout(std::time::Duration::from_secs(2), socket.next())
+                        .await
+                        .expect("preference response")
+                        .unwrap()
+                        .unwrap();
+                let frame: serde_json::Value =
+                    serde_json::from_str(message.to_text().unwrap()).unwrap();
+                if frame["type"] == "host_response" || frame["type"] == "error" {
+                    return frame;
+                }
+            }
+        }
+
+        let set_response = preference_request(
+            &mut socket,
+            json!({
+                "type": "host_request",
+                "requestId": "pref-1",
+                "operation": "set_preference",
+                "key": "ui.chatFontSize",
+                "value": "large",
+            }),
+        )
+        .await;
+        assert_eq!(set_response["type"], "host_response");
+        assert_eq!(set_response["operation"], "set_preference");
+        assert_eq!(
+            metadata
+                .lock()
+                .unwrap()
+                .preference_get("ui.chatFontSize")
+                .unwrap(),
+            Some(json!("large"))
+        );
+
+        let get_response = preference_request(
+            &mut socket,
+            json!({
+                "type": "host_request",
+                "requestId": "pref-2",
+                "operation": "get_preference",
+                "key": "ui.chatFontSize",
+            }),
+        )
+        .await;
+        assert_eq!(get_response["value"], json!("large"));
+
+        let missing = preference_request(
+            &mut socket,
+            json!({
+                "type": "host_request",
+                "requestId": "pref-3",
+                "operation": "get_preference",
+                "key": "ui.missingKey",
+            }),
+        )
+        .await;
+        assert!(missing["value"].is_null());
+
+        let rejected = preference_request(
+            &mut socket,
+            json!({
+                "type": "host_request",
+                "requestId": "pref-4",
+                "operation": "set_preference",
+                "key": "agent.thinkingLevel",
+                "value": "high",
+            }),
+        )
+        .await;
+        // The migration scope only exposes ui.* keys to the browser; the
+        // protocol error frame carries the structured code.
+        assert_eq!(rejected["type"], "error");
+        assert_eq!(rejected["error"]["code"], "invalid_preference");
+
+        let removed = preference_request(
+            &mut socket,
+            json!({
+                "type": "host_request",
+                "requestId": "pref-5",
+                "operation": "remove_preference",
+                "key": "ui.chatFontSize",
+            }),
+        )
+        .await;
+        assert_eq!(removed["removed"], json!(true));
+        assert_eq!(
+            metadata
+                .lock()
+                .unwrap()
+                .preference_get("ui.chatFontSize")
+                .unwrap(),
+            None
+        );
+
+        host.stop();
+        fs::remove_dir_all(temp).unwrap();
     }
 
     #[tokio::test]

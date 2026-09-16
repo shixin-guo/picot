@@ -154,7 +154,13 @@ export function t(key, params = {}) {
 
 // ── DOM translation application ───────────────────────────────────────
 
-function applyTranslations(root = document) {
+/**
+ * Translate every `data-i18n*` attribute under `root`. Exported for components
+ * that build their DOM after startup (a dialog created on first open): the
+ * document-wide pass has already run by then, so the new subtree has to be
+ * translated explicitly.
+ */
+export function applyTranslations(root = document) {
   if (!root) return;
 
   root.querySelectorAll("[data-i18n]").forEach((el) => {

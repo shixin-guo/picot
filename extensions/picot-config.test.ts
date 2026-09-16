@@ -21,6 +21,10 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 vi.mock("./session-title", () => ({
   generateTitleForSession: vi.fn().mockResolvedValue("Generated title"),
 }));
+vi.mock("./ssh-remote", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./ssh-remote")>();
+  return { ...actual, testSshRemoteConnection: vi.fn() };
+});
 
 const tempHomes: string[] = [];
 
@@ -192,6 +196,79 @@ describe("picot config default settings operations", () => {
       compaction: { reserveTokens: 8192, enabled: false },
       unknown: true,
     });
+  });
+
+  it("updates scoped models atomically while preserving unrelated settings", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    const settingsPath = join(home, ".pi", "agent", "settings.json");
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({ enabledModels: ["anthropic/old:high", "openai/keep"], unknown: true }),
+      "utf8",
+    );
+
+    await expect(
+      handlePicotConfig(
+        "set_scoped_model",
+        { provider: "anthropic", modelId: "new", enabled: true },
+        {},
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      data: {
+        provider: "anthropic",
+        modelId: "new",
+        enabled: true,
+        // Persisted thinking-level suffixes are stripped from the ids the
+        // composer consumes.
+        modelIds: ["anthropic/old", "openai/keep", "anthropic/new"],
+      },
+    });
+    // The unrelated key and the existing suffix survive untouched.
+    expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toEqual({
+      enabledModels: ["anthropic/old:high", "openai/keep", "anthropic/new"],
+      unknown: true,
+    });
+
+    await expect(handlePicotConfig("list_scoped_models", {}, {})).resolves.toEqual({
+      ok: true,
+      data: { modelIds: ["anthropic/old", "openai/keep", "anthropic/new"] },
+    });
+
+    // Removal matches provider/model even with a persisted suffix.
+    await expect(
+      handlePicotConfig(
+        "set_scoped_model",
+        { provider: "anthropic", modelId: "old", enabled: false },
+        {},
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      data: {
+        provider: "anthropic",
+        modelId: "old",
+        enabled: false,
+        modelIds: ["openai/keep", "anthropic/new"],
+      },
+    });
+
+    // Removing the final entry deletes the key instead of persisting [].
+    await expect(
+      handlePicotConfig(
+        "set_scoped_model",
+        { provider: "openai", modelId: "keep", enabled: false },
+        {},
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      handlePicotConfig(
+        "set_scoped_model",
+        { provider: "anthropic", modelId: "new", enabled: false },
+        {},
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toEqual({ unknown: true });
   });
 });
 
@@ -419,6 +496,12 @@ describe("picot config custom provider operations", () => {
     const registry = {
       runtime: { credentials },
       refresh: vi.fn(async () => undefined),
+      // Remaining CatalogRegistry surface is irrelevant to this operation but
+      // must be present for the type.
+      getAll: vi.fn(() => []),
+      getAvailable: vi.fn(async () => []),
+      getProviderAuthStatus: vi.fn(() => ({ configured: false, source: "none", label: "" })),
+      getProviderDisplayName: vi.fn((provider: string) => provider),
     };
 
     const result = await handlePicotConfig(
@@ -430,7 +513,7 @@ describe("picot config custom provider operations", () => {
         protocol: "openai-completions",
         models: [{ id: "gpt-4o-mini", contextWindow: 32768, maxTokens: 4096 }],
       },
-      { modelRegistry: registry },
+      { modelRegistry: registry as never },
     );
 
     expect(result).toMatchObject({
@@ -547,5 +630,264 @@ describe("picot config oauth operations", () => {
     // Rejected before any runtime is constructed — the op surface never
     // forwards a non-codex provider to runtime.logout().
     expect(ModelRuntime.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("picot config ssh remote operations", () => {
+  it("requires an active workspace to read config", async () => {
+    const { handlePicotConfig } = await loadConfigWithTempHome();
+    await expect(handlePicotConfig("get_ssh_remote_config", {}, {})).resolves.toEqual({
+      ok: false,
+      error: "Active workspace is required",
+    });
+  });
+
+  it("reads the project's sshRemote settings and reports trust state", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    const workspace = join(home, "workspace");
+    mkdirSync(join(workspace, ".pi"), { recursive: true });
+    const settingsPath = join(workspace, ".pi", "settings.json");
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({ sshRemote: { enabled: true, host: "example.com" }, other: 1 }),
+      "utf8",
+    );
+
+    await expect(
+      handlePicotConfig(
+        "get_ssh_remote_config",
+        {},
+        { cwd: workspace, isProjectTrusted: () => false },
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      data: {
+        config: { enabled: true, host: "example.com" },
+        resolved: { enabled: true, host: "example.com" },
+        hosts: {},
+        trusted: false,
+        path: settingsPath,
+      },
+    });
+  });
+
+  it("defaults to a disabled config when the project has no settings.json yet", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    const workspace = join(home, "workspace");
+    mkdirSync(workspace, { recursive: true });
+
+    await expect(
+      handlePicotConfig(
+        "get_ssh_remote_config",
+        {},
+        { cwd: workspace, isProjectTrusted: () => true },
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      data: {
+        config: { enabled: false, host: "" },
+        resolved: { enabled: false, host: "" },
+        hosts: {},
+        trusted: true,
+        path: join(workspace, ".pi", "settings.json"),
+      },
+    });
+  });
+
+  it("rejects writes to an untrusted project", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    const workspace = join(home, "workspace");
+    mkdirSync(workspace, { recursive: true });
+
+    await expect(
+      handlePicotConfig(
+        "set_ssh_remote_config",
+        { config: { enabled: true, host: "example.com" } },
+        { cwd: workspace, isProjectTrusted: () => false },
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      error: "Project settings cannot be changed until the workspace is trusted",
+    });
+  });
+
+  it("rejects enabling without a host", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    const workspace = join(home, "workspace");
+    mkdirSync(workspace, { recursive: true });
+
+    await expect(
+      handlePicotConfig(
+        "set_ssh_remote_config",
+        { config: { enabled: true, host: "" } },
+        { cwd: workspace, isProjectTrusted: () => true },
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      error: "Host is required when SSH remote execution is enabled",
+    });
+  });
+
+  it("writes sshRemote settings while preserving unrelated project settings", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    const workspace = join(home, "workspace");
+    mkdirSync(join(workspace, ".pi"), { recursive: true });
+    const settingsPath = join(workspace, ".pi", "settings.json");
+    writeFileSync(settingsPath, JSON.stringify({ defaultThinkingLevel: "low" }), "utf8");
+
+    const result = await handlePicotConfig(
+      "set_ssh_remote_config",
+      { config: { enabled: true, host: "example.com", port: 2222 } },
+      { cwd: workspace, isProjectTrusted: () => true },
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      data: { config: { enabled: true, host: "example.com", port: 2222 }, path: settingsPath },
+    });
+    expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toEqual({
+      defaultThinkingLevel: "low",
+      sshRemote: { enabled: true, host: "example.com", port: 2222 },
+    });
+  });
+
+  it("delegates connection testing to testSshRemoteConnection", async () => {
+    const { handlePicotConfig } = await loadConfigWithTempHome();
+    const { testSshRemoteConnection } = await import("./ssh-remote");
+    vi.mocked(testSshRemoteConnection).mockResolvedValue({
+      ok: true,
+      message: "Connected",
+      remotePath: "/srv/app",
+      latencyMs: 12,
+    });
+
+    await expect(
+      handlePicotConfig(
+        "test_ssh_remote_config",
+        { config: { enabled: true, host: "example.com" } },
+        {},
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      data: { ok: true, message: "Connected", remotePath: "/srv/app", latencyMs: 12 },
+    });
+    expect(testSshRemoteConnection).toHaveBeenCalledWith(
+      { enabled: true, host: "example.com" },
+      undefined,
+    );
+  });
+
+  it("forwards a one-off password to the connection test without persisting it", async () => {
+    const { handlePicotConfig } = await loadConfigWithTempHome();
+    const { testSshRemoteConnection } = await import("./ssh-remote");
+    vi.mocked(testSshRemoteConnection).mockResolvedValue({
+      ok: true,
+      message: "Connected",
+      remotePath: "/srv/app",
+      latencyMs: 12,
+    });
+
+    await handlePicotConfig(
+      "test_ssh_remote_config",
+      { config: { enabled: true, host: "example.com" }, password: "hunter2" },
+      {},
+    );
+    expect(testSshRemoteConnection).toHaveBeenCalledWith(
+      { enabled: true, host: "example.com" },
+      "hunter2",
+    );
+  });
+
+  it("resolves a hostRef binding against the global registry", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    mkdirSync(join(home, ".pi", "agent"), { recursive: true });
+    writeFileSync(
+      join(home, ".pi", "agent", "settings.json"),
+      JSON.stringify({
+        sshHosts: { "gpu-box": { host: "10.0.0.5", user: "ubuntu", port: 2222 } },
+      }),
+      "utf8",
+    );
+    const workspace = join(home, "workspace");
+    mkdirSync(join(workspace, ".pi"), { recursive: true });
+    writeFileSync(
+      join(workspace, ".pi", "settings.json"),
+      JSON.stringify({ sshRemote: { enabled: true, hostRef: "gpu-box", remotePath: "/srv/app" } }),
+      "utf8",
+    );
+
+    const result = await handlePicotConfig(
+      "get_ssh_remote_config",
+      {},
+      { cwd: workspace, isProjectTrusted: () => true },
+    );
+
+    expect(result.ok).toBe(true);
+    expect((result as { data: { resolved: unknown } }).data.resolved).toEqual({
+      enabled: true,
+      host: "10.0.0.5",
+      hostRef: "gpu-box",
+      port: 2222,
+      user: "ubuntu",
+      remotePath: "/srv/app",
+    });
+  });
+
+  it("keeps credentials out of the project file when saving a hostRef binding", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    const workspace = join(home, "workspace");
+    mkdirSync(join(workspace, ".pi"), { recursive: true });
+    const settingsPath = join(workspace, ".pi", "settings.json");
+
+    await handlePicotConfig(
+      "set_ssh_remote_config",
+      {
+        config: {
+          enabled: true,
+          hostRef: "gpu-box",
+          host: "10.0.0.5",
+          identityFile: "~/.ssh/id_ed25519",
+          remotePath: "/srv/app",
+        },
+      },
+      { cwd: workspace, isProjectTrusted: () => true },
+    );
+
+    expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toEqual({
+      sshRemote: { enabled: true, hostRef: "gpu-box", remotePath: "/srv/app" },
+    });
+  });
+
+  it("saves and deletes hosts in the global registry", async () => {
+    const { home, handlePicotConfig } = await loadConfigWithTempHome();
+    mkdirSync(join(home, ".pi", "agent"), { recursive: true });
+    const globalPath = join(home, ".pi", "agent", "settings.json");
+
+    await handlePicotConfig(
+      "set_ssh_host",
+      {
+        alias: "gpu-box",
+        config: { host: "10.0.0.5", user: "ubuntu", identityFile: "~/.ssh/id_ed25519" },
+      },
+      {},
+    );
+    expect(JSON.parse(readFileSync(globalPath, "utf8")).sshHosts).toEqual({
+      "gpu-box": { host: "10.0.0.5", user: "ubuntu", identityFile: "~/.ssh/id_ed25519" },
+    });
+
+    await expect(handlePicotConfig("get_ssh_hosts", {}, {})).resolves.toMatchObject({
+      ok: true,
+      data: { hosts: { "gpu-box": { host: "10.0.0.5" } } },
+    });
+
+    await handlePicotConfig("delete_ssh_host", { alias: "gpu-box" }, {});
+    expect(JSON.parse(readFileSync(globalPath, "utf8")).sshHosts).toEqual({});
+  });
+
+  it("rejects a registry entry without a host", async () => {
+    const { handlePicotConfig } = await loadConfigWithTempHome();
+    await expect(
+      handlePicotConfig("set_ssh_host", { alias: "gpu-box", config: { user: "ubuntu" } }, {}),
+    ).resolves.toEqual({ ok: false, error: "Host is required" });
   });
 });

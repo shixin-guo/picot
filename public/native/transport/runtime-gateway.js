@@ -68,6 +68,25 @@ export class RuntimeGateway {
     return this.#send({ type: "runtime_snapshot_request", sessionId });
   }
 
+  // Tell the host registry that `target`'s instance is now actually serving
+  // `newSessionId` (e.g. after pi forks a new session file in place for the
+  // same instance). Without this, the registry keeps the old session id
+  // forever: snapshot lookups by session id fail, and the per-client event
+  // subscription (matched on the full target tuple) silently stops
+  // delivering events once the frontend adopts the new id on its own.
+  // Resolves with the confirmed `{workspaceId, sessionId, instanceId}`.
+  rebindSession(target, newSessionId) {
+    try {
+      assertTarget(target);
+      if (!newSessionId) throw new Error("rebindSession requires newSessionId");
+      return this.#send({ type: "runtime_rebind_session_request", target, newSessionId }).then(
+        (frame) => frame?.response?.data?.target ?? null,
+      );
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
+
   git(command, target) {
     try {
       assertTarget(target);

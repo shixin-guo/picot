@@ -153,6 +153,18 @@
   display: none;
 }
 
+/* Remote workspace badge: marks a workspace whose tools run over SSH, matching
+   the header's SSH indicator so the two read as the same state. */
+.workspace-remote-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
+  color: var(--accent);
+  opacity: 0.75;
+}
+
 .project-count {
   font-size: var(--font-size-sm);
   line-height: 21px;
@@ -628,6 +640,12 @@
   flex-shrink: 0;
   opacity: 0.6;
   transition: transform var(--duration) var(--ease);
+}
+
+.sidebar-section-header .section-chevron svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 
 .sidebar-section-header:not(.collapsed) .section-chevron {

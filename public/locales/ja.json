@@ -52,6 +52,12 @@
     "unstage": "ステージ解除",
     "discard": "変更を破棄",
     "aiCommitMessage": "AIコミットメッセージを生成",
+    "push": "プッシュ",
+    "pushing": "プッシュ中…",
+    "pushFailed": "プッシュに失敗しました。",
+    "pushDetachedHead": "detached HEAD からはプッシュできません。先にブランチをチェックアウトしてください。",
+    "pushNoRemote": "このリポジトリにリモートが設定されていません。",
+    "pushBusy": "このワークスペースで別の Git 操作が実行中です。しばらくしてからやり直してください。",
     "commit": "コミット",
     "stats": "+{additions} −{deletions} · ステージ済み {staged} · 変更 {changes} · 未追跡 {untracked}",
     "summary": "{branch} · {upstream} · ↑{ahead} ↓{behind}",
@@ -72,12 +78,25 @@
     "comparison": {
       "staged": "ステージ済み",
       "changes": "変更",
-      "untracked": "未追跡"
+      "untracked": "未追跡",
+      "commit": "コミット"
     },
     "toggleChanges": "Git の変更を切り替え",
     "closeChanges": "Git の変更を閉じる",
     "changesWithBranch": "Git の変更 — {branch}",
-    "changesHeading": "変更"
+    "changesHeading": "変更",
+    "fallback": {
+      "binary": "このファイルはバイナリのため表示できません",
+      "copy": "このファイルはこのコミットでコピーされただけです",
+      "rename": "このファイルはこのコミットでリネームされただけです"
+    },
+    "copyHash": "ハッシュをコピー",
+    "history": "履歴",
+    "historyEmpty": "履歴はまだありません",
+    "historySelectHint": "コミットを選択すると詳細が表示されます",
+    "messageTruncated": "コミットメッセージが切り詰められました",
+    "filesTruncated": "一部の変更ファイルは省略されています",
+    "justNow": "たった今"
   },
   "usage": {
     "contextTokens": "コンテキスト：{used}k / {limit}k トークン",
@@ -117,7 +136,11 @@
     "searchPlaceholder": "モデルを検索…",
     "emptyTitle": "利用可能なモデルがありません",
     "emptyHelp": "APIキーが設定されていません。設定 → モデル でキーを設定してください。",
-    "openSettings": "設定を開く"
+    "openSettings": "設定を開く",
+    "scoped": "スコープ済みモデル",
+    "allEnabled": "有効なモデルすべて",
+    "addScoped": "スコープ済みモデルに追加",
+    "removeScoped": "スコープ済みモデルから削除"
   },
   "queue": {
     "queued": "キュー中",
@@ -168,7 +191,9 @@
     "processToolCall": "{count} 件のツール呼び出し",
     "processToolCalls": "{count} 件のツール呼び出し",
     "providerError": "モデルへのリクエストに失敗しました。",
-    "turnFiles": "このターンで変更されたファイル（{count}）:"
+    "turnFiles": "このターンで変更されたファイル（{count}）:",
+    "responseTime": "応答時間",
+    "subagentUnavailableOverSsh": "ACP サブエージェント（#claude、#codex など）はローカルで実行されるため、リモート（SSH）ワークスペースのファイルにアクセスできず、ここでは利用できません。"
   },
   "tools": {
     "copyOutput": "出力をコピー",
@@ -481,6 +506,7 @@
     "remoteSessionConnected": "{machine} に接続済み · ネイティブリモートセッション",
     "newRemoteSession": "{path} で新しいセッション",
     "remoteBadge": "リモート",
+    "remoteWorkspace": "リモートワークスペース",
     "archived": "アーカイブ済み",
     "unavailable": "利用不可",
     "showMore": "もっと表示",
@@ -612,7 +638,7 @@
     "title": "Picotを起動できませんでした",
     "descriptionPre": "Picotに内蔵された",
     "descriptionPost": "ランタイムの起動に失敗しました。",
-    "help": "これは通常、インストールが不完全または破損していることを意味します。Picotを再インストールすると通常は解決します。再インストールまたは再起動後に「起動を再試行」をクリックしてください。",
+    "help": "直前に開いていたプロジェクトフォルダが削除された場合や、Picot のインストールが不完全な場合に発生します。「起動を再試行」をクリックしてもう一度試してください。続く場合は Picot を再インストールしてください。",
     "retry": "起動を再試行",
     "tauriUnavailable": "このウィンドウではTauriランタイムが利用できません。",
     "starting": "Piランタイムを起動中...",
@@ -648,6 +674,7 @@
     "taskNotificationsDescription": "タスクの完了時にOS通知を表示します。",
     "taskCompleteTitle": "タスクが完了しました",
     "taskCompleteMessage": "タスクが完了しました。",
+    "taskFailedTitle": "タスクが失敗しました",
     "piVersion": "Piバージョン",
     "picotVersion": "Picotバージョン",
     "checkForUpdates": "アップデートを確認",
@@ -869,7 +896,46 @@
     "installedHelp": "このインストールに設定された拡張パッケージを管理します: 有効化、無効化、更新、削除。",
     "copyConfigPath": "パスをコピー",
     "configPathCopied": "コピーしました",
-    "configPathCopyFailed": "コピーに失敗しました"
+    "configPathCopyFailed": "コピーに失敗しました",
+    "theme": "テーマ",
+    "chat": {
+      "title": "チャット",
+      "fontSize": "フォントサイズ",
+      "fontSizeDescription": "チャットメッセージの文字サイズ。"
+    },
+    "preview": {
+      "title": "ファイルプレビュー",
+      "theme": "プレビューテーマ",
+      "themeDescription": "Picot テーマに従うか、コードとマークダウンプレビューのライト/ダークを強制します。",
+      "themeSystem": "システム",
+      "themeLight": "ライト",
+      "themeDark": "ダーク",
+      "fontSize": "フォントサイズ",
+      "fontSizeDescription": "コードエディターとマークダウンプレビューの文字サイズ。"
+    },
+    "terminal": {
+      "title": "ターミナル",
+      "theme": "ターミナルテーマ",
+      "themeDescription": "Picot テーマに従うか、ライト/ダークを強制します。",
+      "themeSystem": "システム",
+      "themeLight": "ライト",
+      "themeDark": "ダーク",
+      "fontSize": "フォントサイズ",
+      "fontSizeDescription": "ターミナルの文字サイズ。",
+      "scrollback": "スクロールバック",
+      "scrollbackDescription": "保持するターミナル履歴の行数。",
+      "smoothScroll": "スムーススクロール時間",
+      "smoothScrollDescription": "アニメーションの時間（ミリ秒）。0 で無効。",
+      "webgl": "WebGL レンダラー",
+      "webglDescription": "ターミナルを GPU で描画します。文字が滲む場合は無効にしてください。"
+    },
+    "fontLevel": {
+      "small": "小",
+      "normal": "標準",
+      "medium": "中",
+      "large": "大",
+      "xlarge": "特大"
+    }
   },
   "cost": {
     "documentTitle": "Picot - 使用量",
@@ -1203,6 +1269,21 @@
     "loadingProjects": "プロジェクトを読み込み中…",
     "projectRunning": "{name} · 実行中"
   },
+  "sshRemote": {
+    "hostLabel": "ホスト",
+    "hostPlaceholder": "192.168.1.50 または my-server.example.com",
+    "portLabel": "ポート",
+    "portPlaceholder": "22",
+    "userLabel": "ユーザー名",
+    "userPlaceholder": "ubuntu",
+    "identityFileLabel": "秘密鍵ファイル",
+    "identityFilePlaceholder": "~/.ssh/id_ed25519",
+    "testConnection": "接続テスト",
+    "testing": "接続をテストしています…",
+    "testOk": "接続しました — リモートパス:{path}",
+    "testFailed": "接続に失敗しました:{message}",
+    "hostRequired": "ホストは必須です。"
+  },
   "remoteApproval": {
     "title": "リモートアクセスのリクエスト",
     "unknownDevice": "不明なブラウザー",
@@ -1232,5 +1313,41 @@
     "roleAssistant": "アシスタント",
     "toggleAria": "セッション情報パネルを切り替え",
     "closeAria": "セッション情報パネルを閉じる"
+  },
+  "remoteWorkspace": {
+    "openRemote": "リモートホストに接続",
+    "dialogTitle": "リモートホストに接続",
+    "dialogHelp": "Picot はプロジェクトがある場所で直接開きます。read、write、edit、bash は SSH 経由でリモートホスト上で実行され、ローカルのコピーは不要です。",
+    "savedHost": "保存済みホスト",
+    "enterManually": "— 新しいホストを入力 —",
+    "fromSshConfig": "~/.ssh/config から",
+    "saveAs": "このホストを保存する名前",
+    "saveAsPlaceholder": "gpu-box（空欄なら保存しません）",
+    "password": "パスワード",
+    "passwordHelp": "鍵認証が設定されていないホストでのみ必要です。この接続のあいだメモリ上にだけ保持され、ディスクには保存されません。",
+    "remotePath": "リモートのプロジェクトパス",
+    "remotePathPlaceholder": "/home/ubuntu/my-project",
+    "browse": "参照…",
+    "parentDirectory": "↑ 親ディレクトリ",
+    "listing": "リモートディレクトリを取得中…",
+    "connecting": "リモートワークスペースを開いています…",
+    "connect": "接続",
+    "cancel": "キャンセル",
+    "remotePathRequired": "リモートの絶対パスが必要です。",
+    "needsSession": "保存済みホスト、接続テスト、ディレクトリ参照には開いているワークスペースが必要です。ホストとパスを入力して接続することは可能です。",
+    "reauthRequired": "この接続にはパスワードの再入力が必要です — 以前の認証情報はもう使用できません。下から再接続してください。",
+    "channelUnavailable": "設定チャネルを利用できません",
+    "indicatorTitle": "{target} で実行中 — クリックで変更",
+    "indicatorFallbackTitle": "リモートホストで実行中"
+  },
+  "sshHosts": {
+    "edit": "編集",
+    "delete": "削除",
+    "confirmDelete": "削除を確定",
+    "deleteWarning": "{alias} を削除しますか？ これに紐づくプロジェクトは接続情報を失います。",
+    "deleted": "{alias} を削除しました。",
+    "aliasRequired": "名前を入力してください。",
+    "save": "ホストを保存",
+    "saved": "ホストを保存しました。"
   }
 }

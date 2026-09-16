@@ -35,14 +35,19 @@ function setupDom() {
 
 function createRuntime() {
   const sent = [];
+  const listeners = new Set();
   return {
     sent,
     git(message) {
       sent.push(message);
       return Promise.resolve(null);
     },
-    subscribe() {
-      return () => {};
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    emit(frame) {
+      for (const listener of listeners) listener(frame);
     },
   };
 }
@@ -230,6 +235,64 @@ describe("setupGitPanel integration", () => {
     expect(container.classList.contains("hidden")).toBe(true);
     expect(fileList.classList.contains("hidden")).toBe(false);
     expect(up.classList.contains("hidden")).toBe(false);
+  });
+
+  it("ignores stale AI and commit responses", async () => {
+    const { setupGitPanel } = await import("./git-panel-integration.js");
+    const { container, fileList } = setupDom();
+    const runtime = createRuntime();
+    const result = setupGitPanel({
+      runtime,
+      getTarget: () => ({ workspaceId: "ws-1" }),
+      container,
+      fileList,
+      filePreviewPanel: { openDiff: vi.fn() },
+      onError: vi.fn(),
+    });
+
+    result.panel.setSnapshot({
+      snapshotId: "snap",
+      entries: [],
+      counts: { staged: 1, conflicted: 0 },
+    });
+    result.panel.requestAiCommitMessage();
+    result.panel.requestAiCommitMessage();
+    const aiRequestId = result.panel.pendingAiRequestId;
+    runtime.emit({
+      type: "git_ai_commit_message",
+      requestId: "git-1",
+      snapshot: { snapshotId: "stale" },
+      message: "stale",
+    });
+    expect(result.panel.commitDialog).toBeNull();
+
+    runtime.emit({
+      type: "git_ai_commit_message",
+      requestId: aiRequestId,
+      snapshot: { snapshotId: "current" },
+      message: "current",
+    });
+    expect(result.panel.commitMessage).toBe("current");
+    result.panel.closeCommitDialog();
+
+    result.panel.aiSnapshot = { snapshotId: "commit-snap" };
+    result.panel.commitMessage = "commit";
+    const oldCommitRequestId = result.panel.commit();
+    const commitRequestId = result.panel.commit();
+    expect(oldCommitRequestId).not.toBe(commitRequestId);
+    runtime.emit({
+      type: "git_commit_confirmation_required",
+      requestId: oldCommitRequestId,
+      confirmationToken: "stale-token",
+    });
+    expect(result.panel.pendingConfirmationToken).toBeNull();
+    runtime.emit({
+      type: "git_commit_result",
+      requestId: oldCommitRequestId,
+      status: "succeeded",
+    });
+    expect(result.panel.pendingCommitRequestId).toBe(commitRequestId);
+    expect(result.panel.aiSnapshot).toEqual({ snapshotId: "commit-snap" });
   });
 
   it("does not surface a missing git binary as a host error", async () => {

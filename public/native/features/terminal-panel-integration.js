@@ -4,43 +4,68 @@
 import { onLocaleChange, t } from "../../i18n.js";
 import { TerminalClient } from "../../terminal-client.js";
 import {
-  DEFAULT_TERMINAL_FONT_SIZE,
   loadTerminalFont,
   TERMINAL_FONT_FAMILY,
   TERMINAL_FONT_STACK,
 } from "../../terminal-font.js";
 import { TerminalPanel } from "../../terminal-panel.js";
-import { TerminalPreferences } from "../../terminal-preferences.js";
-import { encodeBase64, picotThemeToXterm, TerminalTab } from "../../terminal-tab.js";
+import { encodeBase64, resolveTerminalTheme, TerminalTab } from "../../terminal-tab.js";
 import { onThemeChange } from "../../themes.js";
+import {
+  defaultWebglRenderer,
+  loadAppearanceCookie,
+  migrateLegacyTerminalPreferences,
+  TERMINAL_FONT_SIZE_PX,
+} from "../settings/appearance-preferences.js";
+
+/**
+ * Terminal display preferences now live in the global appearance store
+ * (cookie first-paint cache + host preference DB). The legacy per-origin
+ * localStorage payload migrates once on first setup.
+ */
+function currentTerminalPreferences() {
+  migrateLegacyTerminalPreferences(typeof localStorage !== "undefined" ? localStorage : null);
+  const cookie = loadAppearanceCookie();
+  return {
+    fontSize: TERMINAL_FONT_SIZE_PX[cookie.terminalFontSize],
+    themeMode: cookie.terminalThemeMode,
+    scrollbackLimit: cookie.terminalScrollbackLimit,
+    smoothScrollDuration: cookie.terminalSmoothScrollDuration,
+    webglRenderer:
+      typeof cookie.terminalWebglRenderer === "boolean"
+        ? cookie.terminalWebglRenderer
+        : defaultWebglRenderer(),
+  };
+}
 
 export function setupTerminalPanel({ adapter, getWorkspaceId }) {
   if (!globalThis.PicotXterm) return null;
 
-  const preferences = new TerminalPreferences().load();
-  const fontSize = Number.isFinite(preferences.fontSize)
-    ? Math.min(32, Math.max(10, preferences.fontSize))
-    : DEFAULT_TERMINAL_FONT_SIZE;
+  let prefs = currentTerminalPreferences();
   let panel;
   const client = new TerminalClient({
     send: (envelope) => {
       adapter.send({ ...envelope, workspaceId: getWorkspaceId() });
       return envelope.requestId;
     },
-    createTab: (terminalId, generation) =>
-      new TerminalTab({
+    createTab: (terminalId, generation) => {
+      const tab = new TerminalTab({
         terminalId,
         generation,
         container: panel.getTabContainer(terminalId),
         terminalFactory: () =>
           new globalThis.PicotXterm.Terminal({
             fontFamily: TERMINAL_FONT_STACK,
-            fontSize,
+            fontSize: prefs.fontSize,
             fontWeight: 400,
+            scrollback: prefs.scrollbackLimit,
+            smoothScrollDuration: prefs.smoothScrollDuration,
           }),
         fontFamily: TERMINAL_FONT_FAMILY,
-        fontSize,
-        loadFont: () => loadTerminalFont({ family: TERMINAL_FONT_FAMILY, fontSize }),
+        fontSize: prefs.fontSize,
+        initialTheme: resolveTerminalTheme(prefs.themeMode),
+        loadFont: () =>
+          loadTerminalFont({ family: TERMINAL_FONT_FAMILY, fontSize: prefs.fontSize }),
         fitAddonFactory: () => new globalThis.PicotXterm.FitAddon(),
         serializeAddonFactory: () => new globalThis.PicotXterm.SerializeAddon(),
         sendInput: (id, gen, dataBase64) =>
@@ -52,7 +77,12 @@ export function setupTerminalPanel({ adapter, getWorkspaceId }) {
           }),
         sendResize: (id, gen, cols, rows) =>
           client.command({ type: "terminal_resize", terminalId: id, generation: gen, cols, rows }),
-      }),
+      });
+      if (prefs.webglRenderer && globalThis.PicotXterm.WebglAddon) {
+        tab.enableWebgl(() => new globalThis.PicotXterm.WebglAddon());
+      }
+      return tab;
+    },
   });
 
   panel = new TerminalPanel({
@@ -76,15 +106,48 @@ export function setupTerminalPanel({ adapter, getWorkspaceId }) {
   });
   // xterm paints its own viewport, so it cannot inherit the theme from CSS.
   // Re-derive the xterm theme for every open tab whenever the app theme
-  // changes, otherwise a terminal keeps the background of the theme it was
-  // created under (often black) and visually clashes after a switch.
+  // changes, honoring a forced terminal theme mode; otherwise a terminal keeps
+  // the background of the theme it was created under.
   const unsubscribeTheme = onThemeChange(() => {
-    const theme = picotThemeToXterm();
+    const theme = resolveTerminalTheme(prefs.themeMode);
     for (const entry of client.tabs.values()) {
       entry.tab?.setTheme?.(theme);
     }
   });
-  return { client, panel, unsubscribeTheme };
+
+  /**
+   * Apply appearance-driven display preferences to every live tab and to all
+   * future tabs. Only the fields present in the patch are touched.
+   */
+  function applyPreferences(patch = {}) {
+    if (Number.isFinite(patch.fontSize)) prefs = { ...prefs, fontSize: patch.fontSize };
+    if (patch.themeMode) prefs = { ...prefs, themeMode: patch.themeMode };
+    if (Number.isFinite(patch.scrollbackLimit)) {
+      prefs = { ...prefs, scrollbackLimit: patch.scrollbackLimit };
+    }
+    if (Number.isFinite(patch.smoothScrollDuration)) {
+      prefs = { ...prefs, smoothScrollDuration: patch.smoothScrollDuration };
+    }
+    if (typeof patch.webglRenderer === "boolean") {
+      prefs = { ...prefs, webglRenderer: patch.webglRenderer };
+    }
+    const theme = resolveTerminalTheme(prefs.themeMode);
+    for (const entry of client.tabs.values()) {
+      entry.tab?.applyPreferences?.({
+        fontSize: prefs.fontSize,
+        scrollback: prefs.scrollbackLimit,
+        smoothScrollDuration: prefs.smoothScrollDuration,
+      });
+      entry.tab?.setTheme?.(theme);
+      if (prefs.webglRenderer && globalThis.PicotXterm.WebglAddon) {
+        entry.tab?.enableWebgl?.(() => new globalThis.PicotXterm.WebglAddon());
+      } else {
+        entry.tab?.disableWebgl?.();
+      }
+    }
+  }
+
+  return { client, panel, applyPreferences, unsubscribeTheme };
 }
 
 function getChatPanelFullscreenBounds() {

@@ -3,7 +3,8 @@ use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::SystemTime;
 
 use crate::markitdown_preview::{is_convertible_suffix, INPUT_BYTE_CAP};
 
@@ -135,6 +136,10 @@ pub struct SessionSummary {
     pub project_path: String,
     /// Human-friendly project label (last path component of `project_path`).
     pub project_name: String,
+    /// True when `project_path` is an anchor under `~/.picot/remotes`, i.e. the
+    /// session runs against a remote host over SSH rather than a local folder.
+    /// The sidebar renders a "remote" badge on such workspace groups.
+    pub is_remote: bool,
     /// True when this session belongs to the workspace the sidebar is showing.
     pub is_current_workspace: bool,
     /// Absolute path to the persisted JSONL session file.
@@ -239,7 +244,7 @@ pub struct CostDashboard {
     pub sessions: Vec<CostSessionRow>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct SessionMetrics {
     id: String,
     title: String,
@@ -254,6 +259,16 @@ struct SessionMetrics {
     user_messages: u64,
     tool_calls: u64,
     tool_cost_by_name: HashMap<String, f64>,
+}
+
+/// Parsed-metrics cache entry for the cost dashboard scan. Session files
+/// are append-only, so an unchanged `(mtime, len)` pair implies an unchanged
+/// parse result.
+#[derive(Debug, Clone)]
+struct CachedMetrics {
+    modified: SystemTime,
+    len: u64,
+    metrics: SessionMetrics,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -272,6 +287,7 @@ pub struct HostDataPlane {
     workspace_roots: Arc<RwLock<HashMap<String, PathBuf>>>,
     session_root: Option<PathBuf>,
     session_summary_cache: Arc<RwLock<HashMap<PathBuf, CachedSessionSummary>>>,
+    cost_metrics_cache: Arc<Mutex<HashMap<PathBuf, CachedMetrics>>>,
 }
 
 fn message_with_entry_id(mut message: serde_json::Value, entry_id: &str) -> serde_json::Value {
@@ -305,7 +321,9 @@ fn remove_session_file_trash_first_with(
 
 fn remove_session_file_trash_first(path: &std::path::Path) -> std::io::Result<()> {
     remove_session_file_trash_first_with(path, |target| {
-        std::process::Command::new("trash")
+        let mut command = std::process::Command::new("trash");
+        crate::windows_child::hide_console(&mut command);
+        command
             .arg(target)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -354,6 +372,7 @@ fn git_output(mut command: Command) -> Option<std::process::Output> {
 
 fn git_command_at(root: &Path) -> Command {
     let mut command = Command::new("git");
+    crate::windows_child::hide_console(&mut command);
     command
         .current_dir(root)
         .env("LC_ALL", "C")
@@ -406,6 +425,7 @@ impl HostDataPlane {
             workspace_roots: Arc::new(RwLock::new(canonical)),
             session_root: None,
             session_summary_cache: Arc::new(RwLock::new(HashMap::new())),
+            cost_metrics_cache: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -1442,7 +1462,27 @@ impl HostDataPlane {
         if !session_root.is_dir() {
             return Ok(CostDashboard::default());
         }
-        let mut sessions = Vec::new();
+        let metrics = self.scan_cost_metrics(session_root)?;
+        Ok(build_cost_dashboard(metrics))
+    }
+
+    /// Scan the shared session tree once to warm the parsed-metrics cache.
+    /// Best-effort: used at startup so the first Usage open answers from cache
+    /// instead of parsing hundreds of MB of session jsonl on the request path.
+    pub fn prewarm_cost_metrics(&self) {
+        let Some(session_root) = &self.session_root else {
+            return;
+        };
+        if !session_root.is_dir() {
+            return;
+        }
+        let _ = self.scan_cost_metrics(session_root);
+    }
+
+    fn scan_cost_metrics(&self, session_root: &Path) -> Result<Vec<SessionMetrics>, HostDataError> {
+        // Phase 1 — candidates with (path, mtime, len): metadata only, so a
+        // scan of hundreds of MB of history stays cheap at the directory walk.
+        let mut candidates = Vec::new();
         for project in std::fs::read_dir(session_root)
             .map_err(|error| HostDataError::Io(error.to_string()))?
             .filter_map(Result::ok)
@@ -1458,12 +1498,94 @@ impl HostDataPlane {
                 if path.extension().and_then(|value| value.to_str()) != Some("jsonl") {
                     continue;
                 }
-                if let Some(metrics) = parse_session_metrics(&path, None)? {
-                    sessions.push(metrics);
+                let Ok(meta) = std::fs::metadata(&path) else {
+                    continue;
+                };
+                let modified = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
+                candidates.push((path, modified, meta.len()));
+            }
+        }
+        // Phase 2 — cache hits resolve without touching the file; only misses
+        // reach the parallel parse below. The lock is held just for this split
+        // and the insert afterwards — never across worker threads.
+        let mut metrics_all = Vec::new();
+        let mut misses = Vec::new();
+        {
+            let cache = self
+                .cost_metrics_cache
+                .lock()
+                .map_err(|_| HostDataError::Io("cost metrics cache poisoned".into()))?;
+            for (path, modified, len) in &candidates {
+                match cache.get(path) {
+                    Some(cached) if cached.modified == *modified && cached.len == *len => {
+                        metrics_all.push(cached.metrics.clone());
+                    }
+                    _ => misses.push((path.clone(), *modified, *len)),
                 }
             }
         }
-        Ok(build_cost_dashboard(sessions))
+        // Phase 3 — parse misses in parallel on plain std threads (no async
+        // runtime here, no new deps): JSON line parsing is CPU-bound and
+        // dominates the cold scan. Biggest file first keeps the fixed-count
+        // chunks byte-balanced. build_cost_dashboard sorts every aggregate
+        // deterministically, so thread merge order cannot change the payload.
+        misses.sort_by_key(|&(_, _, len)| std::cmp::Reverse(len));
+        let workers = std::thread::available_parallelism()
+            .map(|count| count.get())
+            .unwrap_or(1)
+            .clamp(1, 8);
+        let chunk_size = misses.len().div_ceil(workers).max(1);
+        let mut parsed: Vec<(PathBuf, SystemTime, u64, SessionMetrics)> = Vec::new();
+        std::thread::scope(|scope| -> Result<(), HostDataError> {
+            let handles: Vec<_> = misses
+                .chunks(chunk_size)
+                .map(|chunk| {
+                    scope.spawn(move || {
+                        let mut chunk_metrics = Vec::with_capacity(chunk.len());
+                        for (path, modified, len) in chunk {
+                            if let Some(metrics) = parse_session_metrics(path, None)? {
+                                chunk_metrics.push((path.clone(), *modified, *len, metrics));
+                            }
+                        }
+                        Ok(chunk_metrics)
+                    })
+                })
+                .collect();
+            for handle in handles {
+                let chunk_metrics = handle
+                    .join()
+                    .map_err(|_| HostDataError::Io("cost scan worker panicked".into()))??;
+                parsed.extend(chunk_metrics);
+            }
+            Ok(())
+        })?;
+        if !parsed.is_empty() {
+            let mut cache = self
+                .cost_metrics_cache
+                .lock()
+                .map_err(|_| HostDataError::Io("cost metrics cache poisoned".into()))?;
+            for (path, modified, len, metrics) in &parsed {
+                cache.insert(
+                    path.clone(),
+                    CachedMetrics {
+                        modified: *modified,
+                        len: *len,
+                        metrics: metrics.clone(),
+                    },
+                );
+            }
+        }
+        metrics_all.extend(parsed.into_iter().map(|(_, _, _, metrics)| metrics));
+        Ok(metrics_all)
+    }
+
+    /// Number of validated cache entries. Test-only observation helper.
+    #[cfg(test)]
+    fn cached_metrics_len(&self) -> usize {
+        self.cost_metrics_cache
+            .lock()
+            .map(|cache| cache.len())
+            .unwrap_or(0)
     }
 }
 
@@ -1803,6 +1925,18 @@ fn same_dir(left: &Path, right: &Path) -> bool {
     }
 }
 
+/// True when `project_path` lives under Picot's `~/.picot/remotes` anchor root,
+/// i.e. it represents a remote host workspace rather than a local project.
+/// Anchors are always created there by `open_remote_workspace`; comparing
+/// canonicalized paths keeps macOS `/private` symlinks from breaking the match.
+fn is_remote_project_path(project_path: &Path) -> bool {
+    let Ok(root) = crate::remote_workspace::remotes_root() else {
+        return false;
+    };
+    let root = root.canonicalize().unwrap_or(root);
+    project_path.starts_with(&root)
+}
+
 /// Parse a session file into a summary. `project_path` is populated from the
 /// session's `cwd` (its originating project); `workspace_id` /
 /// `is_current_workspace` are left empty here and filled in by the caller,
@@ -1992,6 +2126,7 @@ fn parse_session_summary_with_metadata(
         .file_name()
         .map(|value| value.to_string_lossy().into_owned())
         .unwrap_or_else(|| project_path.to_string_lossy().into_owned());
+    let is_remote = is_remote_project_path(&project_path);
     let activity_at_ms = last_user_message_at_ms
         .or_else(|| iso_timestamp_ms(&timestamp))
         .unwrap_or(modified_at_ms);
@@ -2003,6 +2138,7 @@ fn parse_session_summary_with_metadata(
         workspace_id: String::new(),
         project_path: project_path.to_string_lossy().into_owned(),
         project_name,
+        is_remote,
         is_current_workspace: false,
         file_path: path.to_string_lossy().into_owned(),
         file_name: path
@@ -2319,7 +2455,7 @@ fn text_mime_type(ext: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{git_output, FileKind, HostDataError, HostDataPlane};
+    use super::{git_output, is_remote_project_path, FileKind, HostDataError, HostDataPlane};
     use serde_json::json;
     use std::collections::HashMap;
     use std::fs;
@@ -2327,8 +2463,7 @@ mod tests {
     use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn isolated_workspace(label: &str) -> (std::path::PathBuf, HostDataPlane, std::path::PathBuf) {
-        let nonce = SystemTime::now()
+    fn isolated_workspace(label: &str) -> (std::path::PathBuf, HostDataPlane, std::path::PathBuf) {        let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
@@ -2345,6 +2480,17 @@ mod tests {
         let mut command = Command::new("picot-missing-git-binary-for-tests");
         command.arg("--version");
         assert!(git_output(command).is_none());
+    }
+
+    #[test]
+    fn recognizes_remote_workspace_anchor_paths() {
+        let root = crate::remote_workspace::remotes_root().expect("remotes root");
+        assert!(is_remote_project_path(
+            &root.join("ubuntu@10.0.0.5").join("proj")
+        ));
+        assert!(!is_remote_project_path(
+            &std::env::temp_dir().join("picot-local-project")
+        ));
     }
 
     #[test]
@@ -3053,6 +3199,54 @@ mod tests {
         assert_eq!(dashboard.by_tool[0].name, "bash");
         // The most expensive session sorts first.
         assert_eq!(dashboard.top_sessions[0].id, "session-b");
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn cost_dashboard_reuses_parsed_metrics_until_a_file_changes() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp = std::env::temp_dir().join(format!("picot-host-cost-cache-{nonce}"));
+        let workspace = temp.join("workspace");
+        let sessions = temp.join("sessions/project");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&sessions).unwrap();
+        let session_path = sessions.join("session-a.jsonl");
+        fs::write(
+            &session_path,
+            format!(
+                "{{\"type\":\"session\",\"id\":\"session-a\",\"cwd\":{}}}\n{{\"type\":\"message\",\"message\":{{\"role\":\"assistant\",\"model\":\"gpt-5\",\"usage\":{{\"input\":10,\"output\":20,\"cost\":{{\"total\":1.0}}}}}}}}\n",
+                serde_json::to_string(&workspace.to_string_lossy()).unwrap(),
+            ),
+        )
+        .unwrap();
+        let data = HostDataPlane::new(HashMap::from([("workspace-a".into(), workspace)]))
+            .unwrap()
+            .with_session_root(temp.join("sessions"));
+
+        let first = data.cost_dashboard("workspace-a").unwrap();
+        assert_eq!(first.summary.total_cost, 1.0);
+        assert_eq!(data.cached_metrics_len(), 1);
+
+        // An unchanged file is served from the cache: same totals, and the
+        // cache holds exactly one validated entry.
+        let second = data.cost_dashboard("workspace-a").unwrap();
+        assert_eq!(second.summary.total_cost, 1.0);
+        assert_eq!(data.cached_metrics_len(), 1);
+
+        // Appending changes (mtime, len) so the stale entry is re-parsed and
+        // replaced with the updated metrics.
+        let mut updated = fs::read_to_string(&session_path).unwrap();
+        updated.push_str(
+            "{\"type\":\"message\",\"message\":{\"role\":\"assistant\",\"model\":\"gpt-5\",\"usage\":{\"input\":1,\"output\":2,\"cost\":{\"total\":2.0}}}}\n",
+        );
+        fs::write(&session_path, updated).unwrap();
+        let third = data.cost_dashboard("workspace-a").unwrap();
+        assert_eq!(third.summary.total_cost, 3.0);
+        assert_eq!(data.cached_metrics_len(), 1);
+
         fs::remove_dir_all(temp).unwrap();
     }
 

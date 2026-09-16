@@ -381,7 +381,7 @@ body.file-preview-resizing {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  font-size: var(--font-size-md);
+  font-size: var(--preview-font-size, var(--font-size-md));
 }
 
 .file-code-editor .cm-lineNumbers {
@@ -408,7 +408,7 @@ body.file-preview-resizing {
   margin-left: var(--file-preview-line-number-gutter);
   overflow: auto;
   padding: var(--space-4);
-  font-size: var(--font-size-md);
+  font-size: var(--preview-font-size, var(--font-size-md));
   line-height: 1.6;
 }
 

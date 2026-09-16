@@ -25,12 +25,14 @@ import {
 } from "../ui/process-group.js";
 import { setupResizablePanel } from "../ui/resizable-panel.js";
 import { ToolCardRenderer } from "../ui/tool-card.js";
+import { createSubagentRunManager } from "./acp/subagent-runs.js";
+import { setupComposerAgentMenu } from "./composer/composer-agent-menu.js";
 import { setupComposerAutoResize } from "./composer/composer-autoresize.js";
 import { setupComposerImageAttachments } from "./composer/composer-images.js";
 import { setupComposerPasteOffload } from "./composer/composer-paste-offload.js";
 import { setupComposerSlashMenu } from "./composer/composer-slash-menu.js";
 import { setupComposerSubmitHandling } from "./composer/composer-submit.js";
-import { isSelectedModel } from "./composer/model-selection.js";
+import { isSelectedModel, splitModelsByScope } from "./composer/model-selection.js";
 import { renderQueuedMessages } from "./composer/queued-messages.js";
 import {
   buildCommandCatalog,
@@ -80,6 +82,7 @@ import {
 import { HostControlGateway } from "./transport/control-gateway.js";
 import { HostDataGateway } from "./transport/data-gateway.js";
 import { createOauthGateway } from "./transport/oauth-gateway.js";
+import { PreferenceGateway } from "./transport/preference-gateway.js";
 import { RemoteSessionGateway } from "./transport/remote-session-gateway.js";
 import { HostRuntimeAdapter, resolveHostWebSocketUrl } from "./transport/runtime-adapter.js";
 import { routeRuntimeFrame } from "./transport/runtime-frame-routing.js";
@@ -96,7 +99,14 @@ import {
 import { NativeFileBrowser } from "./workspace/file-browser.js";
 import { setupHeaderOpenApp } from "./workspace/header-open-app.js";
 import { setupProjectHeader } from "./workspace/project-header.js";
+import { setupRemoteWorkspaceDialog } from "./workspace/remote-workspace-dialog.js";
 import { createSessionStatus } from "./workspace/session-status.js";
+import {
+  isSshRemoteActive,
+  refreshSshRemoteIndicator,
+  setupSshRemoteIndicator,
+} from "./workspace/ssh-remote-indicator.js";
+import { createSshAuthFailureHandler } from "./workspace/ssh-remote-reauth.js";
 import {
   createSessionViaHost,
   openSessionInProjectViaHost,
@@ -151,8 +161,11 @@ const taskCompletionNotifications = createTaskCompletionNotifications({
         session.id === notificationTarget?.sessionId &&
         session.workspaceId === notificationTarget?.workspaceId,
     ) ?? null,
-  title: (task) => task?.name || task?.firstMessage || t("settings.taskCompleteTitle"),
-  body: () => t("settings.taskCompleteMessage"),
+  title: (task, error) =>
+    task?.name ||
+    task?.firstMessage ||
+    (error ? t("settings.taskFailedTitle") : t("settings.taskCompleteTitle")),
+  body: (_task, error) => error || t("settings.taskCompleteMessage"),
   showNotification: sendNativeTaskNotification,
 });
 
@@ -264,6 +277,9 @@ const sessionUiState = new SessionUiStateStore({
 });
 let currentModelContextWindow = 0;
 let availableModels = [];
+// Ordered provider/model ids from Pi's global enabledModels (composer
+// favorites). Rendered as the dropdown's first section when available.
+let scopedModelIds = [];
 let target = provisionalTargetFromRoute(route);
 let configGatewayTargetReady = false;
 let resolveConfigGatewayReady;
@@ -275,6 +291,7 @@ let navigationGeneration = 0;
 let commandCatalog = buildCommandCatalog({});
 const assistantMessageStream = createAssistantMessageStream();
 let streamingElement = null;
+let streamingStartedAt = null;
 let liveProcessGroup = null;
 let lastShownProviderError = null;
 let sidebar = null;
@@ -353,7 +370,7 @@ const adapter = new HostRuntimeAdapter({
   clientType: remoteAuth.clientType,
   deviceToken: remoteAuth.deviceToken,
 });
-setupTerminalPanel({
+const terminalIntegration = setupTerminalPanel({
   adapter,
   getWorkspaceId: () => target.workspaceId,
 });
@@ -364,6 +381,7 @@ const data = new HostDataGateway(adapter, {
 });
 const control = new HostControlGateway(adapter);
 const remoteSessions = new RemoteSessionGateway(window.fetch.bind(window));
+const preferences = new PreferenceGateway(adapter);
 const config = new ConfigGateway({
   runtime,
   getTarget: () => target,
@@ -377,6 +395,81 @@ const customUiPanel = new CustomUiPanel({
   runtime,
   getTarget: () => target,
   onError: showError,
+});
+// `#`-picker agents that can be delegated a scoped task. Selecting one inserts
+// a `#<token> ` token; the rest of the composer line becomes the subagent's
+// task (see sendComposerInput). The picker only offers the ones whose CLI the
+// host detects locally (`control.listAcpAgents()`); adding one here plus a
+// matching preset in acp_launch.rs is enough to surface it.
+const SUBAGENTS = [
+  {
+    id: "claude-code",
+    token: "claude",
+    label: "Claude Code",
+    description: "Delegate a task via ACP",
+  },
+  { id: "gemini", token: "gemini", label: "Gemini CLI", description: "Delegate a task via ACP" },
+  { id: "codex", token: "codex", label: "Codex", description: "Delegate a task via ACP" },
+  { id: "cursor", token: "cursor", label: "Cursor", description: "Delegate a task via ACP" },
+  { id: "qwen", token: "qwen", label: "Qwen Code", description: "Delegate a task via ACP" },
+];
+const SUBAGENT_LINE = /^[#/]([a-z][a-z0-9-]*)[ \t]+([\s\S]+)$/;
+const SUBAGENT_TOKEN_ONLY = /^[#/]([a-z][a-z0-9-]*)\s*$/;
+// null until the host reports which agents' CLIs are installed; the probe is
+// kicked off lazily the first time the `#` menu asks for the list (never during
+// the disconnected startup window), and until it resolves the full list shows.
+let detectedSubagentIds = null;
+let detectingSubagents = false;
+function ensureSubagentDetection() {
+  if (detectedSubagentIds || detectingSubagents) return;
+  detectingSubagents = true;
+  control
+    .listAcpAgents()
+    .then((agents) => {
+      detectedSubagentIds = new Set(agents.map((agent) => agent.id));
+    })
+    .catch(() => {
+      // Detection failed — keep the full list; a run whose CLI is missing still
+      // surfaces the reason on its card.
+    })
+    .finally(() => {
+      detectingSubagents = false;
+    });
+}
+
+// Claude Code subagent runs — each renders as a collapsible card inside the Pi
+// message list; the Pi backend keeps owning the conversation.
+const subagentRuns = createSubagentRunManager({
+  runtime,
+  control,
+  getTarget: () => target,
+  adapter,
+  mount: (element) => {
+    messagesElement?.appendChild(element);
+    element.scrollIntoView({ block: "nearest" });
+  },
+  sendToPi: (message) => {
+    runtime
+      .request({ type: "prompt", message }, target, { idempotencyKey: randomId() })
+      .catch(showError);
+  },
+  onError: showError,
+});
+
+setupComposerAgentMenu({
+  input,
+  container: document.getElementById("agent-picker-menu"),
+  getAgents: () => {
+    // ACP subagents are local CLIs run against this workspace's local
+    // checkout; a remote workspace has no local checkout for them to see, so
+    // there is nothing valid to offer here (see sendComposerInput's matching
+    // guard, which is what actually stops a hand-typed `#claude ...`).
+    if (isSshRemoteActive()) return [];
+    ensureSubagentDetection();
+    return detectedSubagentIds
+      ? SUBAGENTS.filter((agent) => detectedSubagentIds.has(agent.id))
+      : SUBAGENTS;
+  },
 });
 // Remembers which extension commands rely on terminal-only `ctx.ui` surfaces,
 // so the slash menu can badge them instead of leaving the user with a command
@@ -641,6 +734,17 @@ async function requestManualCompaction() {
 }
 
 compactContextButton?.addEventListener("click", () => requestManualCompaction().catch(showError));
+// Built ahead of ExtensionUiHost (rather than alongside setupSshRemoteIndicator
+// further down) so its `notify` hook below can reopen this on an auth failure.
+const remoteWorkspaceDialog = setupRemoteWorkspaceDialog({
+  buttonEl: document.getElementById("open-remote-btn"),
+  onError: showError,
+});
+const handleSshReauthNotify = createSshAuthFailureHandler({
+  call: window.__picotConfigCall,
+  dialog: remoteWorkspaceDialog,
+  reauthMessage: () => t("remoteWorkspace.reauthRequired"),
+});
 const extensionUi = new ExtensionUiHost({
   runtime,
   showDialog: (request, opts) => showNativeDialog(request, undefined, opts),
@@ -651,6 +755,10 @@ const extensionUi = new ExtensionUiHost({
       // Configuration data-plane responses arrive as notify events; swallow
       // them so they don't render as chat messages.
       if (config.consumeNotify(request)) return;
+      // ssh-remote reports a dead password/connection as a notify at session
+      // start; when it does, reopen the connect dialog on this project's
+      // binding instead of leaving the raw message (and its marker) in chat.
+      if (handleSshReauthNotify(request)) return;
       // Custom extension UI panels (ctx.ui.custom) are bridged over notify too;
       // they render as an overlay rather than a transcript entry.
       if (customUiPanel.consumeNotify(request)) return;
@@ -835,6 +943,9 @@ const hydrateFromSnapshot = async (snapshot) => {
 
 runtime.subscribe((frame) => {
   if (frame.type !== "runtime_event") return;
+  // Claude Code subagent task runtimes carry a synthetic sessionId/instanceId;
+  // their events feed a card in the message list, not the Pi session state.
+  if (subagentRuns.applyEvent(frame)) return;
   taskCompletionNotifications.handleRuntimeFrame(frame);
   if (activeRemoteSession) {
     const consumed = oauthGateway.consumeFrame(frame) || consumeConfigResponseFrame(config, frame);
@@ -929,13 +1040,69 @@ messagesElement.addEventListener("previewfile", (event) => {
   if (path) void filePreviewFollow.openPath(path).catch(showError);
 });
 messagesElement.addEventListener("messagefork", async (event) => {
-  const { entryId } = event.detail;
+  let { entryId } = event.detail;
+  if (store.lifecycle === "working") {
+    showError(new Error(t("infoPanel.actionWhileStreaming")));
+    return;
+  }
   try {
+    if (!entryId) {
+      // Root cause of "fork does nothing": live-rendered messages (this
+      // turn's `message_start` event) never carry an entryId — that field
+      // only exists on entries from get_entries/get_tree, and AgentMessage
+      // objects streamed during a run don't include it, so the DOM node's
+      // [data-entry-id] is simply absent until the session is reloaded from
+      // disk. Recover it by asking Pi for the ordered list of forkable user
+      // messages and matching by the clicked message's position among all
+      // rendered user messages (get_fork_messages returns exactly the user
+      // turns on the active branch, in the same order they're rendered).
+      const messageEl = event.target?.closest?.(".message.user") ?? null;
+      const index = messageEl
+        ? [...messagesElement.querySelectorAll(".message.user")].indexOf(messageEl)
+        : -1;
+      if (index >= 0) {
+        const forkMessages = await runtime.request({ type: "get_fork_messages" }, target);
+        entryId = forkMessages?.response?.data?.messages?.[index]?.entryId ?? null;
+      }
+      if (!entryId) {
+        showError(
+          new Error(t("errors.treeNavigateFailed", { error: "Invalid entry ID for forking" })),
+        );
+        return;
+      }
+    }
     const result = await runtime.request({ type: "fork", entryId }, target, {
       idempotencyKey: randomId(),
     });
     const data = result?.response?.data;
-    if (!data?.cancelled && data?.text != null) {
+    if (data?.cancelled) return;
+    // `fork` moves Pi's active branch pointer in memory immediately (the new
+    // session *file* isn't written until the forked message is actually
+    // sent — see pendingForkSwitchCheck below for that part). But the active
+    // branch itself already changed, so — exactly like navigateActiveTree
+    // does for edit — re-hydrating now re-renders the message list truncated
+    // to the fork point right away, instead of leaving the old conversation
+    // visible until after the next send.
+    //
+    // chooseHydrationMessages() deliberately falls back to the cached disk
+    // history when it has *more* messages than a fresh snapshot, to protect
+    // a normal session switch from a transient race where the snapshot
+    // arrives before the full disk read. That protection actively fights
+    // fork, which *legitimately* shrinks the visible history — so the stale,
+    // longer disk-read cached from before this fork would otherwise win and
+    // the panel would silently stay on the old conversation. Drop it first.
+    if (diskHistoryFallback?.sessionId === target.sessionId) diskHistoryFallback = null;
+    await hydrateSnapshotOnce();
+    // Remember exactly which target this fork applies to. Consuming this
+    // purely as a boolean let it leak across an unrelated session: if the
+    // user forked here but then switched sessions and sent an ordinary first
+    // message elsewhere — the temporary-id-to-formal-id rebind every brand
+    // new session goes through on its first message looks, superficially,
+    // just like a fork's session-id change — the leaked flag would fire
+    // checkAndAdoptForkedSession for that unrelated send, forcing a spurious
+    // full re-render that reads as "the page refreshed".
+    pendingForkSwitchCheck = { ...target };
+    if (data?.text != null) {
       input.value = data.text;
       composerAutoResize.sync();
       input.focus();
@@ -944,6 +1111,35 @@ messagesElement.addEventListener("messagefork", async (event) => {
     showError(error);
   }
 });
+
+// Set by the messagefork handler above; consumed once the forked prompt's
+// turn fully settles (see the "agent_settled" case in handleRuntimeEvent).
+// Persisting the new session file happens as part of that turn, not at
+// `prompt` acceptance time, so checking any earlier still sees the old
+// session. Waiting for settle (rather than agent_start) also avoids
+// adoptTarget's mid-stream reset of assistantMessageStream/streamingElement,
+// which would otherwise wipe the in-progress reply out from under the user.
+let pendingForkSwitchCheck = null;
+async function checkAndAdoptForkedSession() {
+  try {
+    const statsResult = await runtime.request({ type: "get_session_stats" }, target);
+    const statsData = statsResult?.response?.data;
+    if (!statsData?.sessionId || statsData.sessionId === target.sessionId) return;
+    // Tell the host registry about the identity change *before* adopting it
+    // locally. adoptTarget resubscribes to events for the new target tuple;
+    // if the registry still thinks this instance is on the old session id,
+    // the resubscription won't match the events this instance actually
+    // emits (tagged with whatever the registry believes), and this client
+    // silently stops receiving any runtime events at all.
+    const rebound = await runtime.rebindSession(target, statsData.sessionId);
+    if (!rebound) return;
+    await sidebar?.load({ quiet: true });
+    await adoptTarget(rebound, { updateRoute: true });
+    await hydrateSnapshotOnce();
+  } catch (error) {
+    showError(error);
+  }
+}
 messagesElement.addEventListener("messageedit", async (event) => {
   const { entryId, text } = event.detail || {};
   if (!entryId) return;
@@ -1035,6 +1231,8 @@ setupCommandPalette({
 const settingsPanel = setupSettingsPanel({
   data,
   control,
+  preferences,
+  terminal: terminalIntegration,
   getWorkspaceId: () => target.workspaceId,
   configGateway: config,
   oauthGateway,
@@ -1097,6 +1295,12 @@ window.addEventListener("picot:session-created", (event) => {
 });
 
 setupOpenFolderButton({ onError: showError });
+// The connect dialog (built above, alongside the ssh-reauth notify hook) is the
+// only place a remote workspace is configured, so the header pill reopens it
+// on this workspace's binding rather than a settings tab.
+setupSshRemoteIndicator({
+  onEdit: (binding) => remoteWorkspaceDialog.open({ prefill: binding }),
+});
 setupAppKeyboardShortcuts({
   input,
   abort: abortCurrentRun,
@@ -1177,6 +1381,12 @@ try {
     sessionId: target.sessionId,
     elapsedMs: Math.round(performance.now() - snapshotStartedAt),
     totalElapsedMs: Math.round(performance.now() - initialLoadStartedAt),
+  });
+  // Deliberately not awaited (and not part of the Promise.all below): the pill
+  // probe waits for the config gateway to become ready, which must never gate
+  // session adoption. A stale probe cannot win, so a late answer is harmless.
+  refreshSshRemoteIndicator({ call: window.__picotConfigCall }).catch((error) => {
+    console.warn("[Native] Failed to probe the remote workspace binding:", error);
   });
   await Promise.all([
     loadCommands()
@@ -1994,11 +2204,57 @@ function setupFileBrowser() {
   });
 }
 
+function knownSubagent(token) {
+  return SUBAGENTS.find((entry) => entry.token === token || entry.id === token) ?? null;
+}
+
+// Returns { agent, task } when `value` delegates to a known subagent
+// (`#claude <task>` / `/codex <task>` / …), { agent, incomplete: true } when the
+// token is there but the task is missing, or null when it's an ordinary line.
+function parseSubagentTask(value) {
+  const text = String(value ?? "").trimStart();
+  const match = SUBAGENT_LINE.exec(text);
+  if (match) {
+    const agent = knownSubagent(match[1]);
+    const task = match[2].trim();
+    if (agent && task) return { agent, task };
+  }
+  const tokenOnly = SUBAGENT_TOKEN_ONLY.exec(text);
+  const agent = tokenOnly && knownSubagent(tokenOnly[1]);
+  if (agent) return { agent, incomplete: true };
+  return null;
+}
+
 async function sendComposerInput({ altKey }) {
   if (pasteOffload?.isBusy()) return;
   const value = input.value;
   const images = imageAttachments.getImages();
   if (!value.trim() && images.length === 0) return;
+  // Delegate to a subagent: `#claude <task>`, `/codex <task>`, … — the rest of
+  // the line is the task; the Pi session is untouched and a card streams the run.
+  const subagentTask = parseSubagentTask(value);
+  if (subagentTask && isSshRemoteActive()) {
+    // Subagent CLIs run locally against this workspace's local checkout; a
+    // remote (SSH) workspace has none for them to work against, so refuse
+    // rather than silently starting a run pointed at an empty anchor dir.
+    messageRenderer.renderSystemMessage(t("messages.subagentUnavailableOverSsh"));
+    return;
+  }
+  if (subagentTask?.incomplete) {
+    const { token, label } = subagentTask.agent;
+    messageRenderer.renderSystemMessage(
+      `Add a task after #${token}, e.g. #${token} ask ${label} to review the diff.`,
+    );
+    return;
+  }
+  if (subagentTask) {
+    input.value = "";
+    input.scrollTop = 0;
+    composerAutoResize.sync();
+    imageAttachments.clear();
+    subagentRuns.start(subagentTask.task, subagentTask.agent).catch(showError);
+    return;
+  }
   const intent = resolveComposerInput(value, commandCatalog, {
     working: store.lifecycle === "working",
     altKey,
@@ -2037,6 +2293,7 @@ async function sendComposerInput({ altKey }) {
     input.value = value;
     composerAutoResize.sync();
     imageAttachments.setImages(images);
+    pendingForkSwitchCheck = null;
     throw error;
   }
 }
@@ -2079,6 +2336,21 @@ async function handleRuntimeEvent(event) {
       turnWrittenPaths = [];
       break;
     case "agent_settled":
+      settleForegroundAgent(event);
+      // Only consume the pending check if it was armed for *this* target — a
+      // session switch in between arm and settle invalidates it, rather than
+      // letting it misfire on an unrelated session's own (ordinary,
+      // fork-unrelated) session-id change.
+      if (
+        pendingForkSwitchCheck &&
+        pendingForkSwitchCheck.workspaceId === target.workspaceId &&
+        pendingForkSwitchCheck.sessionId === target.sessionId &&
+        pendingForkSwitchCheck.instanceId === target.instanceId
+      ) {
+        pendingForkSwitchCheck = null;
+        void checkAndAdoptForkedSession();
+      }
+      break;
     case "agent_end":
       settleForegroundAgent(event);
       break;
@@ -2113,6 +2385,7 @@ async function handleRuntimeEvent(event) {
       } else if (event.message?.role === "assistant") {
         const message = assistantMessageStream.start(event.message);
         showLiveProcessIndicator();
+        streamingStartedAt = Date.now();
         streamingElement = messageRenderer.renderAssistantMessage(message, true);
       }
       break;
@@ -2122,6 +2395,7 @@ async function handleRuntimeEvent(event) {
       const message = assistantMessageStream.update(event);
       if (!streamingElement) {
         showLiveProcessIndicator();
+        streamingStartedAt = Date.now();
         streamingElement = messageRenderer.renderAssistantMessage(message, true);
       } else {
         messageRenderer.updateStreamingMessage(streamingElement, message.content);
@@ -2132,12 +2406,19 @@ async function handleRuntimeEvent(event) {
       if (event.message?.role === "assistant") {
         const message = assistantMessageStream.finish(event.message);
         if (streamingElement) {
+          const durationMs = streamingStartedAt != null ? Date.now() - streamingStartedAt : null;
           messageRenderer.updateStreamingMessage(streamingElement, message.content);
-          messageRenderer.finalizeStreamingMessage(streamingElement, message.usage ?? null);
+          messageRenderer.finalizeStreamingMessage(
+            streamingElement,
+            message.usage ?? null,
+            "",
+            durationMs,
+          );
           contextUsage.setUsage(message.usage ?? null, currentModelContextWindow);
           setSessionCost(sessionTotalCost + (message.usage?.cost?.total ?? 0));
           headerStatusBar?.applyLiveUsage?.(message.usage ?? null);
           streamingElement = null;
+          streamingStartedAt = null;
           convNav.notifyNewMessage();
         }
         showProviderErrorIfNeeded(event);
@@ -2234,6 +2515,7 @@ async function adoptTarget(nextTarget, { updateRoute = true } = {}) {
   filePreviewFollow.clear();
   assistantMessageStream.reset();
   streamingElement = null;
+  streamingStartedAt = null;
   liveProcessGroup = null;
   adapter.subscribeTarget(target);
   sidebar?.setActive(target.sessionId);
@@ -2252,6 +2534,9 @@ async function adoptTarget(nextTarget, { updateRoute = true } = {}) {
       workspaceId: nextTarget.workspaceId,
     }).catch((error) => {
       console.warn("[Native] Failed to load project header info:", error);
+    });
+    refreshSshRemoteIndicator({ call: window.__picotConfigCall }).catch((error) => {
+      console.warn("[Native] Failed to probe the remote workspace binding:", error);
     });
   }
   // The Info panel's tree belongs to the active session: bump the sequence
@@ -2350,6 +2635,7 @@ function renderHistory(messages) {
   if (messages.length === 0) {
     messageRenderer.renderWelcome();
     applyActiveSearchHighlight({ scrollToFirst: false });
+    subagentRuns.restore(target.sessionId).catch(showError);
     logMessagesDom("renderHistory empty", {
       sessionId: target.sessionId,
     });
@@ -2497,6 +2783,10 @@ function renderHistory(messages) {
       }
     }
   }
+
+  // Re-attach Claude Code subagent cards after the message list rebuild that
+  // messageRenderer.clear() just wiped.
+  subagentRuns.restore(target.sessionId).catch(showError);
 
   const highlighted = applyActiveSearchHighlight();
   if (highlighted === 0) messageRenderer.forceScrollToBottom();
@@ -2779,14 +3069,17 @@ function renderEmptyModelDropdown(container) {
   container.appendChild(empty);
 }
 
-function buildModelDropdownItem(model) {
-  const item = document.createElement("button");
-  item.type = "button";
+function buildModelDropdownItem(model, isScoped) {
+  const item = document.createElement("div");
   const selected = isSelectedModel(model, {
     provider: currentModelProvider,
     modelId: currentModelId,
   });
   item.className = `model-dropdown-item${selected ? " active" : ""}`;
+
+  const main = document.createElement("button");
+  main.type = "button";
+  main.className = "model-dropdown-item-main";
 
   const nameWrap = document.createElement("span");
   nameWrap.className = "model-dropdown-item-name";
@@ -2805,8 +3098,8 @@ function buildModelDropdownItem(model) {
     ? `${(Number(model.contextWindow) / 1000).toFixed(0)}k`
     : "";
 
-  item.append(nameWrap, context);
-  item.addEventListener("click", async () => {
+  main.append(nameWrap, context);
+  main.addEventListener("click", async () => {
     closeModelDropdown();
     try {
       if (activeRemoteSession) {
@@ -2831,6 +3124,36 @@ function buildModelDropdownItem(model) {
     }
   });
 
+  const star = document.createElement("button");
+  star.type = "button";
+  star.className = `model-dropdown-star${isScoped ? " active" : ""}`;
+  star.textContent = isScoped ? "\u2605" : "\u2606";
+  star.setAttribute("aria-label", t(isScoped ? "models.removeScoped" : "models.addScoped"));
+  star.addEventListener("click", async (event) => {
+    // Starring only changes the preference — it must never switch the model.
+    event.stopPropagation();
+    try {
+      const response = await config.call("set_scoped_model", {
+        provider: model.provider,
+        modelId: model.id,
+        enabled: !isScoped,
+      });
+      if (response?.ok && Array.isArray(response.data?.modelIds)) {
+        scopedModelIds = response.data.modelIds;
+        const container = modelDropdownMenu?.querySelector(".model-dropdown-items");
+        if (container && !modelDropdownMenu.classList.contains("hidden")) {
+          renderModelDropdownItems(
+            container,
+            modelDropdownMenu.querySelector(".model-dropdown-search")?.value ?? "",
+          );
+        }
+      }
+    } catch {
+      // An unavailable config bridge leaves the current menu state intact.
+    }
+  });
+
+  item.append(main, star);
   return item;
 }
 
@@ -2854,8 +3177,30 @@ function renderModelDropdownItems(container, filter = "") {
     return;
   }
 
-  for (const model of matchingModels) {
-    container.appendChild(buildModelDropdownItem(model));
+  const { scoped, remaining } = splitModelsByScope(matchingModels, scopedModelIds);
+  appendModelSection(container, t("models.scoped"), scoped, true);
+  appendModelSection(container, t("models.allEnabled"), remaining, false);
+}
+
+function appendModelSection(container, label, models, isScoped) {
+  if (models.length === 0) return;
+  const heading = document.createElement("div");
+  heading.className = "model-dropdown-section";
+  heading.textContent = label;
+  container.appendChild(heading);
+  for (const model of models) {
+    container.appendChild(buildModelDropdownItem(model, isScoped));
+  }
+}
+
+async function loadScopedModelIds() {
+  try {
+    const response = await config.call("list_scoped_models");
+    if (response?.ok && Array.isArray(response.data?.modelIds)) {
+      scopedModelIds = response.data.modelIds;
+    }
+  } catch {
+    // An unavailable config bridge degrades to the ungrouped enabled list.
   }
 }
 
@@ -2874,6 +3219,13 @@ function renderModelDropdownMenu() {
   modelDropdownMenu.appendChild(itemsContainer);
 
   renderModelDropdownItems(itemsContainer);
+  // Scoped ids arrive async: rerender once loaded (the enabled list is shown
+  // immediately so the menu never blocks on the config bridge).
+  void loadScopedModelIds().then(() => {
+    if (!modelDropdownMenu.classList.contains("hidden")) {
+      renderModelDropdownItems(itemsContainer, search.value);
+    }
+  });
 
   search.addEventListener("input", () => renderModelDropdownItems(itemsContainer, search.value));
   search.addEventListener("keydown", (event) => {

@@ -52,6 +52,12 @@
     "unstage": "Quitar de preparación",
     "discard": "Descartar cambios",
     "aiCommitMessage": "Generar mensaje de commit con IA",
+    "push": "Push",
+    "pushing": "Enviando...",
+    "pushFailed": "El push ha fallado.",
+    "pushDetachedHead": "No se puede hacer push desde un HEAD desacoplado. Cambia primero a una rama.",
+    "pushNoRemote": "Este repositorio no tiene ningún remoto configurado.",
+    "pushBusy": "Ya hay otra operación de Git en curso en este espacio de trabajo. Inténtalo de nuevo en un momento.",
     "commit": "Commit",
     "stats": "+{additions} −{deletions} · Preparado {staged} · Cambios {changes} · Sin seguimiento {untracked}",
     "summary": "{branch} · {upstream} · ↑{ahead} ↓{behind}",
@@ -72,12 +78,25 @@
     "comparison": {
       "staged": "Preparado",
       "changes": "Cambios",
-      "untracked": "Sin seguimiento"
+      "untracked": "Sin seguimiento",
+      "commit": "Commit"
     },
     "toggleChanges": "Mostrar u ocultar cambios de Git",
     "closeChanges": "Cerrar cambios de Git",
     "changesWithBranch": "Cambios de Git — {branch}",
-    "changesHeading": "Cambios"
+    "changesHeading": "Cambios",
+    "fallback": {
+      "binary": "Este archivo es binario y no se puede mostrar",
+      "copy": "Este archivo solo se copió en este commit",
+      "rename": "Este archivo solo se renombró en este commit"
+    },
+    "copyHash": "Copiar hash",
+    "history": "Historial",
+    "historyEmpty": "Aún no hay historial",
+    "historySelectHint": "Selecciona un commit para ver detalles",
+    "messageTruncated": "Mensaje de commit truncado",
+    "filesTruncated": "Algunos archivos modificados se omiten",
+    "justNow": "Justo ahora"
   },
   "usage": {
     "contextTokens": "Contexto: {used}k / {limit}k tokens",
@@ -117,7 +136,11 @@
     "searchPlaceholder": "Buscar modelos…",
     "emptyTitle": "No hay modelos disponibles",
     "emptyHelp": "No hay claves API configuradas. Establece una clave en Ajustes → Modelos.",
-    "openSettings": "Abrir ajustes"
+    "openSettings": "Abrir ajustes",
+    "scoped": "Modelos con favoritos",
+    "allEnabled": "Todos los modelos habilitados",
+    "addScoped": "Añadir a modelos con favoritos",
+    "removeScoped": "Quitar de modelos con favoritos"
   },
   "queue": {
     "queued": "En cola",
@@ -168,7 +191,9 @@
     "processToolCall": "{count} llamada a herramienta",
     "processToolCalls": "{count} llamadas a herramientas",
     "providerError": "La solicitud al modelo falló.",
-    "turnFiles": "Archivos modificados en este turno ({count}):"
+    "turnFiles": "Archivos modificados en este turno ({count}):",
+    "responseTime": "Tiempo de respuesta",
+    "subagentUnavailableOverSsh": "Los subagentes ACP (#claude, #codex, …) se ejecutan localmente y no pueden ver los archivos de un espacio de trabajo remoto (SSH), por lo que no están disponibles aquí."
   },
   "tools": {
     "copyOutput": "Copiar salida",
@@ -481,6 +506,7 @@
     "remoteSessionConnected": "Conectado a {machine} · sesión remota nativa",
     "newRemoteSession": "Nueva sesión en {path}",
     "remoteBadge": "remoto",
+    "remoteWorkspace": "Espacio remoto",
     "archived": "Archivado",
     "unavailable": "No disponible",
     "showMore": "Mostrar más",
@@ -612,7 +638,7 @@
     "title": "Picot no pudo iniciarse",
     "descriptionPre": "El",
     "descriptionPost": "runtime integrado que se incluye con Picot falló al iniciarse.",
-    "help": "Esto generalmente significa que la instalación está incompleta o dañada. Reinstalar Picot normalmente lo soluciona. Haz clic en Reintentar inicio después de reinstalar o reiniciar.",
+    "help": "Esto puede ocurrir si se eliminó la última carpeta del proyecto, o si la instalación de Picot está incompleta. Haz clic en Reintentar inicio para volver a intentarlo. Reinstala Picot si sigue fallando.",
     "retry": "Reintentar inicio",
     "tauriUnavailable": "El runtime de Tauri no está disponible en esta ventana.",
     "starting": "Iniciando runtime de Pi...",
@@ -648,6 +674,7 @@
     "taskNotificationsDescription": "Muestra una notificación del sistema operativo cuando finaliza una tarea.",
     "taskCompleteTitle": "Tarea completada",
     "taskCompleteMessage": "Tu tarea ha finalizado.",
+    "taskFailedTitle": "La tarea falló",
     "piVersion": "Versión de Pi",
     "picotVersion": "Versión de Picot",
     "checkForUpdates": "Buscar actualizaciones",
@@ -869,7 +896,46 @@
     "installedHelp": "Gestiona los paquetes de extensión configurados para esta instalación: habilita, deshabilita, actualiza o elimina.",
     "copyConfigPath": "Copiar ruta",
     "configPathCopied": "Copiado",
-    "configPathCopyFailed": "Error al copiar"
+    "configPathCopyFailed": "Error al copiar",
+    "theme": "Tema",
+    "chat": {
+      "title": "Chat",
+      "fontSize": "Tamaño de fuente",
+      "fontSizeDescription": "Tamaño del texto de los mensajes del chat."
+    },
+    "preview": {
+      "title": "Vista previa de archivos",
+      "theme": "Tema de vista previa",
+      "themeDescription": "Seguir el tema de Picot, o forzar claro u oscuro para las vistas previas de código y markdown.",
+      "themeSystem": "Sistema",
+      "themeLight": "Claro",
+      "themeDark": "Oscuro",
+      "fontSize": "Tamaño de fuente",
+      "fontSizeDescription": "Tamaño del texto para editores de código y vistas previas markdown."
+    },
+    "terminal": {
+      "title": "Terminal",
+      "theme": "Tema de la terminal",
+      "themeDescription": "Seguir el tema de Picot, o forzar claro u oscuro.",
+      "themeSystem": "Sistema",
+      "themeLight": "Claro",
+      "themeDark": "Oscuro",
+      "fontSize": "Tamaño de fuente",
+      "fontSizeDescription": "Tamaño del texto de la terminal.",
+      "scrollback": "Desplazamiento",
+      "scrollbackDescription": "Número de líneas del historial de la terminal.",
+      "smoothScroll": "Duración del desplazamiento suave",
+      "smoothScrollDescription": "Duración de la animación en milisegundos; 0 la desactiva.",
+      "webgl": "Renderizador WebGL",
+      "webglDescription": "Renderiza la terminal en la GPU. Desactívalo si el texto se ve borroso."
+    },
+    "fontLevel": {
+      "small": "Pequeño",
+      "normal": "Normal",
+      "medium": "Mediano",
+      "large": "Grande",
+      "xlarge": "Extra grande"
+    }
   },
   "cost": {
     "documentTitle": "Picot - Uso",
@@ -1203,6 +1269,21 @@
     "loadingProjects": "Cargando proyectos…",
     "projectRunning": "{name} · en ejecución"
   },
+  "sshRemote": {
+    "hostLabel": "Host",
+    "hostPlaceholder": "192.168.1.50 o my-server.example.com",
+    "portLabel": "Puerto",
+    "portPlaceholder": "22",
+    "userLabel": "Usuario",
+    "userPlaceholder": "ubuntu",
+    "identityFileLabel": "Archivo de identidad",
+    "identityFilePlaceholder": "~/.ssh/id_ed25519",
+    "testConnection": "Probar conexión",
+    "testing": "Probando conexión…",
+    "testOk": "Conectado — ruta remota: {path}",
+    "testFailed": "Error de conexión: {message}",
+    "hostRequired": "El host es obligatorio."
+  },
   "remoteApproval": {
     "title": "Solicitud de acceso remoto",
     "unknownDevice": "Navegador desconocido",
@@ -1232,5 +1313,41 @@
     "roleAssistant": "Asistente",
     "toggleAria": "Alternar panel de información de sesión",
     "closeAria": "Cerrar panel de información de sesión"
+  },
+  "remoteWorkspace": {
+    "openRemote": "Conectar con un host remoto",
+    "dialogTitle": "Conectar con un host remoto",
+    "dialogHelp": "Picot abre el proyecto donde vive. read, write, edit y bash se ejecutan en el host remoto por SSH: no hace falta una copia local.",
+    "savedHost": "Host guardado",
+    "enterManually": "— Introducir un host nuevo —",
+    "fromSshConfig": "De ~/.ssh/config",
+    "saveAs": "Recordar este host como",
+    "saveAsPlaceholder": "gpu-box (déjalo vacío para no guardarlo)",
+    "password": "Contraseña",
+    "passwordHelp": "Solo hace falta si el host no tiene una clave configurada. Se guarda en memoria para esta conexión y nunca se escribe en disco.",
+    "remotePath": "Ruta remota del proyecto",
+    "remotePathPlaceholder": "/home/ubuntu/mi-proyecto",
+    "browse": "Examinar…",
+    "parentDirectory": "↑ Directorio superior",
+    "listing": "Listando el directorio remoto…",
+    "connecting": "Abriendo el espacio de trabajo remoto…",
+    "connect": "Conectar",
+    "cancel": "Cancelar",
+    "remotePathRequired": "Se necesita una ruta remota absoluta.",
+    "needsSession": "Los hosts guardados, las pruebas de conexión y la navegación necesitan un espacio de trabajo abierto. Aún puedes escribir el host y la ruta y conectar.",
+    "reauthRequired": "Esta conexión necesita tu contraseña de nuevo: las credenciales anteriores ya no están disponibles. Vuelve a conectar abajo.",
+    "channelUnavailable": "El canal de configuración no está disponible",
+    "indicatorTitle": "Ejecutándose en {target}: haz clic para cambiar",
+    "indicatorFallbackTitle": "Ejecutándose en un host remoto"
+  },
+  "sshHosts": {
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "confirmDelete": "Confirmar eliminación",
+    "deleteWarning": "¿Eliminar {alias}? Los proyectos vinculados perderán sus datos de conexión.",
+    "deleted": "{alias} eliminado.",
+    "aliasRequired": "Hace falta un nombre.",
+    "save": "Guardar host",
+    "saved": "Host guardado."
   }
 }

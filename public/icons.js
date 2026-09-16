@@ -145,6 +145,13 @@ const ICONS = {
       },
     ],
   ],
+  // "server" marks a workspace that runs on a remote host over SSH.
+  server: [
+    ["rect", { width: "20", height: "7", x: "2", y: "3", rx: "2" }],
+    ["rect", { width: "20", height: "7", x: "2", y: "14", rx: "2" }],
+    ["line", { x1: "6", y1: "6.5", x2: "6.01", y2: "6.5" }],
+    ["line", { x1: "6", y1: "17.5", x2: "6.01", y2: "17.5" }],
+  ],
   "folder-plus": [
     ["path", { d: "M12 10v6" }],
     ["path", { d: "M9 13h6" }],

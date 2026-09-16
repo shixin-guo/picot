@@ -21,6 +21,7 @@ export class TerminalTab {
     sendResize,
     fontFamily,
     fontSize,
+    initialTheme,
     loadFont = () => loadTerminalFont({ family: fontFamily, fontSize }),
   }) {
     this.terminalId = terminalId;
@@ -30,6 +31,7 @@ export class TerminalTab {
     this.lastAppliedSequence = 0;
     this.destroyed = false;
     this.resizeTimer = null;
+    this.webglAddon = null;
     this._fontReady = Promise.resolve()
       .then(() => loadFont())
       .catch(() => undefined);
@@ -43,7 +45,7 @@ export class TerminalTab {
       this.terminal.open(container);
     }
     if (this.terminal.options) {
-      this.terminal.options.theme = picotThemeToXterm();
+      this.terminal.options.theme = initialTheme || picotThemeToXterm();
     }
 
     this._dataDisposable = this.terminal.onData((data) => {
@@ -126,6 +128,71 @@ export class TerminalTab {
     }
   }
 
+  /**
+   * Apply display-only xterm options without recreating the live terminal.
+   * `fontSize` triggers a refit; scrollback and smooth scrolling take effect
+   * through xterm's mutable option surface.
+   */
+  applyPreferences(prefs = {}) {
+    if (this.destroyed || !this.terminal?.options) {
+      return false;
+    }
+    let changed = false;
+    let refit = false;
+    const options = this.terminal.options;
+    if (Number.isFinite(prefs.fontSize) && options.fontSize !== prefs.fontSize) {
+      options.fontSize = prefs.fontSize;
+      changed = true;
+      refit = true;
+    }
+    if (Number.isFinite(prefs.scrollback) && options.scrollback !== prefs.scrollback) {
+      options.scrollback = prefs.scrollback;
+      changed = true;
+    }
+    if (
+      Number.isFinite(prefs.smoothScrollDuration) &&
+      options.smoothScrollDuration !== prefs.smoothScrollDuration
+    ) {
+      options.smoothScrollDuration = prefs.smoothScrollDuration;
+      changed = true;
+    }
+    if (refit) {
+      this._fontReady.then(() => this._fit());
+    }
+    return changed;
+  }
+
+  /**
+   * Upgrade a DOM-rendered tab to WebGL at runtime (settings toggle).
+   * Returns whether the upgrade succeeded; on failure the DOM renderer stays.
+   */
+  enableWebgl(factory) {
+    if (this.destroyed || this.webglAddon || typeof factory !== "function") {
+      return false;
+    }
+    try {
+      this.webglAddon = factory();
+      this.terminal.loadAddon(this.webglAddon);
+    } catch {
+      this.webglAddon = null;
+    }
+    return this.webglAddon !== null;
+  }
+
+  /** Drop the WebGL renderer and return to the DOM renderer. */
+  disableWebgl() {
+    if (this.destroyed || !this.webglAddon) {
+      return false;
+    }
+    try {
+      this.webglAddon.dispose();
+    } catch {
+      // Already gone.
+    }
+    this.webglAddon = null;
+    return true;
+  }
+
   /** Destroy listeners, addons, and the terminal. Idempotent. */
   destroy() {
     if (this.destroyed) {
@@ -140,6 +207,14 @@ export class TerminalTab {
     this._resizeDisposable?.dispose?.();
     this._dataDisposable = null;
     this._resizeDisposable = null;
+    if (this.webglAddon) {
+      try {
+        this.webglAddon.dispose();
+      } catch {
+        // Already gone.
+      }
+      this.webglAddon = null;
+    }
     try {
       this.terminal?.dispose?.();
     } catch {
@@ -235,4 +310,37 @@ export function picotThemeToXterm() {
     selection: get("--bg-glass-active") || "rgba(255,255,255,0.2)",
     ...ansi,
   };
+}
+
+// Canonical chrome for forced modes: picked from Picot's own dark/light theme
+// surfaces (night --bg-solid #212121, clean --bg-solid #ffffff) so a forced
+// terminal stays readable regardless of the active Picot theme.
+const FORCED_DARK_CHROME = {
+  background: "#212121",
+  foreground: "rgba(255, 255, 255, 0.88)",
+  cursor: "rgba(255, 255, 255, 0.88)",
+  cursorAccent: "#212121",
+  selection: "rgba(255, 255, 255, 0.2)",
+};
+const FORCED_LIGHT_CHROME = {
+  background: "#ffffff",
+  foreground: "rgba(0, 0, 0, 0.88)",
+  cursor: "rgba(0, 0, 0, 0.88)",
+  cursorAccent: "#ffffff",
+  selection: "rgba(0, 0, 0, 0.2)",
+};
+
+/**
+ * Resolve the xterm theme for a terminal themeMode preference: "system"
+ * follows the active Picot theme; "light"/"dark" force a canonical palette.
+ * Unknown modes fall back to the system behavior.
+ */
+export function resolveTerminalTheme(mode) {
+  if (mode === "dark") {
+    return { ...FORCED_DARK_CHROME, ...ANSI_DARK };
+  }
+  if (mode === "light") {
+    return { ...FORCED_LIGHT_CHROME, ...ANSI_LIGHT };
+  }
+  return picotThemeToXterm();
 }

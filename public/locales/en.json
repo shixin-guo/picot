@@ -52,6 +52,12 @@
     "unstage": "Unstage",
     "discard": "Discard changes",
     "aiCommitMessage": "Generate AI commit message",
+    "push": "Push",
+    "pushing": "Pushing...",
+    "pushFailed": "Push failed.",
+    "pushDetachedHead": "Cannot push from a detached HEAD. Check out a branch first.",
+    "pushNoRemote": "No remote configured for this repository.",
+    "pushBusy": "Another Git operation is running in this workspace. Try again in a moment.",
     "commit": "Commit",
     "stats": "+{additions} −{deletions} · Staged {staged} · Changes {changes} · Untracked {untracked}",
     "summary": "{branch} · {upstream} · ↑{ahead} ↓{behind}",
@@ -72,12 +78,25 @@
     "comparison": {
       "staged": "Staged",
       "changes": "Changes",
-      "untracked": "Untracked"
+      "untracked": "Untracked",
+      "commit": "Commit"
     },
     "toggleChanges": "Toggle Git changes",
     "closeChanges": "Close Git changes",
     "changesWithBranch": "Git changes — {branch}",
-    "changesHeading": "Changes"
+    "changesHeading": "Changes",
+    "fallback": {
+      "binary": "This file is binary and cannot be displayed",
+      "copy": "This file was only copied in this commit",
+      "rename": "This file was only renamed in this commit"
+    },
+    "copyHash": "Copy hash",
+    "history": "History",
+    "historyEmpty": "No history yet",
+    "historySelectHint": "Select a commit to view details",
+    "messageTruncated": "Commit message truncated",
+    "filesTruncated": "Some changed files are omitted",
+    "justNow": "Just now"
   },
   "usage": {
     "contextTokens": "Context: {used}k / {limit}k tokens",
@@ -117,7 +136,11 @@
     "searchPlaceholder": "Search models…",
     "emptyTitle": "No models available",
     "emptyHelp": "No API keys configured. Set a key in Settings → Models.",
-    "openSettings": "Open Settings"
+    "openSettings": "Open Settings",
+    "scoped": "Scoped models",
+    "allEnabled": "All enabled models",
+    "addScoped": "Add to scoped models",
+    "removeScoped": "Remove from scoped models"
   },
   "queue": {
     "queued": "Queued",
@@ -168,7 +191,9 @@
     "processToolCall": "{count} tool call",
     "processToolCalls": "{count} tool calls",
     "providerError": "The model request failed.",
-    "turnFiles": "Files changed this turn ({count}):"
+    "turnFiles": "Files changed this turn ({count}):",
+    "responseTime": "Response time",
+    "subagentUnavailableOverSsh": "ACP subagents (#claude, #codex, …) run locally and can't see a remote (SSH) workspace's files, so they're unavailable here."
   },
   "tools": {
     "copyOutput": "Copy output",
@@ -481,6 +506,7 @@
     "remoteSessionConnected": "Connected to {machine} · native remote session",
     "newRemoteSession": "New session on {path}",
     "remoteBadge": "remote",
+    "remoteWorkspace": "Remote workspace",
     "archived": "Archived",
     "unavailable": "Unavailable",
     "showMore": "Show more",
@@ -612,7 +638,7 @@
     "title": "Picot could not start",
     "descriptionPre": "The embedded",
     "descriptionPost": "runtime that ships with Picot failed to launch.",
-    "help": "This usually means the installation is incomplete or corrupted. Reinstalling Picot normally fixes it. Click Retry startup after reinstalling or rebooting.",
+    "help": "This can happen if the last project folder was deleted, or if the Picot installation is incomplete. Click Retry startup to try again. Reinstall Picot if it keeps failing.",
     "retry": "Retry startup",
     "tauriUnavailable": "Tauri runtime is unavailable in this window.",
     "starting": "Starting Pi runtime...",
@@ -648,6 +674,7 @@
     "taskNotificationsDescription": "Show an operating system notification when a task finishes.",
     "taskCompleteTitle": "Task completed",
     "taskCompleteMessage": "Your task has finished.",
+    "taskFailedTitle": "Task failed",
     "piVersion": "Pi version",
     "picotVersion": "Picot version",
     "checkForUpdates": "Check for updates",
@@ -869,7 +896,46 @@
     "installedHelp": "Manage the extension packages configured for this installation: enable, disable, update, or remove.",
     "copyConfigPath": "Copy path",
     "configPathCopied": "Copied",
-    "configPathCopyFailed": "Copy failed"
+    "configPathCopyFailed": "Copy failed",
+    "theme": "Theme",
+    "chat": {
+      "title": "Chat",
+      "fontSize": "Font size",
+      "fontSizeDescription": "Text size for chat messages."
+    },
+    "preview": {
+      "title": "File preview",
+      "theme": "Preview theme",
+      "themeDescription": "Follow the Picot theme, or force light or dark for code and markdown previews.",
+      "themeSystem": "System",
+      "themeLight": "Light",
+      "themeDark": "Dark",
+      "fontSize": "Font size",
+      "fontSizeDescription": "Text size for code editors and markdown previews."
+    },
+    "terminal": {
+      "title": "Terminal",
+      "theme": "Terminal theme",
+      "themeDescription": "Follow the Picot theme, or force light or dark.",
+      "themeSystem": "System",
+      "themeLight": "Light",
+      "themeDark": "Dark",
+      "fontSize": "Font size",
+      "fontSizeDescription": "Terminal text size.",
+      "scrollback": "Scrollback",
+      "scrollbackDescription": "Number of terminal history lines to retain.",
+      "smoothScroll": "Smooth scroll duration",
+      "smoothScrollDescription": "Animation duration in milliseconds; 0 disables it.",
+      "webgl": "WebGL renderer",
+      "webglDescription": "Render the terminal on the GPU. Disable it if text looks blurry."
+    },
+    "fontLevel": {
+      "small": "Small",
+      "normal": "Normal",
+      "medium": "Medium",
+      "large": "Large",
+      "xlarge": "Extra large"
+    }
   },
   "cost": {
     "documentTitle": "Picot - Usage",
@@ -1203,6 +1269,21 @@
     "loadingProjects": "Loading projects…",
     "projectRunning": "{name} · running"
   },
+  "sshRemote": {
+    "hostLabel": "Host",
+    "hostPlaceholder": "192.168.1.50 or my-server.example.com",
+    "portLabel": "Port",
+    "portPlaceholder": "22",
+    "userLabel": "Username",
+    "userPlaceholder": "ubuntu",
+    "identityFileLabel": "Identity file",
+    "identityFilePlaceholder": "~/.ssh/id_ed25519",
+    "testConnection": "Test Connection",
+    "testing": "Testing connection…",
+    "testOk": "Connected — remote path: {path}",
+    "testFailed": "Connection failed: {message}",
+    "hostRequired": "Host is required."
+  },
   "remoteApproval": {
     "title": "Remote access request",
     "unknownDevice": "Unknown browser",
@@ -1232,5 +1313,41 @@
     "roleAssistant": "Assistant",
     "toggleAria": "Toggle session info panel",
     "closeAria": "Close session info panel"
+  },
+  "remoteWorkspace": {
+    "openRemote": "Connect to a remote host",
+    "dialogTitle": "Connect to a remote host",
+    "dialogHelp": "Picot opens the project where it lives. Read, write, edit and bash run on the remote host over SSH — no local copy is required.",
+    "savedHost": "Saved host",
+    "enterManually": "— Enter a new host —",
+    "fromSshConfig": "From ~/.ssh/config",
+    "saveAs": "Remember this host as",
+    "saveAsPlaceholder": "gpu-box (leave blank to not save)",
+    "password": "Password",
+    "passwordHelp": "Only needed when the host has no key set up. Kept in memory for this connection and never saved to disk.",
+    "remotePath": "Remote project path",
+    "remotePathPlaceholder": "/home/ubuntu/my-project",
+    "browse": "Browse…",
+    "parentDirectory": "↑ Parent directory",
+    "listing": "Listing the remote directory…",
+    "connecting": "Opening the remote workspace…",
+    "connect": "Connect",
+    "cancel": "Cancel",
+    "remotePathRequired": "An absolute remote path is required.",
+    "needsSession": "Saved hosts, connection tests and browsing need an open workspace. You can still type a host and path and connect.",
+    "reauthRequired": "This connection needs your password again — the previous credentials are no longer available. Reconnect below.",
+    "channelUnavailable": "Configuration channel is unavailable",
+    "indicatorTitle": "Running on {target} — click to change",
+    "indicatorFallbackTitle": "Running on a remote host"
+  },
+  "sshHosts": {
+    "edit": "Edit",
+    "delete": "Delete",
+    "confirmDelete": "Confirm delete",
+    "deleteWarning": "Delete {alias}? Projects bound to it will lose their connection details.",
+    "deleted": "Deleted {alias}.",
+    "aliasRequired": "A name is required.",
+    "save": "Save host",
+    "saved": "Host saved."
   }
 }

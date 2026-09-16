@@ -56,10 +56,20 @@ impl NativeLaunchSpec {
             args.push("--session".into());
             args.push(session_path.to_string_lossy().into_owned());
         }
-        let environment = BTreeMap::from([
+        let mut environment = BTreeMap::from([
             ("PATH".into(), self.path_env.clone()),
             ("PI_STUDIO_PI_VERSION".into(), self.pi_version.clone()),
         ]);
+        // A remote workspace opened with an SSH password: hand it to the pi
+        // process that will actually run the SSH calls. Injecting it here
+        // rather than pushing it in from the WebView means it is in place
+        // before the first tool call, and survives a respawn — the frontend
+        // route raced session startup and left `bash` unauthenticated.
+        // Memory only: the vault is never written to disk, so the password is
+        // gone when Picot exits.
+        if let Some(password) = crate::remote_workspace::peek_password(&self.cwd) {
+            environment.insert("PICOT_SSH_PASSWORD".into(), password);
+        }
         LaunchDescription {
             program: self.binary.clone(),
             args,
@@ -115,7 +125,7 @@ impl NativePiManager {
     pub fn spawn(&self, target: RuntimeTarget, spec: NativeLaunchSpec) -> Result<(), String> {
         let launch = spec.command_description();
         let mut command = Command::new(&launch.program);
-        configure_child_process(&mut command);
+        crate::windows_child::hide_console(&mut command);
         // Before any of our own env: an AppImage's AppRun points the dynamic
         // loader at the bundle, and `pi` is built against the host system.
         crate::appimage_env::scrub(&mut command);
@@ -127,9 +137,14 @@ impl NativePiManager {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         crate::pi_tls::apply_runtime_tls_env(&mut command);
+        // Own the whole tree, and leave a record of it: `pi` outlives a Picot
+        // that dies without running any teardown, and a wedged runtime will not
+        // even notice the stdin EOF that normally stops it.
+        crate::child_supervision::make_group_leader(&mut command);
         let child = command
             .spawn()
             .map_err(|error| format!("Cannot start embedded Pi native RPC process: {error}"))?;
+        crate::child_supervision::record_runtime(child.id());
         let (bridge, mut process) = PiRpcBridge::attach(child, MAX_RPC_FRAME_BYTES)?;
         if let Err(error) = self
             .inner
@@ -493,6 +508,35 @@ impl NativePiManager {
         if !temporary.session_id.starts_with("temporary-") {
             return Ok(temporary.clone());
         }
+        self.rebind_session_id_with_event(temporary, session_id, "session_bound")
+    }
+
+    /// Re-point a *formal* (non-"temporary-") session id to another formal
+    /// session id, for an instance whose live session changed identity out
+    /// from under the registry — e.g. pi forking a new session file in place
+    /// for the same running instance. Unlike `bind_session_id`, this has no
+    /// "temporary-" guard: the caller (the fork RPC flow) is responsible for
+    /// only calling this once it has confirmed via `get_session_stats` that
+    /// the instance is actually on a different session now. Without this,
+    /// the registry keeps reporting the old session id forever, which desyncs
+    /// `target_for_session_id` lookups (used by snapshot requests) and the
+    /// per-client event `subscriptions` set (keyed on the full target tuple),
+    /// silently breaking event delivery for any client that adopts the new id
+    /// locally without the backend ever learning about it.
+    pub fn rebind_session_id(
+        &self,
+        current: &RuntimeTarget,
+        session_id: &str,
+    ) -> Result<RuntimeTarget, String> {
+        self.rebind_session_id_with_event(current, session_id, "session_rebound")
+    }
+
+    fn rebind_session_id_with_event(
+        &self,
+        current: &RuntimeTarget,
+        session_id: &str,
+        event_type: &str,
+    ) -> Result<RuntimeTarget, String> {
         let mut coordinator = self
             .inner
             .coordinator
@@ -500,15 +544,15 @@ impl NativePiManager {
             .map_err(|_| "Runtime coordinator lock poisoned".to_string())?;
         let binding_event = coordinator
             .emit_event(
-                temporary,
+                current,
                 serde_json::json!({
-                    "type": "session_bound",
+                    "type": event_type,
                     "sessionId": session_id,
                 }),
             )
             .map_err(|error| format!("Cannot sequence session binding: {error:?}"))?;
         let formal = coordinator
-            .bind_session_id(temporary, session_id)
+            .bind_session_id(current, session_id)
             .map_err(|error| format!("Cannot bind formal session: {error:?}"))?;
         drop(coordinator);
         let runtime = self
@@ -517,7 +561,7 @@ impl NativePiManager {
             .lock()
             .map_err(|_| "Native runtime registry lock poisoned".to_string())?;
         let managed = runtime
-            .get(&temporary.instance_id)
+            .get(&current.instance_id)
             .ok_or_else(|| "Native runtime instance is not running".to_string())?;
         *managed
             .target
@@ -639,15 +683,6 @@ fn is_mutation(command_type: &str) -> bool {
     )
 }
 
-#[cfg(target_os = "windows")]
-fn configure_child_process(command: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    command.creation_flags(0x0800_0000);
-}
-
-#[cfg(not(target_os = "windows"))]
-fn configure_child_process(_command: &mut Command) {}
-
 #[cfg(test)]
 mod tests {
     use super::{NativeLaunchSpec, NativePiManager};
@@ -679,6 +714,34 @@ mod tests {
             .args
             .iter()
             .any(|argument| argument.parse::<u16>().is_ok()));
+    }
+
+    #[test]
+    fn a_remote_workspace_password_reaches_the_pi_process_it_was_parked_for() {
+        let anchor = PathBuf::from("/picot-test/remotes/box/app");
+        crate::remote_workspace::stash_password(&anchor, "not-a-real-secret");
+        let spec = |cwd: PathBuf| NativeLaunchSpec {
+            binary: PathBuf::from("/embedded/pi"),
+            cwd,
+            session_path: None,
+            extensions: vec![],
+            pi_version: env!("PI_STUDIO_PI_VERSION_BUNDLED").into(),
+            path_env: "/usr/bin".into(),
+            approve: false,
+        };
+        assert_eq!(
+            spec(anchor)
+                .command_description()
+                .environment
+                .get("PICOT_SSH_PASSWORD")
+                .map(String::as_str),
+            Some("not-a-real-secret")
+        );
+        // An ordinary local workspace must not inherit some other host's password.
+        assert!(!spec(PathBuf::from("/workspace"))
+            .command_description()
+            .environment
+            .contains_key("PICOT_SSH_PASSWORD"));
     }
 
     #[test]
@@ -828,5 +891,39 @@ mod tests {
         let event = events.recv().await.unwrap();
         assert_eq!(event.target, formal);
         assert_eq!(manager.target_for_session_id("session-a"), Some(formal));
+    }
+
+    #[tokio::test]
+    async fn rebinds_a_formal_session_after_an_in_place_fork_and_routes_future_events_there() {
+        let manager = NativePiManager::in_memory(8);
+        let original = RuntimeTarget::new("workspace-a", "session-a", "instance-a");
+        let mut events = manager.subscribe();
+        let mut fake = manager.register_in_memory(original.clone()).unwrap();
+
+        // bind_session_id is a no-op once the session id is already formal;
+        // only rebind_session_id can move an instance from one real session
+        // id to another, which is what a fork does in place.
+        assert_eq!(manager.bind_session_id(&original, "session-b").unwrap(), original);
+
+        let forked = manager.rebind_session_id(&original, "session-b").unwrap();
+        let binding = events.recv().await.unwrap();
+        assert_eq!(binding.target, original);
+        assert_eq!(binding.event["type"], "session_rebound");
+        assert_eq!(binding.event["sessionId"], "session-b");
+        assert_eq!(forked.instance_id, "instance-a");
+        assert_eq!(forked.session_id, "session-b");
+
+        // The old session id no longer resolves to this instance, and future
+        // events carry the rebound target rather than the stale one — the
+        // exact desync that broke a client's event subscription when only
+        // the frontend, not the registry, learned about the new session id.
+        assert_eq!(manager.target_for_session_id("session-a"), None);
+        assert_eq!(manager.target_for_session_id("session-b"), Some(forked.clone()));
+
+        fake.write_frame(json!({ "type": "agent_start" }))
+            .await
+            .unwrap();
+        let event = events.recv().await.unwrap();
+        assert_eq!(event.target, forked);
     }
 }

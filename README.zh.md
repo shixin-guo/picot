@@ -23,6 +23,7 @@ Picot 将 `pi` 运行时**直接打包进 .app**，无需单独安装 `pi`，无
 - [功能特性](#功能特性)
 - [开发者指南](#开发者指南)
 - [上游关系](#上游关系)
+- [贡献者](#贡献者)
 - [License](#license)
 
 ---
@@ -41,8 +42,13 @@ Windows (PowerShell):
 irm https://raw.githubusercontent.com/shixin-guo/picot/main/scripts/install.ps1 | iex
 ```
 
-Linux 安装脚本会按你的包管理器选择 `.deb` 或 `.rpm`。两者都没有的发行版，或者不想用 `sudo`
-的话，加 `--appimage` 把 AppImage 装到 `~/.local/bin`：
+Linux 安装脚本会按你的包管理器选择 `.deb` 或 `.rpm`，**优先用这两个**：它们链接系统自带的
+WebKitGTK，会跟随发行版更新，在 Fedora 43 这类最新系统上也能正常工作。
+
+AppImage 只是兜底：适用于既没有 `apt` 也没有 `dnf`/`rpm` 的发行版，或者不想用 `sudo` 的场景。
+它**打包**了 WebKitGTK，在过新的发行版上可能一启动就崩溃（打包的 JavaScriptCore 里 `SIGSEGV`）——
+原因是打包的引擎比宿主系统库旧。只要你的系统有 `.deb`/`.rpm` 就优先用它。加 `--appimage`
+把 AppImage 装到 `~/.local/bin`：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/shixin-guo/picot/main/scripts/install.sh | bash -s -- --appimage
@@ -358,6 +364,18 @@ Picot 是 **Tau** 的维护性 fork，专为 Pi 优先的本地开发工作流�
 - **内嵌 pi 运行时** — 无需全局安装，Picot 自带二进制
 - **Protocol v2 host bridge** — 为 runtime、data、auth 和 extension UI 帧提供路由
 - **Host data plane** — Rust 直接向 native UI 提供会话和工作区数据
+
+---
+
+## 贡献者
+
+头像由 GitHub API 实时生成，无需手动维护名单。
+
+<a href="https://github.com/shixin-guo/picot/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=shixin-guo/picot" alt="Contributors" />
+</a>
+
+由 [contrib.rocks](https://contrib.rocks) 生成。
 
 ---
 

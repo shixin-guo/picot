@@ -8,6 +8,7 @@ import { onLocaleChange, t } from "../i18n.js";
 import { createIcon } from "../icons.js";
 import { initImageLightbox } from "./image-lightbox.js";
 import { renderMarkdown, renderStreamingMarkdown, renderUserMarkdown } from "./markdown.js";
+import { sanitizeMarkup } from "./sanitize-markup.js";
 
 /**
  * Detect and clean up pi-chat transcript format.
@@ -88,6 +89,25 @@ export function formatMessageTime(timestampMs) {
   const hhmm = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
   if (sameDay) return hhmm;
   return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${hhmm}`;
+}
+
+/**
+ * Format a response duration (ms) for the message footer, e.g. "3.2s" or
+ * "1m 05s". Picot times generation client-side (message_start → message_end);
+ * pi's runtime events carry no duration field of their own. Returns "" for
+ * missing/invalid input so callers can render unconditionally.
+ */
+export function formatDurationLabel(durationMs) {
+  // null / undefined must short-circuit before Number(): Number(null) === 0
+  // is a finite value and would otherwise render a fake "0.0s" duration.
+  if (durationMs == null) return "";
+  const ms = Number(durationMs);
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const totalSeconds = ms / 1000;
+  if (totalSeconds < 60) return `${totalSeconds.toFixed(1)}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.round(totalSeconds % 60);
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
 }
 
 /** Full timestamp for the hover `title` (screen-reader / exact reference). */
@@ -320,6 +340,7 @@ export class MessageRenderer {
         : renderMarkdown(message.content);
     } else if (Array.isArray(message.content)) {
       for (const block of message.content) {
+        if (!block) continue;
         if (block.type === "text") {
           rawStreamingText += block.text;
           contentHtml += isStreaming
@@ -467,7 +488,7 @@ export class MessageRenderer {
     return { text, thinking };
   }
 
-  finalizeStreamingMessage(messageElement, usage = null, thinking = "") {
+  finalizeStreamingMessage(messageElement, usage = null, thinking = "", durationMs = null) {
     const contentDiv = messageElement.querySelector(".message-content");
     let finalThinking = "";
     if (contentDiv) {
@@ -510,6 +531,9 @@ export class MessageRenderer {
 
       const timeSpan = this._createTimeSpan(Date.now());
       if (timeSpan) footer.appendChild(timeSpan);
+
+      const durationSpan = this._createDurationSpan(durationMs);
+      if (durationSpan) footer.appendChild(durationSpan);
 
       if (hasUsage) {
         const span = document.createElement("span");
@@ -625,6 +649,17 @@ export class MessageRenderer {
     return span;
   }
 
+  /** Response-time span for the assistant footer; null when there's no duration to show. */
+  _createDurationSpan(durationMs) {
+    const label = formatDurationLabel(durationMs);
+    if (!label) return null;
+    const span = document.createElement("span");
+    span.className = "message-duration";
+    span.textContent = label;
+    span.title = t("messages.responseTime");
+    return span;
+  }
+
   /** Create the expand/collapse control for long user prompts. */
   _createUserCollapseToggle(contentEl, rawContent) {
     if (!shouldCollapseUserMessage(rawContent)) return null;
@@ -700,37 +735,7 @@ export class MessageRenderer {
   }
 
   _sanitizeMarkup(root) {
-    const blockedTags = new Set([
-      "SCRIPT",
-      "STYLE",
-      "IFRAME",
-      "OBJECT",
-      "EMBED",
-      "FOREIGNOBJECT",
-      "ANIMATE",
-      "SET",
-      "USE",
-    ]);
-    root.querySelectorAll("*").forEach((element) => {
-      if (blockedTags.has(element.tagName)) {
-        element.remove();
-        return;
-      }
-      for (const attribute of Array.from(element.attributes)) {
-        const name = attribute.name.toLowerCase();
-        const value = attribute.value.trim();
-        if (
-          name.startsWith("on") ||
-          name === "srcdoc" ||
-          name === "formaction" ||
-          (name === "href" && !/^(https?:|mailto:|#)/i.test(value)) ||
-          (name === "src" && !/^(https?:\/\/|data:image\/(?:png|jpe?g|gif|webp);)/i.test(value)) ||
-          (name === "style" && /url\s*\(/i.test(value))
-        ) {
-          element.removeAttribute(attribute.name);
-        }
-      }
-    });
+    sanitizeMarkup(root);
   }
 
   _setupCodeCopyButtons(root) {

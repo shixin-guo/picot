@@ -1,2 +1,2 @@
-export * from "./src/core/config-types.js";
-export * from "./src/core/runtime-types.js";
+export * from "./core/config-types.js";
+export * from "./core/runtime-types.js";

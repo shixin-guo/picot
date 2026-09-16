@@ -78,6 +78,33 @@ export class HostControlGateway {
     return frame?.instanceId ?? null;
   }
 
+  // Spawns an external ACP agent (agentId defaults to "claude-code") as a
+  // scoped subagent for one task. The session's Pi backend is untouched; the
+  // returned throwaway {workspaceId, sessionId, instanceId} target is driven
+  // with `acp_prompt` runtime requests and retired with `stopAcpTask()`.
+  async startAcpTask(workspaceId, sessionId, agentId = "claude-code") {
+    const frame = await this.#request("acp_task_start", {
+      workspaceId,
+      sessionId,
+      agentId,
+    });
+    if (!frame?.target) throw new Error("Host returned no target for the ACP subagent task");
+    return frame.target;
+  }
+
+  // Tears down a subagent task runtime once its run settles. Best effort — a
+  // run whose process already exited resolves without error.
+  async stopAcpTask(target) {
+    await this.#request("acp_task_stop", { target });
+  }
+
+  // ACP subagents whose underlying CLI is installed locally ({id, label}[]).
+  // The composer's `#` picker only offers these.
+  async listAcpAgents() {
+    const frame = await this.#request("acp_list_agents");
+    return Array.isArray(frame?.agents) ? frame.agents : [];
+  }
+
   async resolveWorkspace(projectPath) {
     const frame = await this.#request("resolve_workspace", { projectPath });
     if (!frame?.workspaceId) throw new Error("Host returned an invalid workspace id");

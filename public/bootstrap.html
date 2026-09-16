@@ -93,7 +93,7 @@
         title: "Picot could not start",
         descriptionPre: "The embedded",
         descriptionPost: "runtime that ships with Picot failed to launch.",
-        help: "This usually means the installation is incomplete or corrupted. Reinstalling Picot normally fixes it. Click Retry startup after reinstalling or rebooting.",
+        help: "This can happen if the last project folder was deleted, or if the Picot installation is incomplete. Click Retry startup to try again. Reinstall Picot if it keeps failing.",
         retry: "Retry startup",
         tauriUnavailable: "Tauri runtime is unavailable in this window.",
         starting: "Starting Pi runtime...",
@@ -104,7 +104,7 @@
         title: "Picot 无法启动",
         descriptionPre: "Picot 内置的",
         descriptionPost: "运行时启动失败。",
-        help: "这通常意味着安装不完整或已损坏。重新安装 Picot 通常可以解决。重新安装或重启后点击「重试启动」。",
+        help: "这通常是因为上次打开的项目文件夹已被删除，或 Picot 安装不完整。点击「重试启动」再试一次；如果仍然失败，请重新安装 Picot。",
         retry: "重试启动",
         tauriUnavailable: "此窗口中 Tauri 运行时不可用。",
         starting: "正在启动 Pi 运行时...",
@@ -133,7 +133,7 @@
   <main class="card">
     <h1 id="bootstrap-title" data-i18n="bootstrap.title">Picot could not start</h1>
     <p><span id="bootstrap-desc-pre" data-i18n="bootstrap.descriptionPre">The embedded</span> <code data-i18n="migrated.bootstrap.text.pi">pi</code> <span id="bootstrap-desc-post" data-i18n="bootstrap.descriptionPost">runtime that ships with Picot failed to launch.</span></p>
-    <p id="bootstrap-help">This usually means the installation is incomplete or corrupted. Reinstalling Picot normally fixes it. Click Retry startup after reinstalling or rebooting.</p>
+    <p id="bootstrap-help">This can happen if the last project folder was deleted, or if the Picot installation is incomplete. Click Retry startup to try again. Reinstall Picot if it keeps failing.</p>
     <div id="startup-error" class="error"></div>
     <div class="actions">
       <button id="retry-btn" type="button" data-i18n="bootstrap.retry">Retry startup</button>
@@ -160,8 +160,7 @@
       retryBtn.disabled = true;
       hint.textContent = messages.starting;
       try {
-        const port = await invoke('cmd_retry_startup');
-        window.location.href = `http://localhost:${port}`;
+        await invoke('retry_startup');
       } catch (error) {
         hint.textContent = String(error?.message || error || messages.startupFailed);
         retryBtn.disabled = false;

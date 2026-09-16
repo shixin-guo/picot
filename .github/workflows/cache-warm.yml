@@ -46,7 +46,13 @@ jobs:
           - os: macos-14
             pi_target_platform: darwin-x64
             rust_target: x86_64-apple-darwin
+          # Two x86_64 Linux rows to match release.yml: deb/rpm build on
+          # ubuntu-22.04, the AppImage on ubuntu-24.04 (see release.yml for
+          # why). rust-cache keys by `matrix.os`, so each needs its own warm
+          # cache even though they compile a byte-identical binary.
           - os: ubuntu-22.04
+            pi_target_platform: linux-x64
+          - os: ubuntu-24.04
             pi_target_platform: linux-x64
           - os: ubuntu-24.04-arm
             pi_target_platform: linux-arm64

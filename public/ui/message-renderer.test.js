@@ -11,6 +11,7 @@ const enMessages = {
     copied: "Copied!",
     expand: "Expand",
     collapse: "Collapse",
+    responseTime: "Response time",
   },
   app: {
     welcome: "Welcome to Picot",
@@ -369,6 +370,21 @@ describe("MessageRenderer message toolbar timestamps", () => {
     expect(formatMessageTime(1e20)).toBe("");
   });
 
+  it("formats a response duration as seconds, or minutes+seconds past a minute", async () => {
+    const { formatDurationLabel } = await import("./message-renderer.js");
+    expect(formatDurationLabel(320)).toBe("0.3s");
+    expect(formatDurationLabel(3200)).toBe("3.2s");
+    expect(formatDurationLabel(65_400)).toBe("1m 05s");
+  });
+
+  it("returns an empty duration label for missing or invalid durations", async () => {
+    const { formatDurationLabel } = await import("./message-renderer.js");
+    expect(formatDurationLabel(null)).toBe("");
+    expect(formatDurationLabel(undefined)).toBe("");
+    expect(formatDurationLabel(-5)).toBe("");
+    expect(formatDurationLabel(Number.NaN)).toBe("");
+  });
+
   it("orders the user footer slots copy before time, with tree actions leading", () => {
     const ts = new Date(2020, 0, 15, 10, 30).getTime();
     renderer.renderUserMessage({ content: "hello", timestamp: ts });
@@ -437,6 +453,26 @@ describe("MessageRenderer message toolbar timestamps", () => {
     renderer.finalizeStreamingMessage(el, { cost: { total: 0.01 } });
     const footer = el.querySelector(".message-footer");
     expect(footer?.querySelector(".message-time")).not.toBeNull();
+  });
+
+  it("shows the client-timed response duration when streaming finalizes", () => {
+    const el = renderer.renderAssistantMessage(
+      { content: [{ type: "text", text: "done" }], timestamp: 1 },
+      true,
+    );
+    renderer.finalizeStreamingMessage(el, null, "", 3200);
+    const duration = el.querySelector(".message-footer .message-duration");
+    expect(duration?.textContent).toBe("3.2s");
+    expect(duration?.title).toBe("Response time");
+  });
+
+  it("omits the duration span when no duration was measured", () => {
+    const el = renderer.renderAssistantMessage(
+      { content: [{ type: "text", text: "done" }], timestamp: 1 },
+      true,
+    );
+    renderer.finalizeStreamingMessage(el);
+    expect(el.querySelector(".message-footer .message-duration")).toBeNull();
   });
 
   it("keeps the user footer permanently visible without a hover reveal", () => {

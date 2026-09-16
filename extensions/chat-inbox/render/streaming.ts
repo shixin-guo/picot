@@ -15,8 +15,8 @@ export interface PreviewChunk {
 }
 
 export interface PreviewTransport {
-  create(text: string, parseMode?: "Markdown", replyToMessageId?: string): Promise<string>;
-  edit(id: string, text: string, parseMode?: "Markdown"): Promise<void>;
+  create(text: string, parseMode?: "Markdown" | "HTML", replyToMessageId?: string): Promise<string>;
+  edit(id: string, text: string, parseMode?: "Markdown" | "HTML"): Promise<void>;
   delete(id: string): Promise<void>;
 }
 

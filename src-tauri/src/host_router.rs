@@ -175,9 +175,27 @@ impl HostRouter {
                     target,
                 })
             }
-            "runtime_request" | "runtime_snapshot_request" | "runtime_capabilities_request" => {
+            "runtime_request" | "runtime_snapshot_request" | "runtime_capabilities_request"
+            | "runtime_rebind_session_request" => {
                 if frame_type == "runtime_request" {
                     validate_runtime_request(frame)?;
+                }
+                if frame_type == "runtime_rebind_session_request" {
+                    let target = frame.get("target").ok_or_else(|| {
+                        RouterError::new("invalid_target", "Runtime target is required")
+                    })?;
+                    validate_target(target)?;
+                    if frame
+                        .get("newSessionId")
+                        .and_then(Value::as_str)
+                        .filter(|id| !id.is_empty())
+                        .is_none()
+                    {
+                        return Err(RouterError::new(
+                            "invalid_session_id",
+                            "newSessionId is required",
+                        ));
+                    }
                 }
                 Ok(RoutedAction::Runtime {
                     client_id: client_id.to_owned(),
@@ -441,5 +459,43 @@ mod tests {
             router.route("phone", &command),
             Ok(RoutedAction::Terminal { .. })
         ));
+    }
+
+    #[test]
+    fn routes_a_well_formed_rebind_session_request_and_rejects_a_missing_new_session_id() {
+        let mut router = HostRouter::new();
+        router
+            .connect(
+                "desktop",
+                &json!({ "type": "hello", "protocolVersion": 2, "clientType": "desktop" }),
+            )
+            .unwrap();
+        let target = json!({
+            "workspaceId": "workspace-a",
+            "sessionId": "session-a",
+            "instanceId": "instance-a"
+        });
+        let routed = router
+            .route(
+                "desktop",
+                &json!({
+                    "type": "runtime_rebind_session_request",
+                    "requestId": "request-1",
+                    "target": target,
+                    "newSessionId": "session-b",
+                }),
+            )
+            .unwrap();
+        assert!(matches!(routed, RoutedAction::Runtime { .. }));
+
+        let missing_new_id = router.route(
+            "desktop",
+            &json!({
+                "type": "runtime_rebind_session_request",
+                "requestId": "request-2",
+                "target": target,
+            }),
+        );
+        assert!(missing_new_id.is_err());
     }
 }

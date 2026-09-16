@@ -3,6 +3,7 @@ import { applyTheme, getCurrentTheme, themes } from "../../themes.js";
 import { applyLoadingPlaceholder, clearLoadingPlaceholder } from "../../ui/loading-placeholder.js";
 import { setupRemoteAccessHeader } from "../workspace/remote-access-header.js";
 import { setupUpdateIndicator } from "../workspace/update-indicator.js";
+import { setupAppearanceSettings } from "./appearance-settings.js";
 import { loadCostDashboard } from "./cost-dashboard.js";
 import { setupLanguageSelector } from "./language-selector.js";
 import { setupModelsPage } from "./models-page.js";
@@ -31,6 +32,8 @@ export function setupSettingsPanel({
   data,
   getWorkspaceId,
   control,
+  preferences,
+  terminal,
   configGateway,
   oauthGateway,
   onModelConfigurationChanged,
@@ -166,6 +169,13 @@ export function setupSettingsPanel({
   };
   setupLanguageSelector();
   setupSettingsToggles({ configGateway, onError });
+  // Appearance owns the theme grid's page placement and every display
+  // preference; a missing preference gateway (tests, remote setups) leaves
+  // the page functional in cookie-only mode.
+  const appearance = setupAppearanceSettings({
+    preferences,
+    terminal: terminal ?? null,
+  });
   let usageLoaded = false;
 
   function loadUsage() {
@@ -218,6 +228,7 @@ export function setupSettingsPanel({
       tab.classList.toggle("active", tab.dataset.settingsPanel === target);
     }
 
+    if (target === "appearance") void appearance.activate();
     if (target === "usage") loadUsage();
     if (target === "extensions") {
       setExtensionsView(panel.classList.contains("resource-dialog") ? "installed" : "marketplace");

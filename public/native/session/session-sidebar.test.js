@@ -1016,6 +1016,43 @@ describe("SessionSidebar.pinned", () => {
     expect(group.textContent).toContain("PINNED");
   });
 
+  it("keeps show more and show less controls for pinned workspace sessions", async () => {
+    const sessions = Array.from({ length: 12 }, (_, index) => ({
+      id: `pinned-${index}`,
+      filePath: `/sessions/pinned-${index}.jsonl`,
+      timestamp: new Date(Date.now() - index * 1000).toISOString(),
+      name: `Pinned ${index}`,
+    }));
+    const { sidebar, container } = makeSidebar(sessions);
+
+    await sidebar.load();
+    sidebar.pinnedStore.pinWorkspace("/ws-1", "/ws-1");
+    await sidebar.load();
+
+    let group = container.querySelector(".pinned-workspace-group");
+    expect(group.querySelectorAll(".session-item")).toHaveLength(8);
+    const showMore = group.querySelector(
+      ".project-sessions-toggle:not(.project-sessions-toggle-less)",
+    );
+    expect(showMore).toBeTruthy();
+    expect(group.querySelector(".project-sessions-toggle-less")).toBeNull();
+
+    showMore.click();
+
+    group = container.querySelector(".pinned-workspace-group");
+    expect(group.querySelectorAll(".session-item")).toHaveLength(12);
+    expect(
+      group.querySelector(".project-sessions-toggle:not(.project-sessions-toggle-less)"),
+    ).toBeNull();
+    expect(group.querySelector(".project-sessions-toggle-less")).toBeTruthy();
+
+    group.querySelector(".project-sessions-toggle-less").click();
+
+    expect(
+      container.querySelector(".pinned-workspace-group").querySelectorAll(".session-item"),
+    ).toHaveLength(8);
+  });
+
   it("excludes workspace-pinned sessions from the regular project list", async () => {
     const { sidebar, container } = makeSidebar([
       {

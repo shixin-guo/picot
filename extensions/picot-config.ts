@@ -36,6 +36,7 @@ import {
 } from "./oauth-login-operations";
 import { buildPackageSkillInventory } from "./package-skill-inventory";
 import { writePasteOffloadFile } from "./paste-offload";
+import { resolveHomeDir, resolvePiAgentRoot } from "./pi-agent-paths";
 import {
   buildTelegramDmConfig,
   buildTelegramDoctorReport,
@@ -53,6 +54,19 @@ import {
   type SkillScope,
   type SkillTarget,
 } from "./skill-inventory";
+import {
+  assertSshRemoteSettingsValid,
+  listSshRemoteDirectories,
+  parseSshHostEntry,
+  parseSshHosts,
+  parseSshRemoteSettings,
+  readSshConfigHosts,
+  resolveSshRemoteSettings,
+  type SshHostEntry,
+  serializeSshRemoteSettings,
+  setSshRemoteSessionPassword,
+  testSshRemoteConnection,
+} from "./ssh-remote";
 
 type ModelHealthStatus = "unknown" | "healthy" | "unhealthy";
 
@@ -87,7 +101,9 @@ type CatalogRegistry = {
     label?: string;
   };
   getProviderDisplayName: (provider: string) => string;
-  refresh: () => void | Promise<void>;
+  // The live pi registry resolves to ModelsRefreshResult; every caller here
+  // awaits and discards it, so the contract only promises "awaitable".
+  refresh: () => void | Promise<unknown>;
   getApiKeyForProvider?: (provider: string) => Promise<string | undefined>;
   getApiKeyAndHeaders?: (model: CatalogModel) => Promise<{
     ok?: boolean;
@@ -103,7 +119,7 @@ const oauthLoginManager = createOAuthLoginOperationManager();
 
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
-type ConfigContext = {
+export type ConfigContext = {
   modelRegistry?: CatalogRegistry;
   cwd?: string;
   model?: unknown;
@@ -192,43 +208,6 @@ function errMessage(e: unknown): string {
   } catch {
     return String(e);
   }
-}
-
-function resolveHomeDir(): string {
-  const candidates: string[] = [];
-  const add = (value?: string) => {
-    if (typeof value === "string" && value.trim()) candidates.push(path.resolve(value.trim()));
-  };
-  add(process.env.HOME);
-  add(process.env.USERPROFILE);
-  if (process.env.HOMEDRIVE && process.env.HOMEPATH) {
-    add(`${process.env.HOMEDRIVE}${process.env.HOMEPATH}`);
-  }
-  add(os.homedir());
-  return candidates[0] || os.homedir();
-}
-
-function resolvePiAgentRoot(): string {
-  const candidates: string[] = [];
-  const add = (value?: string) => {
-    if (typeof value === "string" && value.trim()) candidates.push(path.resolve(value.trim()));
-  };
-  add(process.env.HOME);
-  add(process.env.USERPROFILE);
-  if (process.env.HOMEDRIVE && process.env.HOMEPATH) {
-    add(`${process.env.HOMEDRIVE}${process.env.HOMEPATH}`);
-  }
-  add(os.homedir());
-  for (const home of candidates) {
-    const candidate = path.join(home, ".pi", "agent");
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  const appData = process.env.APPDATA;
-  if (typeof appData === "string" && appData.trim()) {
-    const roaming = path.join(path.resolve(appData), "pi", "agent");
-    if (fs.existsSync(roaming)) return roaming;
-  }
-  return path.join(candidates[0] || os.homedir(), ".pi", "agent");
 }
 
 const HOME_DIR = resolveHomeDir();
@@ -748,6 +727,15 @@ function resolveSettingsPath(
   };
 }
 
+/**
+ * The shared `sshHosts` registry from the global agent settings. Read through
+ * `readSettingsObject` (rather than ssh-remote's own reader) so every config op
+ * sees the same file this module writes.
+ */
+function readGlobalSshHostRegistry(): Record<string, SshHostEntry> {
+  return parseSshHosts(readSettingsObject(AGENT_CONFIG_PATH).sshHosts);
+}
+
 function getProjectSettings(
   ctx: ConfigContext,
 ): { path: string; settings: Record<string, unknown> } | null {
@@ -762,7 +750,11 @@ function getDefaultThinkingLevel(scope: unknown, ctx: ConfigContext) {
   if (requestedScope === "project" || requestedScope === "effective") {
     const project = getProjectSettings(ctx);
     const projectValue = project?.settings.defaultThinkingLevel;
-    if (typeof projectValue === "string" && THINKING_LEVELS.has(projectValue as ThinkingLevel)) {
+    if (
+      project &&
+      typeof projectValue === "string" &&
+      THINKING_LEVELS.has(projectValue as ThinkingLevel)
+    ) {
       return { level: projectValue, source: "project", path: project.path };
     }
     if (requestedScope === "project") {
@@ -830,6 +822,44 @@ function setDefaultAutoCompaction(enabled: unknown, scope: unknown, ctx: ConfigC
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function readEnabledModels(settings: Record<string, unknown>): string[] {
+  return Array.isArray(settings.enabledModels)
+    ? settings.enabledModels.filter(
+        (model): model is string => typeof model === "string" && model.trim().length > 0,
+      )
+    : [];
+}
+
+// Composer favorites are provider/model pairs; a persisted thinking-level
+// suffix (`provider/model:level`) is stripped so the UI matches on identity.
+function scopedModelId(pattern: string): string {
+  const suffixIndex = pattern.lastIndexOf(":");
+  return suffixIndex === -1 ? pattern : pattern.slice(0, suffixIndex);
+}
+
+function setScopedModel(provider: unknown, modelId: unknown, enabled: unknown) {
+  const normalizedProvider = asString(provider);
+  const normalizedModelId = asString(modelId);
+  if (!normalizedProvider || !normalizedModelId) {
+    throw new Error("provider and modelId are required");
+  }
+  if (typeof enabled !== "boolean") throw new Error("enabled must be a boolean");
+  const reference = `${normalizedProvider}/${normalizedModelId}`;
+  const settings = readSettingsObject(AGENT_CONFIG_PATH);
+  const current = readEnabledModels(settings);
+  const withoutModel = current.filter((pattern) => scopedModelId(pattern) !== reference);
+  const models = enabled ? [...withoutModel, reference] : withoutModel;
+  if (models.length > 0) settings.enabledModels = models;
+  else delete settings.enabledModels;
+  writeSettingsObject(AGENT_CONFIG_PATH, settings);
+  return {
+    provider: normalizedProvider,
+    modelId: normalizedModelId,
+    enabled,
+    modelIds: models.map(scopedModelId),
+  };
 }
 
 function asNumber(value: unknown): number | undefined {
@@ -1269,6 +1299,122 @@ export async function handlePicotConfig(
       case "set_default_auto_compaction":
         return { ok: true, data: setDefaultAutoCompaction(params.enabled, params.scope, ctx) };
 
+      // Remote workspace binding (Settings → Remote Workspace): which host this
+      // ONE project runs on, so it stays in the project's own settings.json.
+      // The connection itself can live in the global `sshHosts` registry and be
+      // referenced by alias (see get_ssh_hosts). Reads are unrestricted so an
+      // untrusted project's form still renders (with a "trust required"
+      // banner); writes require project trust like other project settings.
+      case "get_ssh_remote_config": {
+        const cwd = asString(ctx.cwd);
+        if (!cwd) throw new Error("Active workspace is required");
+        const settingsPath = path.join(cwd, PROJECT_CONFIG_DIR_NAME, "settings.json");
+        const settings = readSettingsObject(settingsPath);
+        const config = parseSshRemoteSettings(settings.sshRemote);
+        const hosts = readGlobalSshHostRegistry();
+        return {
+          ok: true,
+          data: {
+            config,
+            resolved: resolveSshRemoteSettings(config, hosts),
+            hosts,
+            trusted: Boolean(ctx.isProjectTrusted?.()),
+            path: settingsPath,
+          },
+        };
+      }
+
+      case "set_ssh_remote_config": {
+        const config = parseSshRemoteSettings(params.config ?? params);
+        assertSshRemoteSettingsValid(config);
+        const target = resolveSettingsPath("project", ctx);
+        const settings = readSettingsObject(target.path);
+        settings.sshRemote = serializeSshRemoteSettings(config);
+        writeSettingsObject(target.path, settings);
+        return { ok: true, data: { config, path: target.path } };
+      }
+
+      case "test_ssh_remote_config": {
+        const config = resolveSshRemoteSettings(
+          parseSshRemoteSettings(params.config ?? params),
+          readGlobalSshHostRegistry(),
+        );
+        return {
+          ok: true,
+          data: await testSshRemoteConnection(config, asString(params.password) || undefined),
+        };
+      }
+
+      case "set_ssh_remote_password":
+        setSshRemoteSessionPassword(params.password);
+        return { ok: true, data: {} };
+
+      case "list_ssh_remote_dir": {
+        const config = resolveSshRemoteSettings(
+          parseSshRemoteSettings(params.config ?? params),
+          readGlobalSshHostRegistry(),
+        );
+        const dirPath = asString(params.path);
+        return {
+          ok: true,
+          data: await listSshRemoteDirectories(
+            config,
+            dirPath,
+            asString(params.password) || undefined,
+          ),
+        };
+      }
+
+      // The saved-host registry is global on purpose: a key path and username
+      // belong to a machine, not to one checkout, and the connect dialog offers
+      // them for any new project.
+      case "get_ssh_hosts":
+        return {
+          ok: true,
+          data: {
+            hosts: readGlobalSshHostRegistry(),
+            // Async now: each `~/.ssh/config` alias is resolved by `ssh -G`
+            // rather than by re-parsing the file here.
+            sshConfigHosts: await readSshConfigHosts(),
+            path: AGENT_CONFIG_PATH,
+          },
+        };
+
+      case "set_ssh_host": {
+        const alias = asString(params.alias).trim();
+        if (!alias) throw new Error("A host name is required");
+        const entry = parseSshHostEntry(params.config ?? params);
+        if (!entry.host) throw new Error("Host is required");
+        const settings = readSettingsObject(AGENT_CONFIG_PATH);
+        const hosts = parseSshHosts(settings.sshHosts);
+        hosts[alias] = entry;
+        settings.sshHosts = hosts;
+        writeSettingsObject(AGENT_CONFIG_PATH, settings);
+        return { ok: true, data: { alias, hosts, path: AGENT_CONFIG_PATH } };
+      }
+
+      case "delete_ssh_host": {
+        const alias = asString(params.alias).trim();
+        if (!alias) throw new Error("A host name is required");
+        const settings = readSettingsObject(AGENT_CONFIG_PATH);
+        const hosts = parseSshHosts(settings.sshHosts);
+        delete hosts[alias];
+        settings.sshHosts = hosts;
+        writeSettingsObject(AGENT_CONFIG_PATH, settings);
+        return { ok: true, data: { hosts, path: AGENT_CONFIG_PATH } };
+      }
+
+      case "list_scoped_models": {
+        const models = readEnabledModels(readSettingsObject(AGENT_CONFIG_PATH));
+        return { ok: true, data: { modelIds: models.map(scopedModelId) } };
+      }
+
+      case "set_scoped_model":
+        return {
+          ok: true,
+          data: setScopedModel(params.provider, params.modelId, params.enabled),
+        };
+
       case "read_models_config":
         return { ok: true, data: readConfigFile(MODELS_CONFIG_PATH, '{\n  "providers": {}\n}\n') };
 
@@ -1521,7 +1667,8 @@ function openExternal(url: string): void {
         ? ["cmd", ["/c", "start", "", url]]
         : ["xdg-open", [url]];
   try {
-    execFile(command, args, () => {});
+    // windowsHide: a console-less pi process would otherwise flash a cmd window.
+    execFile(command, args, { windowsHide: true }, () => {});
   } catch {
     // Best-effort; frontend falls back to window.open.
   }

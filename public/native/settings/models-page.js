@@ -1100,6 +1100,25 @@ export function setupModelsPage({ configGateway, oauthGateway, onModelConfigurat
       const sourceSection = inlineModelsSave?.closest(".settings-section");
       const actions = inlineModelsSave?.closest(".settings-config-actions");
       footer.appendChild(openSource);
+
+      // The visual form mutates the config in place but never persists on its
+      // own; without this the only Save button lives inside the closed JSON
+      // dialog, so field edits silently never reach models.json.
+      const toolbarStatus = document.createElement("div");
+      toolbarStatus.className = "config-editor-error settings-save-status hidden";
+      toolbarStatus.id = "models-config-toolbar-status";
+      toolbarStatus.setAttribute("role", "status");
+      toolbarStatus.setAttribute("aria-live", "polite");
+      const toolbarSave = document.createElement("button");
+      toolbarSave.type = "button";
+      toolbarSave.className = "ui-button ui-button--primary models-config-toolbar-save";
+      toolbarSave.textContent = t("actions.save");
+      toolbarSave.addEventListener(
+        "click",
+        () => void persistInlineModelsConfig({ button: toolbarSave, statusEl: toolbarStatus }),
+      );
+      footer.append(toolbarStatus, toolbarSave);
+
       if (actions) {
         actions.classList.add("models-json-dialog-actions");
         dialog.appendChild(actions);
@@ -1624,40 +1643,48 @@ export function setupModelsPage({ configGateway, oauthGateway, onModelConfigurat
     main.append(header, form);
   }
 
-  inlineModelsSave?.addEventListener("click", async () => {
+  // Shared persistence for both save entry points: the Advanced JSON editor's
+  // button and the visual layout's toolbar button. `button` / `statusEl` let
+  // the toolbar surface saving state and errors next to the visual form
+  // instead of inside the (closed) JSON dialog.
+  async function persistInlineModelsConfig({ button, statusEl } = {}) {
     if (!inlineModelsTextarea) return;
-    clearInlineModelsError();
+    const saveButton = button || inlineModelsSave;
+    const status = statusEl || inlineModelsError;
+    clearSettingsSaveMessage(status);
     const content = inlineModelsTextarea.value;
     let parsed;
     try {
       parsed = JSON.parse(content);
     } catch (e) {
-      showInlineModelsError(`Invalid JSON: ${e.message}`);
+      showSettingsSaveError(status, `Invalid JSON: ${e.message}`);
       return;
     }
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      showInlineModelsError("models.json must be a JSON object.");
+      showSettingsSaveError(status, "models.json must be a JSON object.");
       return;
     }
     if (
       "providers" in parsed &&
       (typeof parsed.providers !== "object" || Array.isArray(parsed.providers))
     ) {
-      showInlineModelsError("'providers' must be an object.");
+      showSettingsSaveError(status, "'providers' must be an object.");
       return;
     }
-    setSettingsSaveButtonSaving(inlineModelsSave, true);
+    setSettingsSaveButtonSaving(saveButton, true);
     try {
       const data = await call("write_models_config", { content });
       if (!data?.ok) throw new Error(data?.error || "Failed to save models.json");
-      showSettingsSaveSuccess(inlineModelsError);
+      showSettingsSaveSuccess(status);
       await onModelConfigurationChanged?.();
     } catch (e) {
-      showInlineModelsError(e.message || String(e));
+      showSettingsSaveError(status, e.message || String(e));
     } finally {
-      setSettingsSaveButtonSaving(inlineModelsSave, false);
+      setSettingsSaveButtonSaving(saveButton, false);
     }
-  });
+  }
+
+  inlineModelsSave?.addEventListener("click", () => void persistInlineModelsConfig());
 
   inlineModelsInsertExample?.addEventListener("click", () => {
     if (!inlineModelsTextarea) return;

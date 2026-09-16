@@ -27,6 +27,23 @@ export function createFolderIcon() {
 }
 
 /**
+ * Small badge marking a workspace that runs on a remote host over SSH.
+ * Paired with the folder icon so a remote project is distinguishable from a
+ * local one at a glance, mirroring the header's SSH indicator.
+ */
+export function createRemoteBadge() {
+  const badge = document.createElement("span");
+  badge.className = "workspace-remote-badge";
+  const label = t("sidebar.remoteWorkspace");
+  badge.title = label;
+  badge.setAttribute("aria-label", label);
+  badge.setAttribute("role", "img");
+  const icon = createIcon("server", { size: 12 });
+  if (icon) badge.appendChild(icon);
+  return badge;
+}
+
+/**
  * Builds the disclosure arrow shared by all four sidebar section headers.
  * Exported so inline section builders (recent / archived in index.js) render
  * the exact same icon contract as buildSidebarSection.
@@ -164,6 +181,7 @@ export function buildSidebarSection({
  * @param {string}  opts.workspaceId         Stable ID for data-workspace-id.
  * @param {string}  opts.folderName          Folder name to display (inert text).
  * @param {string}  [opts.workspacePath]     Full path for the tooltip (inert).
+ * @param {boolean} [opts.isRemote=false]   Workspace runs on a remote host.
  * @param {number}  [opts.sessionCount=0]    Non-archived session count.
  * @param {boolean} [opts.expanded=false]    Initial expanded state.
  * @param {function} [opts.onToggle]         Called with the new expanded boolean.
@@ -180,6 +198,7 @@ export function buildSidebarWorkspaceGroup({
   workspaceId,
   folderName,
   workspacePath,
+  isRemote = false,
   sessionCount = 0,
   expanded = false,
   onToggle = null,
@@ -200,7 +219,11 @@ export function buildSidebarWorkspaceGroup({
   const header = document.createElement("div");
   header.className = "project-header workspace-header";
 
-  header.appendChild(createFolderIcon());
+  if (isRemote) {
+    header.appendChild(createRemoteBadge());
+  } else {
+    header.appendChild(createFolderIcon());
+  }
 
   const nameEl = document.createElement("span");
   nameEl.className = "project-name workspace-name";

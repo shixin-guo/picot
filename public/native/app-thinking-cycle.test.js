@@ -116,6 +116,9 @@ afterEach(() => {
   delete globalThis.ResizeObserver;
 });
 
+// Booting the whole native entry is inherently slow (seconds, not
+// milliseconds); the 5s default timeout is marginal once the suite runs it
+// alongside everything else.
 test("thinking button asks the server to cycle levels and applies the returned level", async () => {
   await import("./app.js?thinking-cycle-regression");
   await vi.waitFor(() => {
@@ -147,7 +150,7 @@ test("thinking button asks the server to cycle levels and applies the returned l
   await vi.waitFor(() => {
     expect(btn.textContent.trim()).toContain("high");
   });
-});
+}, 20000);
 
 test("model switch handler reconciles thinking level via get_state (source contract)", async () => {
   // The comment asked for a focused model-switch reconciliation test. The

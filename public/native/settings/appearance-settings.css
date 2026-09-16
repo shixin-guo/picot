@@ -1,0 +1,44 @@
+/* Appearance settings page: display-preference controls and the forced
+   preview-theme scopes. Layout follows the shared settings primitives; only
+   page-specific geometry lives here. */
+
+.settings-terminal-number {
+  width: 96px;
+  text-align: right;
+}
+
+/* Forced preview themes (Appearance page) scope-swap the Picot variables the
+   preview subtree consumes, so code editors and markdown previews render in
+   the canonical dark or light palette regardless of the active Picot theme.
+   System mode sets no attribute and inherits the theme. */
+[data-preview-theme="dark"] .file-preview-panel {
+  --bg-solid: #212121;
+  --bg-glass: rgba(255, 255, 255, 0.04);
+  --bg-glass-hover: rgba(255, 255, 255, 0.06);
+  --bg-glass-active: rgba(255, 255, 255, 0.08);
+  --bg-glass-strong: rgba(255, 255, 255, 0.05);
+  --bg-frosted: rgba(33, 33, 33, 0.85);
+  --text-primary: rgba(255, 255, 255, 0.88);
+  --text-secondary: rgba(255, 255, 255, 0.5);
+  --text-dim: rgba(255, 255, 255, 0.3);
+  --text-ghost: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.06);
+  --border-hover: rgba(255, 255, 255, 0.1);
+  --border-bright: rgba(255, 255, 255, 0.14);
+}
+
+[data-preview-theme="light"] .file-preview-panel {
+  --bg-solid: #ffffff;
+  --bg-glass: rgba(0, 0, 0, 0.03);
+  --bg-glass-hover: rgba(0, 0, 0, 0.06);
+  --bg-glass-active: rgba(0, 0, 0, 0.09);
+  --bg-glass-strong: rgba(0, 0, 0, 0.04);
+  --bg-frosted: rgba(255, 255, 255, 0.82);
+  --text-primary: rgba(0, 0, 0, 0.88);
+  --text-secondary: rgba(0, 0, 0, 0.55);
+  --text-dim: rgba(0, 0, 0, 0.35);
+  --text-ghost: rgba(0, 0, 0, 0.12);
+  --border: rgba(0, 0, 0, 0.08);
+  --border-hover: rgba(0, 0, 0, 0.14);
+  --border-bright: rgba(0, 0, 0, 0.2);
+}

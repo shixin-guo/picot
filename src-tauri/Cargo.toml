@@ -1,6 +1,6 @@
 [package]
 name = "picot"
-version = "0.5.1"
+version = "0.5.6"
 description = "Pi Agent Desktop - session manager for pi coding agent"
 authors = ["Pi Desktop"]
 edition = "2021"
@@ -51,6 +51,9 @@ subtle = "2"
 tempfile = "3"
 portable-pty = "0.9"
 libc = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation = { version = "0.3.2", features = ["NSString", "NSUserDefaults"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

@@ -4,8 +4,8 @@ import {
   createTaskCompletionNotifications,
 } from "./task-completion-notifications.js";
 
-function runtimeFrame(type, instanceId = "instance-a") {
-  return { type: "runtime_event", target: { instanceId }, event: { type } };
+function runtimeFrame(type, instanceId = "instance-a", eventProps = {}) {
+  return { type: "runtime_event", target: { instanceId }, event: { type, ...eventProps } };
 }
 
 function setup({ storedValue, permission = true } = {}) {
@@ -24,8 +24,8 @@ function setup({ storedValue, permission = true } = {}) {
     storage,
     notificationApi,
     resolveTask: () => task,
-    title: (resolvedTask) => resolvedTask.name,
-    body: () => "Finished",
+    title: (resolvedTask, error) => resolvedTask.name || (error ? "Task failed" : "Task completed"),
+    body: (_resolvedTask, error) => error || "Finished",
     showNotification,
     logger,
   });
@@ -80,6 +80,26 @@ describe("task completion notifications", () => {
       body: "Finished",
       target: { instanceId: "instance-a" },
       task,
+      error: null,
+    });
+  });
+
+  it("keeps the session name as the title but reports the error in the body", async () => {
+    const { control, showNotification, task } = setup();
+    control.handleRuntimeFrame(runtimeFrame("agent_start"));
+    control.handleRuntimeFrame(
+      runtimeFrame("agent_end", "instance-a", { errorMessage: "410 status code (no body)" }),
+    );
+
+    await vi.waitFor(() => {
+      expect(showNotification).toHaveBeenCalledOnce();
+    });
+    expect(showNotification).toHaveBeenCalledWith({
+      title: "Fix notification routing",
+      body: "410 status code (no body)",
+      target: { instanceId: "instance-a" },
+      task,
+      error: "410 status code (no body)",
     });
   });
 

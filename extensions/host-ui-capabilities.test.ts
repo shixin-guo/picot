@@ -8,13 +8,13 @@ function setup() {
 
   const ui = {
     notify: (message: string) => notifications.push(message),
-    onTerminalInput: () => {
+    onTerminalInput: (..._args: unknown[]) => {
       calls.push("onTerminalInput");
       return () => {};
     },
-    setFooter: () => calls.push("setFooter"),
-    setHeader: () => calls.push("setHeader"),
-    setEditorComponent: () => calls.push("setEditorComponent"),
+    setFooter: (..._args: unknown[]) => calls.push("setFooter"),
+    setHeader: (..._args: unknown[]) => calls.push("setHeader"),
+    setEditorComponent: (..._args: unknown[]) => calls.push("setEditorComponent"),
   };
   const ctx = { ui };
 

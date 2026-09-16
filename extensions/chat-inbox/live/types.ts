@@ -9,6 +9,13 @@ export interface LiveConnectionHandlers {
   onCaughtUp(): Promise<void>;
   onError(error: Error): Promise<void>;
   onDisconnect?(): Promise<void>;
+  /**
+   * Checked before each poll, and whenever the service reports that a second
+   * consumer took over. Returning false stops the connection for good — a
+   * takeover is not a transient failure, so it must not trigger a reconnect.
+   */
+  isStillOwner?(): Promise<boolean>;
+  onEvicted?(reason: string): Promise<void>;
 }
 
 export interface ResumeState {

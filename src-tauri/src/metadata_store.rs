@@ -1,6 +1,7 @@
 #![cfg_attr(not(test), allow(dead_code))]
 
 use rusqlite::{params, Connection, OptionalExtension};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -183,6 +184,48 @@ impl MetadataStore {
             .commit()
             .map_err(|error| format!("Cannot commit Picot metadata reset: {error}"))
     }
+
+    /// Read one JSON preference value. Corrupt stored JSON surfaces as an
+    /// error instead of silently falling back to a default.
+    pub fn preference_get(&self, key: &str) -> Result<Option<Value>, String> {
+        let raw: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT value_json FROM preferences WHERE key = ?1",
+                [key],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| format!("Cannot read preference: {error}"))?;
+        raw.map(|raw| {
+            serde_json::from_str(&raw)
+                .map_err(|error| format!("Invalid stored preference: {error}"))
+        })
+        .transpose()
+    }
+
+    /// Upsert one JSON preference value.
+    pub fn preference_set(&mut self, key: &str, value: &Value) -> Result<(), String> {
+        let raw = serde_json::to_string(value)
+            .map_err(|error| format!("Cannot encode preference: {error}"))?;
+        self.connection
+            .execute(
+                "INSERT INTO preferences (key, value_json) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
+                params![key, raw],
+            )
+            .map_err(|error| format!("Cannot save preference: {error}"))?;
+        Ok(())
+    }
+
+    /// Delete one preference. Returns whether a row was removed.
+    pub fn preference_remove(&mut self, key: &str) -> Result<bool, String> {
+        let removed = self
+            .connection
+            .execute("DELETE FROM preferences WHERE key = ?1", [key])
+            .map_err(|error| format!("Cannot remove preference: {error}"))?;
+        Ok(removed > 0)
+    }
 }
 
 fn token_hash(token: &str) -> Vec<u8> {
@@ -227,6 +270,34 @@ mod tests {
         assert!(!String::from_utf8_lossy(&bytes).contains("plain-device-token"));
         store.revoke_device("phone").unwrap();
         assert!(!store.verify_device_token("plain-device-token").unwrap());
+
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn preferences_round_trip_json_and_delete() {
+        let temp = temp_dir();
+        let mut store = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
+
+        assert_eq!(store.preference_get("ui.chatFontSize").unwrap(), None);
+        store
+            .preference_set("ui.chatFontSize", &serde_json::json!("large"))
+            .unwrap();
+        assert_eq!(
+            store.preference_get("ui.chatFontSize").unwrap(),
+            Some(serde_json::json!("large"))
+        );
+        // Upsert overwrites the same key.
+        store
+            .preference_set("ui.chatFontSize", &serde_json::json!({ "level": 3 }))
+            .unwrap();
+        assert_eq!(
+            store.preference_get("ui.chatFontSize").unwrap(),
+            Some(serde_json::json!({ "level": 3 }))
+        );
+        assert!(store.preference_remove("ui.chatFontSize").unwrap());
+        assert_eq!(store.preference_get("ui.chatFontSize").unwrap(), None);
+        assert!(!store.preference_remove("ui.chatFontSize").unwrap());
 
         fs::remove_dir_all(temp).unwrap();
     }

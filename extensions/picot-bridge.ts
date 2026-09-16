@@ -1,9 +1,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerCustomUiBridge } from "./custom-ui-bridge";
 import { registerHostUiCapabilityReporter } from "./host-ui-capabilities";
+import { startOrphanWatchdog } from "./orphan-watchdog";
+import type { ConfigContext } from "./picot-config";
 import { handlePicotConfig } from "./picot-config";
 import projectTrust from "./project-trust";
 import { registerAutomaticSessionTitle } from "./session-title-auto";
+import { readResolvedProjectSshRemoteSettings, registerSshRemoteExtension } from "./ssh-remote";
 
 type ConfigRequest = {
   id?: string;
@@ -12,6 +15,9 @@ type ConfigRequest = {
 };
 
 export default function picotBridge(pi: ExtensionAPI) {
+  // Stop this runtime if Picot dies without taking it down — see
+  // src-tauri/src/child_supervision.rs for the other layers.
+  startOrphanWatchdog();
   projectTrust(pi);
   registerAutomaticSessionTitle(pi);
   // Bridges `ctx.ui.custom()` overlays into the WebView; pi's RPC stub would
@@ -20,6 +26,15 @@ export default function picotBridge(pi: ExtensionAPI) {
   // Surfaces the `ctx.ui` surfaces that stay terminal-only, so a command that
   // silently does nothing in the GUI can say why.
   registerHostUiCapabilityReporter(pi);
+  // Remote workspace: delegates read/write/edit/bash to a remote host when the
+  // trusted project's .pi/settings.json has sshRemote.enabled. A `hostRef`
+  // binding is resolved against the global registry first, so the project file
+  // never has to carry credentials.
+  registerSshRemoteExtension(pi, (cwd, trusted) => {
+    if (!trusted) return null;
+    const settings = readResolvedProjectSshRemoteSettings(cwd);
+    return settings.enabled && settings.host ? settings : null;
+  });
 
   // Configuration data plane. Invoked by the WebView via a native RPC prompt
   // (`/picot-config <json>`); extension commands run immediately without
@@ -49,7 +64,15 @@ export default function picotBridge(pi: ExtensionAPI) {
       const op = typeof request.op === "string" ? request.op : "";
       const params = request.params && typeof request.params === "object" ? request.params : {};
       try {
-        const result = await handlePicotConfig(op, params, { ...ctx, oauthNotify });
+        // SAFETY: ctx is the live pi ExtensionContext; ConfigContext only
+        // declares the slices these operations consume. The registry's real
+        // method signatures are narrower than the structural shell, so this
+        // cast widens the object to the shell shape (same rationale as the
+        // respond() cast below).
+        const result = await handlePicotConfig(op, params, {
+          ...ctx,
+          oauthNotify,
+        } as unknown as ConfigContext);
         // SAFETY: handlePicotConfig returns PicotConfigResult ({ ok, data?, error? }) —
         // a plain JSON-serializable record by construction; the cast only
         // widens the discriminated union to its record shape for respond().
