@@ -67,6 +67,7 @@ import {
 import { extractAssistantError, extractRuntimeEventError } from "./session/assistant-error.js";
 import { createAssistantMessageStream } from "./session/assistant-message-stream.js";
 import { InfoPanel } from "./session/info-panel.js";
+import { loadRemoteMachineSessions } from "./session/remote-machine-sessions.js";
 import { activeSession, setupSessionInfo } from "./session/session-info.js";
 import { createSessionSelectionHandler } from "./session/session-navigation.js";
 import { setupSessionSearchDialog } from "./session/session-search-dialog.js";
@@ -83,6 +84,7 @@ import { HostControlGateway } from "./transport/control-gateway.js";
 import { HostDataGateway } from "./transport/data-gateway.js";
 import { createOauthGateway } from "./transport/oauth-gateway.js";
 import { PreferenceGateway } from "./transport/preference-gateway.js";
+import { RemoteSessionGateway } from "./transport/remote-session-gateway.js";
 import { HostRuntimeAdapter, resolveHostWebSocketUrl } from "./transport/runtime-adapter.js";
 import { routeRuntimeFrame } from "./transport/runtime-frame-routing.js";
 import { RuntimeGateway } from "./transport/runtime-gateway.js";
@@ -301,6 +303,11 @@ let streamingStartedAt = null;
 let liveProcessGroup = null;
 let lastShownProviderError = null;
 let sidebar = null;
+const REMOTE_MACHINE_RETRY_MS = 5_000;
+let remoteMachineRetryTimer = null;
+let activeRemoteSession = null;
+let remoteSnapshotSignature = "";
+let remoteStatusSignature = "";
 let agentInboxNavSelectSession = null;
 // Sidebar loading starts before bootstrap/runtime awaits complete. Keep every
 // state slot used by its callbacks initialized above that startup boundary so
@@ -381,6 +388,7 @@ const data = new HostDataGateway(adapter, {
   deviceToken: remoteAuth.deviceToken,
 });
 const control = new HostControlGateway(adapter);
+const remoteSessions = new RemoteSessionGateway(window.fetch.bind(window));
 const preferences = new PreferenceGateway(adapter);
 const config = new ConfigGateway({
   runtime,
@@ -956,6 +964,11 @@ runtime.subscribe((frame) => {
   // their events feed a card in the message list, not the Pi session state.
   if (subagentRuns.applyEvent(frame)) return;
   taskCompletionNotifications.handleRuntimeFrame(frame);
+  if (activeRemoteSession) {
+    const consumed = oauthGateway.consumeFrame(frame) || consumeConfigResponseFrame(config, frame);
+    if (!consumed) handleBackgroundRuntimeEvent(frame).catch(showError);
+    return;
+  }
   const previous = store;
   const routed = routeRuntimeFrame({
     frame,
@@ -1069,7 +1082,9 @@ messagesElement.addEventListener("messagefork", async (event) => {
         entryId = forkMessages?.response?.data?.messages?.[index]?.entryId ?? null;
       }
       if (!entryId) {
-        showError(new Error(t("errors.treeNavigateFailed", { error: "Invalid entry ID for forking" })));
+        showError(
+          new Error(t("errors.treeNavigateFailed", { error: "Invalid entry ID for forking" })),
+        );
         return;
       }
     }
@@ -1172,6 +1187,7 @@ document.getElementById("refresh-sessions-btn")?.addEventListener("click", (e) =
   btn.classList.add("spinning");
   ensureSuperAgentStartupSession({ reloadAfterEnsure: false }).catch(showError);
   sidebar?.load().catch(showError);
+  void refreshRemoteMachines();
 });
 window.addEventListener("picot-super-agent-autostart-changed", (event) => {
   if (event.detail?.enabled) {
@@ -1535,7 +1551,15 @@ function setupSessionSidebar() {
     onCreateSession: createSessionViaHost,
     onSessionsLoaded: subscribeToLiveSessions,
     onAgentInboxSessionChange: setAgentInboxNavSession,
+    onSelectRemote: (session) => {
+      openRemoteSession(session).catch(showError);
+    },
+    onCreateRemote: (session) => {
+      createRemoteSession(session).catch(showError);
+    },
   });
+
+  void refreshRemoteMachines();
 
   setupSessionSearchDialog({
     triggerInput: document.getElementById("session-search-input"),
@@ -1561,8 +1585,40 @@ function setupSessionSidebar() {
   });
 }
 
+async function refreshRemoteMachines() {
+  if (remoteMachineRetryTimer !== null) clearTimeout(remoteMachineRetryTimer);
+  remoteMachineRetryTimer = null;
+  try {
+    const machines = await loadRemoteMachineSessions(window.fetch.bind(window));
+    sidebar?.setRemoteMachines(machines);
+    if (machines.some((machine) => machine.status === "error" || machine.status === "offline")) {
+      remoteMachineRetryTimer = setTimeout(
+        () => void refreshRemoteMachines(),
+        REMOTE_MACHINE_RETRY_MS,
+      );
+    }
+  } catch (error) {
+    console.info("[Remote machines] discovery unavailable", error);
+    remoteMachineRetryTimer = setTimeout(
+      () => void refreshRemoteMachines(),
+      REMOTE_MACHINE_RETRY_MS,
+    );
+  }
+}
+
 async function switchSession(sessionId) {
-  if (!sessionId || sessionId === target.sessionId) return;
+  if (!sessionId) return;
+  if (activeRemoteSession) {
+    leaveRemoteSession();
+    if (sessionId === target.sessionId) {
+      sidebar?.setActive(sessionId);
+      await hydrateSnapshotOnce();
+      await loadCommands();
+      await loadAvailableModels();
+      return;
+    }
+  }
+  if (sessionId === target.sessionId) return;
   const generation = ++navigationGeneration;
   const switchStartedAt = performance.now();
   console.info("[SESSION-LOAD] session switch started", { sessionId, generation });
@@ -1663,6 +1719,111 @@ async function switchSession(sessionId) {
     // Still flush any queued extension prompts even when snapshot fails.
     await extensionUi.flushForegroundQueue();
   }
+}
+
+function remoteMessageSignature(snapshot) {
+  const messages = snapshot?.messages ?? [];
+  const last = messages.at(-1) ?? null;
+  return JSON.stringify([
+    messages.length,
+    snapshot?.status?.isStreaming,
+    snapshot?.stream?.seq,
+    last?.role,
+    last?.content,
+  ]);
+}
+
+function applyRemoteSnapshot(snapshot) {
+  if (!activeRemoteSession) return;
+  const signature = remoteMessageSignature(snapshot);
+  const working = Boolean(snapshot.status?.isStreaming);
+  const statusSignature = JSON.stringify([
+    working,
+    snapshot.status?.model,
+    snapshot.status?.thinkingLevel,
+    snapshot.status?.cost,
+    snapshot.status?.tokens,
+  ]);
+  if (statusSignature !== remoteStatusSignature) {
+    remoteStatusSignature = statusSignature;
+    store = { ...store, lifecycle: working ? "working" : "idle" };
+    setStatus(working ? "working" : "connected");
+    contextUsage.setWorking(working);
+    sidebar?.setStreaming(activeRemoteSession.id, working);
+    if (working) showLiveProcessIndicator();
+    else hideLiveProcessIndicator();
+    updateComposerModel(snapshot.status?.model ?? null);
+    updateComposerThinking(snapshot.status?.thinkingLevel ?? "off");
+    currentModelContextWindow = Number(snapshot.status?.model?.contextWindow) || 0;
+    contextUsage.setContextWindowSize(currentModelContextWindow);
+    setSessionCost(Number(snapshot.status?.cost) || 0);
+  }
+  if (signature === remoteSnapshotSignature) return;
+  remoteSnapshotSignature = signature;
+  renderHistory(snapshot.messages ?? []);
+  convNav.rebuild();
+  contextUsage.setUsage(
+    findLatestAssistantUsage(snapshot.messages ?? []),
+    currentModelContextWindow,
+  );
+  if (!snapshot.status?.cost) setSessionCost(computeTotalCostFromMessages(snapshot.messages));
+}
+
+async function openRemoteSession(session) {
+  remoteSessions.stopPolling();
+  activeRemoteSession = session;
+  remoteSnapshotSignature = "";
+  remoteStatusSignature = "";
+  navigationGeneration += 1;
+  store = createSessionStore({
+    workspaceId: `remote:${session.workspaceId}`,
+    sessionId: session.id,
+    instanceId: `remote:${session.machineId}`,
+  });
+  sidebar?.setActive(session.id);
+  setStatus("loading");
+  messageRenderer.clear();
+  messageRenderer.renderSystemMessage(
+    t("sidebar.remoteSessionConnected", { machine: session.machineName || "Remote" }),
+  );
+  const [snapshot, configuration] = await Promise.all([
+    remoteSessions.snapshot(session),
+    remoteSessions.configuration(session),
+  ]);
+  if (activeRemoteSession !== session) return;
+  availableModels = configuration.models;
+  commandCatalog = buildCommandCatalog({ nativeCommands: configuration.commands });
+  commandCompatibility.prune(commandCatalog.values());
+  renderModelDropdownMenu();
+  applyRemoteSnapshot(snapshot);
+  remoteSessions.startPolling(session, applyRemoteSnapshot, (error) => {
+    if (activeRemoteSession === session) console.warn("[Remote session] refresh failed", error);
+  });
+}
+
+async function createRemoteSession(scope) {
+  const created = await remoteSessions.create(scope);
+  const session = {
+    ...created,
+    machineId: scope.machineId,
+    machineName: scope.machineName,
+    projectId: scope.projectId,
+    workspaceId: scope.workspaceId,
+    projectPath: created.cwd || scope.projectPath,
+    remote: true,
+  };
+  await openRemoteSession(session);
+  void refreshRemoteMachines();
+}
+
+function leaveRemoteSession() {
+  remoteSessions.stopPolling();
+  activeRemoteSession = null;
+  remoteSnapshotSignature = "";
+  remoteStatusSignature = "";
+  store = createSessionStore(target);
+  contextUsage.setWorking(false);
+  hideLiveProcessIndicator();
 }
 
 async function openSessionInProject(session) {
@@ -2135,7 +2296,21 @@ async function sendComposerInput({ altKey }) {
   // request is still in flight.
   commandCompatibility.beginCommand(matchCatalogCommand(value, commandCatalog)?.command);
   try {
-    await runtime.request(intent.command, target, { idempotencyKey: randomId() });
+    if (activeRemoteSession) {
+      const streamingBehavior =
+        intent.command.type === "follow_up"
+          ? "followUp"
+          : intent.command.type === "steer"
+            ? "steer"
+            : "steer";
+      await remoteSessions.prompt(activeRemoteSession, {
+        text: intent.command.message,
+        streamingBehavior,
+        attachments: intent.command.images ?? [],
+      });
+    } else {
+      await runtime.request(intent.command, target, { idempotencyKey: randomId() });
+    }
   } catch (error) {
     input.value = value;
     composerAutoResize.sync();
@@ -2754,6 +2929,10 @@ function textFromMessageContent(content) {
 }
 
 function abortCurrentRun() {
+  if (activeRemoteSession) {
+    remoteSessions.abort(activeRemoteSession).catch(showError);
+    return;
+  }
   runtime.request({ type: "abort" }, target).catch(showError);
   // A tool call blocked on ctx.ui.select/confirm/input/editor won't be
   // unblocked by "abort" alone — pi is waiting on an extension_ui_response
@@ -2790,13 +2969,15 @@ function updateComposerModel(model) {
   currentModelProvider = model?.provider ?? null;
   currentModelId = model?.id ?? null;
   // Persist the model change to session UI state
-  sessionUiState
-    .saveProfile({
-      provider: currentModelProvider || "",
-      modelId: currentModelId || "",
-      thinkingLevel: currentThinkingLevel,
-    })
-    .catch(() => {});
+  if (!activeRemoteSession) {
+    sessionUiState
+      .saveProfile({
+        provider: currentModelProvider || "",
+        modelId: currentModelId || "",
+        thinkingLevel: currentThinkingLevel,
+      })
+      .catch(() => {});
+  }
   currentModelContextWindow =
     Number(model?.contextWindow) || findModelContextWindow(currentModelProvider, currentModelId);
   contextUsage.setContextWindowSize(currentModelContextWindow);
@@ -2807,13 +2988,15 @@ function updateComposerModel(model) {
 
 function updateComposerThinking(level) {
   currentThinkingLevel = level ?? "off";
-  sessionUiState
-    .saveProfile({
-      provider: currentModelProvider || "",
-      modelId: currentModelId || "",
-      thinkingLevel: currentThinkingLevel,
-    })
-    .catch(() => {});
+  if (!activeRemoteSession) {
+    sessionUiState
+      .saveProfile({
+        provider: currentModelProvider || "",
+        modelId: currentModelId || "",
+        thinkingLevel: currentThinkingLevel,
+      })
+      .catch(() => {});
+  }
   if (thinkingBtn) {
     const levelLabel = formatThinkingLevelLabel(currentThinkingLevel);
     thinkingBtn.textContent = t("settings.thinkingCompact", { level: levelLabel });
@@ -2827,6 +3010,13 @@ async function loadAvailableModels({ force = false } = {}) {
   // Serve the cache unless a configuration change explicitly invalidated it.
   if (availableModelsLoaded && !force) return;
   try {
+    if (activeRemoteSession) {
+      const configuration = await remoteSessions.configuration(activeRemoteSession);
+      availableModels = configuration.models;
+      commandCatalog = buildCommandCatalog({ nativeCommands: configuration.commands });
+      renderModelDropdownMenu();
+      return;
+    }
     const result = await runtime.request({ type: "get_available_models" }, target);
     const runtimeModels = result?.response?.data?.models ?? [];
     availableModels = await applyConfiguredModelVisibility(runtimeModels);
@@ -2966,6 +3156,11 @@ function buildModelDropdownItem(model, isScoped) {
   main.addEventListener("click", async () => {
     closeModelDropdown();
     try {
+      if (activeRemoteSession) {
+        await remoteSessions.setModel(activeRemoteSession, model.provider, model.id);
+        updateComposerModel(model);
+        return;
+      }
       await runtime.request(
         { type: "set_model", provider: model.provider, modelId: model.id },
         target,
@@ -3158,6 +3353,12 @@ onLocaleChange(() => {
 if (thinkingBtn) {
   thinkingBtn.addEventListener("click", async () => {
     try {
+      if (activeRemoteSession) {
+        const result = await remoteSessions.cycleThinkingLevel(activeRemoteSession);
+        const level = result?.thinkingLevel;
+        if (level) updateComposerThinking(level);
+        return;
+      }
       // Ask the server to cycle through the current model's supported levels
       // (cycle_thinking_level) instead of stepping a fixed client-side array —
       // the server skips levels the active model does not support.

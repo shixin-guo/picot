@@ -12,6 +12,7 @@ import { createLoadingPlaceholder } from "../../ui/loading-placeholder.js";
 import { basenameLocalPath } from "../../workspace/path-utils.js";
 import { randomId } from "../utils/random-id.js";
 import { createPinnedItemsStore, migrateFavourites, startPinnedItemsSync } from "./pinned-items.js";
+import { buildRemoteMachineSection } from "./remote-machine-sessions.js";
 
 /** Sidebar label for a workspace path. Windows `\\?\UNC\...` paths have no `/`. */
 export function workspaceFolderName(path, projectName) {
@@ -237,6 +238,9 @@ export class SessionSidebar {
       onAgentInboxSessionChange,
       loadSessions,
       cacheScope,
+      remoteMachines = [],
+      onSelectRemote,
+      onCreateRemote,
     },
   ) {
     this.container = container;
@@ -251,6 +255,9 @@ export class SessionSidebar {
     this.onAgentInboxSessionChange = onAgentInboxSessionChange;
     this.loadSessions = loadSessions;
     this.cacheScope = cacheScope;
+    this.remoteMachines = remoteMachines;
+    this.onSelectRemote = onSelectRemote;
+    this.onCreateRemote = onCreateRemote;
 
     this.sessions = [];
     this.activeSessionId = getTarget()?.sessionId ?? null;
@@ -918,7 +925,13 @@ export class SessionSidebar {
     const pinState = this.pinnedStore.getState();
     const hasAnyPins = pinState.workspaces.length > 0 || pinState.sessions.length > 0;
 
-    if (this.sessions.length === 0 && !hasAnyPins) {
+    const remoteSection = buildRemoteMachineSection(this.remoteMachines, {
+      onSelect: this.onSelectRemote,
+      onCreate: this.onCreateRemote,
+    });
+    if (remoteSection) this.container.appendChild(remoteSection);
+
+    if (this.sessions.length === 0 && !hasAnyPins && !remoteSection) {
       const empty = document.createElement("div");
       empty.className = "session-loading";
       empty.textContent = t("sidebar.noSavedSessions");
@@ -1024,6 +1037,11 @@ export class SessionSidebar {
     }
 
     if (this.searchQuery) this.applySearch();
+  }
+
+  setRemoteMachines(machines) {
+    this.remoteMachines = Array.isArray(machines) ? machines : [];
+    this.render();
   }
 
   // Render the PINNED section using the unified buildSidebarSection +

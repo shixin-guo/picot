@@ -24,8 +24,7 @@ function setup({ storedValue, permission = true } = {}) {
     storage,
     notificationApi,
     resolveTask: () => task,
-    title: (resolvedTask, error) =>
-      resolvedTask.name || (error ? "Task failed" : "Task completed"),
+    title: (resolvedTask, error) => resolvedTask.name || (error ? "Task failed" : "Task completed"),
     body: (_resolvedTask, error) => error || "Finished",
     showNotification,
     logger,
