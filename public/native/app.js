@@ -72,6 +72,8 @@ import { createSessionSelectionHandler } from "./session/session-navigation.js";
 import { setupSessionSearchDialog } from "./session/session-search-dialog.js";
 import { SessionSidebar } from "./session/session-sidebar.js";
 import { createSessionStore, reduceSessionState } from "./session/session-store.js";
+import { setupTaskDebuggerPanel } from "./session/task-debugger-panel.js";
+import { createTurnTraceRecorder } from "./session/turn-trace.js";
 import { setupSettingsPanel } from "./settings/settings-panel.js";
 import { resolveBootstrapTarget } from "./transport/bootstrap-target.js";
 import { ConfigGateway, consumeConfigResponseFrame } from "./transport/config-gateway.js";
@@ -167,6 +169,12 @@ const taskCompletionNotifications = createTaskCompletionNotifications({
   body: (_task, error) => error || t("settings.taskCompleteMessage"),
   showNotification: sendNativeTaskNotification,
 });
+
+// Per-turn timing/failure trace behind the task debugger. Recording is passive
+// (it only reads the runtime frames the app already receives) so the panel can
+// explain a slow or failed task without re-running anything.
+const turnTrace = createTurnTraceRecorder();
+let taskDebugger = null;
 
 setupMessagesInsets({
   main: document.querySelector(".main"),
@@ -918,6 +926,7 @@ const hydrateFromSnapshot = async (snapshot) => {
   const pi = snapshot.state.pi ?? {};
   setStatus(pi.isStreaming ? "working" : "connected");
   contextUsage.setWorking(Boolean(pi.isStreaming));
+  taskDebugger?.setStreaming(Boolean(pi.isStreaming));
   if (pi.isStreaming) showLiveProcessIndicator();
   contextUsage.setCompacting(snapshot.state.compaction?.status === "running");
   // Fresh sessions (no history) show the stored last model straight from the
@@ -956,6 +965,7 @@ runtime.subscribe((frame) => {
   // their events feed a card in the message list, not the Pi session state.
   if (subagentRuns.applyEvent(frame)) return;
   taskCompletionNotifications.handleRuntimeFrame(frame);
+  turnTrace.handleRuntimeFrame(frame);
   const previous = store;
   const routed = routeRuntimeFrame({
     frame,
@@ -1001,6 +1011,17 @@ adapter.connect();
 // stalled runtime left the settings button dead ("can't open settings").
 setupSessionSidebar();
 sidebar?.load().catch(showError);
+taskDebugger = setupTaskDebuggerPanel({
+  button: document.getElementById("task-debugger-btn"),
+  overlay: document.getElementById("task-debugger-overlay"),
+  dialog: document.getElementById("task-debugger-dialog"),
+  body: document.getElementById("task-debugger-body"),
+  closeButton: document.getElementById("task-debugger-close"),
+  copyButton: document.getElementById("task-debugger-copy"),
+  scopeInputs: document.querySelectorAll('input[name="task-debugger-scope"]'),
+  getTurns: () => turnTrace.getTurns(target),
+  t,
+});
 setupSidebarToggle();
 if (atFileMentionMenu) {
   // @-file mention completion must be wired before the Enter-to-send listener
@@ -1069,7 +1090,9 @@ messagesElement.addEventListener("messagefork", async (event) => {
         entryId = forkMessages?.response?.data?.messages?.[index]?.entryId ?? null;
       }
       if (!entryId) {
-        showError(new Error(t("errors.treeNavigateFailed", { error: "Invalid entry ID for forking" })));
+        showError(
+          new Error(t("errors.treeNavigateFailed", { error: "Invalid entry ID for forking" })),
+        );
         return;
       }
     }
@@ -2177,6 +2200,9 @@ async function handleRuntimeEvent(event) {
     case "agent_start":
       lastShownProviderError = null;
       assistantMessageStream.reset();
+      // Analysing a turn mid-flight would report its own open spans as stuck,
+      // so the debugger stays disabled until this turn settles.
+      taskDebugger?.setStreaming(true);
       setStatus("working");
       contextUsage.setWorking(true);
       sidebar?.setStreaming(target.sessionId, true);
@@ -2388,6 +2414,9 @@ async function adoptTarget(nextTarget, { updateRoute = true } = {}) {
   }
   // The Info panel's tree belongs to the active session: bump the sequence
   // (dropping any in-flight fetch for the old session) and reload if open.
+  // The trace timeline is per target, so the debugger button must re-evaluate
+  // against the session just switched to.
+  taskDebugger?.refreshAvailability();
   infoTreeSeq += 1;
   infoPanel?.updateTree({ entries: [], leafId: null });
   if (infoSidebar && !infoSidebar.classList.contains("collapsed")) {
@@ -2764,6 +2793,7 @@ function abortCurrentRun() {
 
 function settleForegroundAgent(event) {
   setStatus("connected");
+  taskDebugger?.setStreaming(false);
   contextUsage.setWorking(false);
   sidebar?.setStreaming(target.sessionId, false);
   hideLiveProcessIndicator();
@@ -3153,6 +3183,9 @@ document.addEventListener("click", (event) => {
 onLocaleChange(() => {
   updateComposerThinking(currentThinkingLevel);
   renderStatus();
+  // The document-wide data-i18n pass resets the debugger button's title to the
+  // idle wording; restore the one that matches its current state.
+  taskDebugger?.refreshAvailability();
 });
 
 if (thinkingBtn) {

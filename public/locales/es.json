@@ -1340,5 +1340,66 @@
     "aliasRequired": "Hace falta un nombre.",
     "save": "Guardar host",
     "saved": "Host guardado."
+  },
+  "taskDebugger": {
+    "title": "Análisis de la tarea",
+    "buttonTitle": "Analizar esta tarea",
+    "buttonBusy": "Disponible cuando termine la tarea",
+    "close": "Cerrar el análisis de la tarea",
+    "scopeLast": "Última tarea",
+    "scopeSession": "Toda la sesión",
+    "copyReport": "Copiar informe",
+    "copied": "Copiado",
+    "copyFailed": "No se pudo copiar",
+    "statusLabel": "Resultado",
+    "totalTime": "Tiempo total",
+    "timeSplit": "En qué se fue el tiempo",
+    "findings": "Hallazgos",
+    "slowest": "Pasos más lentos",
+    "timeline": "Cronología de pasos",
+    "failures": "Fallos",
+    "turns": "Turnos",
+    "toolCalls": "Llamadas a herramientas",
+    "wasted": "Tiempo redundante",
+    "cost": "Coste",
+    "noTurns": "Todavía no se ha registrado ninguna tarea. El análisis cubre las tareas que esta ventana ha ejecutado desde que se abrió; el historial cargado del disco no lleva tiempos. Envía un mensaje y la próxima tarea quedará registrada.",
+    "noSteps": "No se registró ningún paso.",
+    "neverFinished": "Este paso nunca informó de que había terminado.",
+    "unknownError": "Error desconocido",
+    "status": {
+      "completed": "Completada",
+      "failed": "Fallida",
+      "aborted": "Detenida",
+      "running": "En curso",
+      "unknown": "Sin terminar"
+    },
+    "severity": {
+      "critical": "Bloqueante",
+      "warning": "Aviso",
+      "info": "Nota"
+    },
+    "phase": {
+      "model": "Modelo",
+      "tool": "Herramientas",
+      "compaction": "Compactación",
+      "idle": "Espera"
+    },
+    "finding": {
+      "failedAt": "La tarea falló en {label} {detail}: {error}",
+      "aborted": "La tarea se detuvo antes de terminar.",
+      "unknownEnd": "La tarea nunca informó de su final: probablemente se perdió la conexión con el runtime.",
+      "stuckStep": "Atascada en {label} {detail} durante {duration}: nunca informó de que había terminado ({count} pasos así).",
+      "toolFailures": "Fallaron {count} llamadas a herramientas, empezando por {label}: {error}",
+      "slowStep": "{label} {detail} fue el cuello de botella: {duration} ({share} de la tarea).",
+      "idleTime": "{duration} ({share}) se fue en esperar, no en trabajar: colas, aprobaciones o una conexión lenta.",
+      "duplicateCalls": "{label} se ejecutó {count} veces con los mismos argumentos ({detail}): {wasted} de trabajo repetido.",
+      "retryLoop": "{label} falló {count} veces seguidas con la misma entrada ({detail}): {error}",
+      "repeatedTarget": "{detail} se releyó {count} veces con {label}: {wasted} que una sola lectura habría ahorrado.",
+      "wastedTime": "{duration} ({share}) se fue en pasos repetidos que no aportaron nada nuevo.",
+      "toolBound": "Dominó la ejecución de herramientas: {share} del tiempo en {count} llamadas.",
+      "modelBound": "Dominó el tiempo de modelo: {share} del tiempo en {count} respuestas.",
+      "compaction": "La compactación del contexto costó {duration} ({share}).",
+      "healthy": "Nada destacable: {duration} y {count} llamadas a herramientas, sin fallos ni trabajo repetido."
+    }
   }
 }

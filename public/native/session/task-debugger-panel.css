@@ -1,0 +1,346 @@
+/* ABOUTME: Task debugger dialog — timing split, findings, slowest steps, timeline. */
+/* The overlay/panel chrome comes from the shared `.ui-overlay` / `.ui-dialog`
+   primitives in design-system.css; only layout, the phase bar and the finding
+   severity colours live here. */
+
+.task-debugger-overlay {
+  z-index: 1000;
+}
+
+.task-debugger-overlay.hidden,
+.task-debugger-dialog.hidden {
+  display: none;
+}
+
+.task-debugger-dialog {
+  position: fixed;
+  top: 10vh;
+  left: 50%;
+  z-index: 1001;
+  display: flex;
+  width: min(720px, calc(100vw - var(--space-12)));
+  max-height: min(720px, 78vh);
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateX(-50%);
+  color: var(--text-primary);
+}
+
+.task-debugger-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.task-debugger-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.task-debugger-scope {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.task-debugger-scope label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
+}
+
+.task-debugger-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--space-5);
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+
+.task-debugger-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.task-debugger-heading {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.task-debugger-empty {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+/* ── Summary ───────────────────────────────────────────────────────────── */
+
+.task-debugger-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.task-debugger-headline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: var(--font-size-xl);
+}
+
+.task-debugger-status {
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--bg-glass-strong);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.task-debugger-status--failed {
+  background: color-mix(in srgb, var(--error) 18%, transparent);
+  color: var(--error);
+}
+
+.task-debugger-status--aborted,
+.task-debugger-status--unknown,
+.task-debugger-status--running {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--warning);
+}
+
+.task-debugger-status--completed {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+}
+
+.task-debugger-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.task-debugger-stats dt {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.task-debugger-stats dd {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Phase bar ─────────────────────────────────────────────────────────── */
+
+.task-debugger-bar {
+  display: flex;
+  overflow: hidden;
+  height: var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--bg-glass);
+}
+
+.task-debugger-bar-segment {
+  flex-basis: 0;
+  min-width: 2px;
+}
+
+.task-debugger-bar-empty {
+  flex: 1;
+  background: var(--bg-glass);
+}
+
+.task-debugger-bar-segment--model {
+  background: var(--thinking-accent-text);
+}
+
+.task-debugger-bar-segment--tool {
+  background: var(--tool-accent-text);
+}
+
+.task-debugger-bar-segment--compaction {
+  background: var(--warning);
+}
+
+.task-debugger-bar-segment--idle {
+  background: var(--text-ghost);
+}
+
+.task-debugger-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-sm);
+}
+
+.task-debugger-legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+.task-debugger-legend-item::before {
+  content: "";
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--text-ghost);
+}
+
+.task-debugger-legend-item--model::before {
+  background: var(--thinking-accent-text);
+}
+
+.task-debugger-legend-item--tool::before {
+  background: var(--tool-accent-text);
+}
+
+.task-debugger-legend-item--compaction::before {
+  background: var(--warning);
+}
+
+.task-debugger-legend-value {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Findings ──────────────────────────────────────────────────────────── */
+
+.task-debugger-findings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-debugger-finding {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-left-width: var(--space-0-5);
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.task-debugger-finding--critical {
+  border-left-color: var(--error);
+}
+
+.task-debugger-finding--warning {
+  border-left-color: var(--warning);
+}
+
+.task-debugger-finding--info {
+  border-left-color: var(--tool-accent);
+}
+
+.task-debugger-finding-severity {
+  flex: 0 0 auto;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.task-debugger-finding--critical .task-debugger-finding-severity {
+  color: var(--error);
+}
+
+.task-debugger-finding--warning .task-debugger-finding-severity {
+  color: var(--warning);
+}
+
+.task-debugger-finding-text {
+  min-width: 0;
+}
+
+/* ── Steps & timeline ──────────────────────────────────────────────────── */
+
+.task-debugger-steps,
+.task-debugger-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-debugger-step {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+  font-size: var(--font-size-sm);
+}
+
+.task-debugger-step--error,
+.task-debugger-step--unfinished {
+  border-color: color-mix(in srgb, var(--error) 40%, var(--border));
+}
+
+.task-debugger-step-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.task-debugger-step-label {
+  font-weight: 600;
+}
+
+.task-debugger-step-duration {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.task-debugger-step-detail {
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-debugger-step-error {
+  color: var(--error);
+  overflow-wrap: anywhere;
+}
+
+.task-debugger-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border);
+}

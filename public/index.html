@@ -668,6 +668,33 @@
             </span>
             <button
               type="button"
+              class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn task-debugger-toggle hidden"
+              id="task-debugger-btn"
+              title="Analyze this task"
+              data-i18n-title="taskDebugger.buttonTitle"
+              aria-label="Analyze this task"
+              data-i18n-aria-label="taskDebugger.buttonTitle"
+              aria-expanded="false"
+              aria-haspopup="dialog"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path
+                  d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"
+                />
+              </svg>
+            </button>
+            <button
+              type="button"
               class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn file-sidebar-toggle"
               id="file-sidebar-toggle"
               title="Files"
@@ -3083,6 +3110,80 @@
         aria-label="Search results"
         data-i18n-aria-label="migrated.index.ariaLabel.searchResults"
       ></div>
+    </div>
+
+    <!-- Task Debugger -->
+    <div
+      class="ui-overlay task-debugger-overlay hidden"
+      id="task-debugger-overlay"
+    ></div>
+    <div
+      class="ui-dialog task-debugger-dialog hidden"
+      id="task-debugger-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="task-debugger-title"
+      tabindex="-1"
+    >
+      <div class="task-debugger-header">
+        <h2
+          class="task-debugger-title"
+          id="task-debugger-title"
+          data-i18n="taskDebugger.title"
+        >
+          Task analysis
+        </h2>
+        <div class="task-debugger-scope" role="radiogroup">
+          <label>
+            <input
+              type="radio"
+              name="task-debugger-scope"
+              value="last"
+              checked
+            />
+            <span data-i18n="taskDebugger.scopeLast">Last task</span>
+          </label>
+          <label>
+            <input type="radio" name="task-debugger-scope" value="session" />
+            <span data-i18n="taskDebugger.scopeSession">Whole session</span>
+          </label>
+        </div>
+        <button
+          type="button"
+          class="ui-icon-button ui-icon-button--sm ui-icon-button--ghost icon-btn"
+          id="task-debugger-close"
+          title="Close"
+          data-i18n-title="taskDebugger.close"
+          aria-label="Close task analysis"
+          data-i18n-aria-label="taskDebugger.close"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+      </div>
+      <div class="task-debugger-body" id="task-debugger-body"></div>
+      <div class="task-debugger-footer">
+        <button
+          type="button"
+          class="ui-button ui-button--sm ui-button--secondary"
+          id="task-debugger-copy"
+          data-i18n="taskDebugger.copyReport"
+        >
+          Copy report
+        </button>
+      </div>
     </div>
 
     <!-- Command Palette -->

@@ -1340,5 +1340,66 @@
     "aliasRequired": "A name is required.",
     "save": "Save host",
     "saved": "Host saved."
+  },
+  "taskDebugger": {
+    "title": "Task analysis",
+    "buttonTitle": "Analyze this task",
+    "buttonBusy": "Available when the task finishes",
+    "close": "Close task analysis",
+    "scopeLast": "Last task",
+    "scopeSession": "Whole session",
+    "copyReport": "Copy report",
+    "copied": "Copied",
+    "copyFailed": "Copy failed",
+    "statusLabel": "Result",
+    "totalTime": "Total time",
+    "timeSplit": "Where the time went",
+    "findings": "Findings",
+    "slowest": "Slowest steps",
+    "timeline": "Step timeline",
+    "failures": "Failures",
+    "turns": "Turns",
+    "toolCalls": "Tool calls",
+    "wasted": "Redundant time",
+    "cost": "Cost",
+    "noTurns": "No task has been recorded yet. Analysis covers tasks this window ran since it opened - history loaded from disk carries no timings. Send a message and the next task will be traced.",
+    "noSteps": "No steps were recorded.",
+    "neverFinished": "This step never reported that it finished.",
+    "unknownError": "Unknown error",
+    "status": {
+      "completed": "Completed",
+      "failed": "Failed",
+      "aborted": "Stopped",
+      "running": "Running",
+      "unknown": "Unfinished"
+    },
+    "severity": {
+      "critical": "Blocker",
+      "warning": "Warning",
+      "info": "Note"
+    },
+    "phase": {
+      "model": "Model",
+      "tool": "Tools",
+      "compaction": "Compaction",
+      "idle": "Idle / waiting"
+    },
+    "finding": {
+      "failedAt": "The task failed at {label} {detail}: {error}",
+      "aborted": "The task was stopped before it finished.",
+      "unknownEnd": "The task never reported an ending - the runtime connection was probably lost.",
+      "stuckStep": "Stuck at {label} {detail} for {duration}: it never reported that it finished ({count} such steps).",
+      "toolFailures": "{count} tool call(s) failed, starting with {label}: {error}",
+      "slowStep": "{label} {detail} was the bottleneck: {duration} ({share} of the task).",
+      "idleTime": "{duration} ({share}) went to waiting, not work - queueing, approvals or a slow connection.",
+      "duplicateCalls": "{label} ran {count} times with identical arguments ({detail}) - {wasted} of repeated work.",
+      "retryLoop": "{label} failed {count} times in a row on the same input ({detail}): {error}",
+      "repeatedTarget": "{detail} was re-read {count} times by {label} - {wasted} that a single read could have saved.",
+      "wastedTime": "{duration} ({share}) went to repeated steps that produced nothing new.",
+      "toolBound": "Tool execution dominated: {share} of the time across {count} calls.",
+      "modelBound": "Model time dominated: {share} of the time across {count} completions.",
+      "compaction": "Context compaction cost {duration} ({share}).",
+      "healthy": "Nothing stands out: {duration} across {count} tool call(s), no failures or repeated work."
+    }
   }
 }

@@ -20,6 +20,7 @@
 @import url("native/session/session-search-dialog.css");
 @import url("native/session/session-info.css");
 @import url("native/session/info-panel.css");
+@import url("native/session/task-debugger-panel.css");
 @import url("native/workspace/header-open-app.css");
 @import url("native/workspace/remote-workspace-dialog.css");
 @import url("native/extensions/command-palette.css");

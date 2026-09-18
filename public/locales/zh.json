@@ -1340,5 +1340,66 @@
     "aliasRequired": "请填写名称。",
     "save": "保存主机",
     "saved": "主机已保存。"
+  },
+  "taskDebugger": {
+    "title": "任务分析",
+    "buttonTitle": "分析本次任务",
+    "buttonBusy": "任务结束后可用",
+    "close": "关闭任务分析",
+    "scopeLast": "最近一次任务",
+    "scopeSession": "整个会话",
+    "copyReport": "复制报告",
+    "copied": "已复制",
+    "copyFailed": "复制失败",
+    "statusLabel": "结果",
+    "totalTime": "总耗时",
+    "timeSplit": "时间都花在哪里",
+    "findings": "分析结论",
+    "slowest": "最慢的步骤",
+    "timeline": "步骤时间线",
+    "failures": "失败点",
+    "turns": "轮次",
+    "toolCalls": "工具调用",
+    "wasted": "冗余耗时",
+    "cost": "费用",
+    "noTurns": "还没有记录到任务。分析只覆盖本窗口打开后实际跑过的任务 —— 从磁盘加载的历史记录不含耗时数据。发一条消息，下一个任务就会被记录。",
+    "noSteps": "没有记录到任何步骤。",
+    "neverFinished": "该步骤始终没有上报结束。",
+    "unknownError": "未知错误",
+    "status": {
+      "completed": "已完成",
+      "failed": "失败",
+      "aborted": "已中止",
+      "running": "进行中",
+      "unknown": "未完成"
+    },
+    "severity": {
+      "critical": "阻塞",
+      "warning": "警告",
+      "info": "提示"
+    },
+    "phase": {
+      "model": "模型",
+      "tool": "工具",
+      "compaction": "上下文压缩",
+      "idle": "空闲 / 等待"
+    },
+    "finding": {
+      "failedAt": "任务在 {label} {detail} 处失败：{error}",
+      "aborted": "任务在完成前被中止。",
+      "unknownEnd": "任务没有上报结束，很可能是运行时连接断开了。",
+      "stuckStep": "卡在 {label} {detail}，持续 {duration}，始终没有上报结束（共 {count} 个这样的步骤）。",
+      "toolFailures": "有 {count} 次工具调用失败，最早的是 {label}：{error}",
+      "slowStep": "{label} {detail} 是瓶颈：{duration}，占总耗时的 {share}。",
+      "idleTime": "有 {duration}（{share}）花在等待而不是执行上 —— 排队、审批或网络慢。",
+      "duplicateCalls": "{label} 用完全相同的参数执行了 {count} 次（{detail}），重复耗时 {wasted}。",
+      "retryLoop": "{label} 对同一输入连续失败 {count} 次（{detail}）：{error}",
+      "repeatedTarget": "{detail} 被 {label} 反复读取了 {count} 次，一次读取即可节省 {wasted}。",
+      "wastedTime": "有 {duration}（{share}）花在没有产生新结果的重复步骤上。",
+      "toolBound": "以工具执行为主：{count} 次调用占用了 {share} 的时间。",
+      "modelBound": "以模型耗时为主：{count} 次生成占用了 {share} 的时间。",
+      "compaction": "上下文压缩耗时 {duration}（{share}）。",
+      "healthy": "没有明显问题：总耗时 {duration}，{count} 次工具调用，无失败与重复工作。"
+    }
   }
 }
