@@ -94,7 +94,7 @@
     "jsdom": "^26.1.0",
     "subset-font": "2.5.0",
     "ttf2woff2": "8.0.1",
-    "vitest": "^3.2.4"
+    "vitest": "^5.0.0"
   },
   "allowScripts": {
     "esbuild@0.28.1": true
