@@ -1,0 +1,86 @@
+public/native/app.js
+  s_43016a2618cb74::t_ea62f0726a17ab 35
+  s_43016a2618cb74::t_3b42248ef73c24 2844-2872
+  s_43016a2618cb74::t_d90e500dec90e1 3132
+  s_43016a2618cb74::t_e642a5abd9cf87 1240-1245
+  s_43016a2618cb74::t_02dc91d81a9b5a 2826-2828,2833,3057-3058,3063
+  s_43016a2618cb74::t_a2e14d4a53a097 279-282,286-288
+  s_43016a2618cb74::t_839db430a387d9 3142-3152
+  s_43016a2618cb74::t_51a90814468e28 932-933
+  s_43016a2618cb74::t_47513cefd43168 923-930
+  s_43016a2618cb74::t_b4d03fed9dbb94 2974-2975
+  s_43016a2618cb74::t_372707b7542277 3085-3094
+src-tauri/src/native_pi_manager.rs
+  s_47f54dd19468e2::t_77fede8b6433c3 906-909,924-927
+src-tauri/src/host_data.rs
+  s_47f54dd19468e2::t_78343cec9ec5c2 291-299
+  s_47f54dd19468e2::t_03401637e80e7f 1011-1015,1021,1030-1033,1055-1059
+  s_47f54dd19468e2::t_56279a88780ebe 1016-1020,1022-1029
+  s_47f54dd19468e2::t_d8a90a5a2ca64a 1355,1409-1412
+  s_47f54dd19468e2::t_6ecc103dec2e29 438
+  s_47f54dd19468e2::t_eb96630dc59cf9 1424-1447
+  s_47f54dd19468e2::t_77fede8b6433c3 2533-2534
+  s_47f54dd19468e2::t_c70a05741ed568 3192-3197,3199-3200,3202,3210-3212,3231,3233,3235-3238,3241
+  s_47f54dd19468e2::t_a0537aad3ac34e 3226-3230,3232
+  s_47f54dd19468e2::t_3852dc00ecc333 3201,3203,3205-3207
+  s_47f54dd19468e2::t_292a0c3d5c3b78 3182,3185-3190,3198,3213,3223,3234,3243-3246
+  s_47f54dd19468e2::t_7c384f52201a23 3180-3181
+  s_47f54dd19468e2::t_0a79b2159ffa8f 3183-3184
+  s_47f54dd19468e2::t_6e9c3e1a086fbd 3191
+  s_47f54dd19468e2::t_8057b8014dd5cb 3204
+  s_47f54dd19468e2::t_b5b6b65abf7d25 3208-3209
+  s_47f54dd19468e2::t_487f21b8e92159 3214-3216,3220-3222
+  s_47f54dd19468e2::t_0672ac791e525d 3224-3225
+  s_47f54dd19468e2::t_ca96bf6747f3b7 3239-3240
+  s_47f54dd19468e2::t_8d90d68c93dfdc 3242
+  s_47f54dd19468e2::t_7859c42182fc04 3217-3219
+src-tauri/src/host_router.rs
+  s_47f54dd19468e2::t_77fede8b6433c3 178-180
+public/native/composer/composer-images.js
+  s_5869abc22906bf::t_ea5fc3acec3ab6 1-2,67
+  s_5869abc22906bf::t_86ac148581e128 77
+  s_5869abc22906bf::t_66f3c95c896302 68
+public/native/composer/last-model-store.test.js
+  s_43016a2618cb74::t_2b04ba4b64da67 1-52
+public/ui/image-lightbox.js
+  s_5869abc22906bf::t_a0448b80aa8bbf 81
+public/native/composer/last-model-store.js
+  s_43016a2618cb74::t_34688f8d74c349 1-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "5900f7f5e2cddf44a87267457ac2ac24b476f669",
+  "prompts": {},
+  "humans": {
+    "h_d9094605f62439": {
+      "author": "Shixin Guo <shixin.guo@zoom.us>"
+    }
+  },
+  "sessions": {
+    "s_43016a2618cb74": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0b2a0-f5ea-745c-8b9d-a5115c2f569d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Shixin Guo <shixin.guo@zoom.us>"
+    },
+    "s_47f54dd19468e2": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0b2ad-b6de-7770-b6b5-d1c2bca111b4",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Shixin Guo <shixin.guo@zoom.us>"
+    },
+    "s_5869abc22906bf": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0b2cc-e874-72c9-9168-7268566651db",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Shixin Guo <shixin.guo@zoom.us>"
+    }
+  }
+}
