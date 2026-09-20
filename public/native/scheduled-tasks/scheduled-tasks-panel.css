@@ -1,0 +1,198 @@
+/* Scheduled Tasks tab (Settings → Scheduled Tasks): add-task form + task list. */
+
+.scheduled-task-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  margin-bottom: var(--space-4, 16px);
+}
+
+.scheduled-task-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.scheduled-task-field-row {
+  display: flex;
+  gap: var(--space-3, 12px);
+}
+
+.scheduled-task-enabled-field {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.scheduled-task-prompt-input {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.scheduled-task-select {
+  height: var(--control-height-md);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-glass);
+  color: var(--text-primary);
+  padding: 0 var(--space-2, 8px);
+  font-size: var(--font-size-sm);
+}
+
+.scheduled-task-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+}
+
+.scheduled-task-form-error {
+  color: var(--error);
+  font-size: var(--font-size-sm);
+}
+
+.scheduled-task-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-4, 16px);
+  margin-bottom: var(--space-2, 8px);
+}
+
+.scheduled-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.scheduled-task-empty {
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  padding: var(--space-3, 12px) 0;
+}
+
+.scheduled-task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+}
+
+.scheduled-task-item.clickable {
+  cursor: pointer;
+}
+
+.scheduled-task-item.clickable:hover {
+  background: var(--bg-glass-hover);
+}
+
+.scheduled-task-status {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.scheduled-task-status[data-status="pending"] {
+  color: var(--text-dim);
+}
+
+.scheduled-task-status[data-status="running"] {
+  color: var(--accent-text);
+  animation: scheduled-task-spin 1.2s linear infinite;
+}
+
+.scheduled-task-status[data-status="success"] {
+  color: var(--success);
+}
+
+.scheduled-task-status[data-status="failed"] {
+  color: var(--error);
+}
+
+@keyframes scheduled-task-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.scheduled-task-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scheduled-task-prompt {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scheduled-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.scheduled-task-disabled-tag {
+  color: var(--warning);
+}
+
+.scheduled-task-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scheduled-task-retry-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.scheduled-task-retry-btn:hover {
+  background: var(--bg-glass-hover);
+}
+
+.scheduled-task-delete-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.scheduled-task-delete-btn:hover {
+  color: var(--error);
+  background: var(--bg-glass-hover);
+}

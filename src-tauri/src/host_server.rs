@@ -8,7 +8,7 @@ use crate::host_router::{ClientKind, HostRouter, RoutedAction, PROTOCOL_VERSION}
 use crate::markitdown_preview::{
     ConversionOutcome, DependencyReason, MarkitdownPreviewService, INPUT_BYTE_CAP,
 };
-use crate::metadata_store::MetadataStore;
+use crate::metadata_store::{MetadataStore, ScheduledTaskPatch, TaskFrequency};
 use crate::model_health::{self, ModelTestOutcome, ModelTestRequest};
 use crate::native_pi_manager::NativePiManager;
 use crate::pi_launch::{
@@ -16,6 +16,7 @@ use crate::pi_launch::{
 };
 use crate::remote_auth::RemoteAuth;
 use crate::runtime_coordinator::{RuntimeStatus, RuntimeTarget};
+use crate::scheduler::{self, SchedulerDeps};
 use crate::terminal_manager::TerminalManager;
 use crate::terminal_registry::TerminalRegistry;
 use crate::terminal_state_store::TerminalStateStore;
@@ -23,7 +24,7 @@ use crate::window_owner::OwnerId;
 use axum::body::Body;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::Query;
-use axum::extract::{ConnectInfo, DefaultBodyLimit, Json, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Json, Path, State};
 use axum::http::header::{
     CACHE_CONTROL, CONTENT_LENGTH, CONTENT_SECURITY_POLICY, CONTENT_TYPE, PRAGMA,
 };
@@ -125,9 +126,11 @@ struct HostState {
     // to restore the composer's model + thinking level when a session is
     // reopened. Optional so the constructor stays infallible in tests.
     session_ui_profiles: Arc<crate::session_ui_profile_store::SessionUiProfileStore>,
-    // Global display preferences (ui.* keys). None in tests and remote-only
-    // setups, where preference operations degrade to a host error.
-    metadata: Option<Arc<Mutex<MetadataStore>>>,
+    // Global display preferences (ui.* keys) and scheduled tasks
+    // (`/v2/scheduled-tasks*`). Shared with `WorkspaceLauncher` in main.rs —
+    // same sqlite file, same connection — so the HTTP CRUD routes and the
+    // `scheduler` module's execution loop see each other's writes immediately.
+    metadata: Arc<Mutex<MetadataStore>>,
     install_secret: String,
     app_handle: Option<tauri::AppHandle>,
 }
@@ -144,14 +147,22 @@ impl HostServer {
         runtimes: NativePiManager,
         auth: Arc<Mutex<RemoteAuth>>,
         app_handle: Option<tauri::AppHandle>,
+        metadata: Arc<Mutex<MetadataStore>>,
     ) -> Result<Self, String> {
-        Self::start_with_workspaces(static_dir, runtimes, auth, HashMap::new(), app_handle, None)
-            .await
+        Self::start_with_workspaces(
+            static_dir,
+            runtimes,
+            auth,
+            HashMap::new(),
+            app_handle,
+            metadata,
+        )
+        .await
     }
 
-    /// Same as [`Self::start`] but additionally exposes the metadata store to
-    /// authenticated host preference operations (`ui.*` keys). `start` passes
-    /// `None`, so tests keep an infallible constructor.
+    /// Same as [`Self::start`] but additionally exposes workspace roots so
+    /// the host can serve project data beyond the single home-directory
+    /// default `start` boots into.
     #[allow(clippy::too_many_arguments)]
     pub async fn start_with_workspaces(
         static_dir: PathBuf,
@@ -159,7 +170,7 @@ impl HostServer {
         auth: Arc<Mutex<RemoteAuth>>,
         workspace_roots: HashMap<String, PathBuf>,
         app_handle: Option<tauri::AppHandle>,
-        metadata: Option<Arc<Mutex<MetadataStore>>>,
+        metadata: Arc<Mutex<MetadataStore>>,
     ) -> Result<Self, String> {
         let mut data = HostDataPlane::new(workspace_roots)
             .map_err(|error| format!("Cannot initialize Host data plane: {error:?}"))?;
@@ -230,6 +241,17 @@ impl HostServer {
         terminal_manager.set_event_sink(Arc::new(move |owner, event| {
             let _ = terminal_event_sender.send((owner.clone(), event));
         }));
+        let pi_launch = PiLaunchResolver::new(static_dir.clone());
+        // Cloned before the originals move into `state` below — the
+        // scheduler runs independently of any HTTP request, so it needs its
+        // own handles onto the same runtimes/data-plane/metadata store.
+        let scheduler_deps = SchedulerDeps {
+            metadata: metadata.clone(),
+            data: data.clone(),
+            pi_launch: pi_launch.clone(),
+            runtimes: runtimes.clone(),
+            app_handle: app_handle.clone(),
+        };
         let state = Arc::new(HostState {
             router: Mutex::new(HostRouter::new()),
             runtimes,
@@ -238,7 +260,7 @@ impl HostServer {
             session_owners: Mutex::new(std::collections::HashMap::new()),
             data,
             markitdown: MarkitdownPreviewService::default(),
-            pi_launch: PiLaunchResolver::new(static_dir.clone()),
+            pi_launch,
             port: address.port(),
             terminal_manager,
             terminal_events,
@@ -261,6 +283,7 @@ impl HostServer {
             let data = state.data.clone();
             std::thread::spawn(move || data.prewarm_cost_metrics());
         }
+        scheduler::spawn(scheduler_deps);
         let index = static_dir.join("index.html");
         // Serve this build's JS/CSS/HTML under a version-stamped path
         // (`/v/<version>/...`) and point index.html's `<base>` at it. The
@@ -356,6 +379,18 @@ impl HostServer {
             .route("/api/workspace-info", get(workspace_info_handler))
             .route("/v2/new-session", post(new_session))
             .route("/v2/resolve-workspace", post(resolve_workspace))
+            .route(
+                "/v2/scheduled-tasks",
+                get(list_scheduled_tasks).post(create_scheduled_task),
+            )
+            .route(
+                "/v2/scheduled-tasks/{id}",
+                axum::routing::patch(update_scheduled_task).delete(delete_scheduled_task),
+            )
+            .route(
+                "/v2/scheduled-tasks/{id}/run-now",
+                post(run_scheduled_task_now),
+            )
             .nest_service(&versioned_prefix, versioned_service)
             .fallback_service(static_service)
             .layer(DefaultBodyLimit::max(MAX_HTTP_BODY_BYTES))
@@ -986,6 +1021,202 @@ async fn resolve_workspace(
         api_error(status, code)
     })?;
     Ok(Json(json!({ "workspaceId": workspace_id })))
+}
+
+#[derive(Deserialize)]
+struct ScheduledTasksQuery {
+    #[serde(rename = "workspaceId")]
+    workspace_id: String,
+}
+
+/// GET /v2/scheduled-tasks?workspaceId=... — list a workspace's scheduled
+/// tasks, most-recently-created first.
+async fn list_scheduled_tasks(
+    State(state): State<Arc<HostState>>,
+    Query(query): Query<ScheduledTasksQuery>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let tasks = state
+        .metadata
+        .lock()
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "metadata_unavailable"))?
+        .list_scheduled_tasks(&query.workspace_id)
+        .map_err(|message| {
+            api_error_with_detail(StatusCode::INTERNAL_SERVER_ERROR, "list_failed", &message)
+        })?;
+    Ok(Json(json!({ "tasks": tasks })))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateScheduledTaskRequest {
+    workspace_id: String,
+    prompt: String,
+    #[serde(default)]
+    model: Option<String>,
+    frequency: TaskFrequency,
+    anchor_at: i64,
+    /// Defaults to `true` when omitted — a scheduled task is active unless
+    /// the caller explicitly unchecks "Enabled" on the create form.
+    #[serde(default)]
+    enabled: Option<bool>,
+}
+
+/// POST /v2/scheduled-tasks — create a scheduled task. `anchorAt` is unix
+/// seconds: the single run time for `once`, or the reference point future
+/// occurrences of `hourly`/`daily`/`weekly` are computed from.
+async fn create_scheduled_task(
+    State(state): State<Arc<HostState>>,
+    Json(body): Json<CreateScheduledTaskRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let prompt = body.prompt.trim();
+    if prompt.is_empty() {
+        return Err(api_error(StatusCode::BAD_REQUEST, "prompt_required"));
+    }
+    if state.data.workspace_root_path(&body.workspace_id).is_err() {
+        return Err(api_error(StatusCode::NOT_FOUND, "workspace_not_found"));
+    }
+    let mut store = state
+        .metadata
+        .lock()
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "metadata_unavailable"))?;
+    let task = store
+        .create_scheduled_task(
+            &body.workspace_id,
+            prompt,
+            body.model.as_deref(),
+            body.frequency,
+            body.anchor_at,
+        )
+        .map_err(|message| {
+            api_error_with_detail(StatusCode::INTERNAL_SERVER_ERROR, "create_failed", &message)
+        })?;
+    // Tasks are created enabled by default; only re-patch when the caller
+    // explicitly asked for the task to start disabled.
+    let task = if body.enabled == Some(false) {
+        store
+            .update_scheduled_task(
+                &task.id,
+                ScheduledTaskPatch {
+                    enabled: Some(false),
+                    ..Default::default()
+                },
+            )
+            .map_err(|message| {
+                api_error_with_detail(StatusCode::INTERNAL_SERVER_ERROR, "create_failed", &message)
+            })?
+    } else {
+        task
+    };
+    Ok(Json(json!(task)))
+}
+
+/// Standard "field present but explicitly `null`" idiom: with `#[serde(default)]`
+/// on the field, an absent JSON key leaves it `None` (unchanged), while a
+/// present `null` deserializes here to `Some(None)` (explicitly clear it).
+fn deserialize_present_field<'de, T, D>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    T: serde::Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    serde::Deserialize::deserialize(deserializer).map(Some)
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct UpdateScheduledTaskRequest {
+    #[serde(default)]
+    prompt: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present_field")]
+    model: Option<Option<String>>,
+    #[serde(default)]
+    frequency: Option<TaskFrequency>,
+    #[serde(default)]
+    anchor_at: Option<i64>,
+    #[serde(default)]
+    enabled: Option<bool>,
+}
+
+/// PATCH /v2/scheduled-tasks/:id — partial update; omitted fields are left
+/// unchanged. Changing `frequency`/`anchorAt` re-anchors the schedule.
+async fn update_scheduled_task(
+    State(state): State<Arc<HostState>>,
+    Path(id): Path<String>,
+    Json(body): Json<UpdateScheduledTaskRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let patch = ScheduledTaskPatch {
+        prompt: body.prompt,
+        model: body.model,
+        frequency: body.frequency,
+        anchor_at: body.anchor_at,
+        enabled: body.enabled,
+    };
+    let task = state
+        .metadata
+        .lock()
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "metadata_unavailable"))?
+        .update_scheduled_task(&id, patch)
+        .map_err(|_| api_error(StatusCode::NOT_FOUND, "task_not_found"))?;
+    Ok(Json(json!(task)))
+}
+
+/// DELETE /v2/scheduled-tasks/:id
+async fn delete_scheduled_task(
+    State(state): State<Arc<HostState>>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    state
+        .metadata
+        .lock()
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "metadata_unavailable"))?
+        .delete_scheduled_task(&id)
+        .map_err(|message| {
+            api_error_with_detail(StatusCode::INTERNAL_SERVER_ERROR, "delete_failed", &message)
+        })?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+/// POST /v2/scheduled-tasks/:id/run-now — manual run/retry. Always allowed
+/// regardless of `retryCount`; resets it first so a manual kick doesn't
+/// immediately read as exhausted. Runs the task inline and returns once it
+/// finishes (success or failure), unlike the scheduler's own fire-and-forget
+/// ticks, so the UI can show the outcome right away.
+async fn run_scheduled_task_now(
+    State(state): State<Arc<HostState>>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let task = {
+        let mut store = state
+            .metadata
+            .lock()
+            .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "metadata_unavailable"))?;
+        store
+            .reset_scheduled_task_for_manual_run(&id)
+            .map_err(|_| api_error(StatusCode::NOT_FOUND, "task_not_found"))?;
+        store
+            .get_scheduled_task(&id)
+            .map_err(|message| {
+                api_error_with_detail(StatusCode::INTERNAL_SERVER_ERROR, "read_failed", &message)
+            })?
+            .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "task_not_found"))?
+    };
+    let deps = SchedulerDeps {
+        metadata: state.metadata.clone(),
+        data: state.data.clone(),
+        pi_launch: state.pi_launch.clone(),
+        runtimes: state.runtimes.clone(),
+        app_handle: state.app_handle.clone(),
+    };
+    scheduler::execute_task(&deps, task).await;
+    let updated = state
+        .metadata
+        .lock()
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "metadata_unavailable"))?
+        .get_scheduled_task(&id)
+        .map_err(|message| {
+            api_error_with_detail(StatusCode::INTERNAL_SERVER_ERROR, "read_failed", &message)
+        })?
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "task_not_found"))?;
+    Ok(Json(json!(updated)))
 }
 
 async fn websocket_upgrade(
@@ -1828,10 +2059,7 @@ fn dispatch_preference_operation(
     operation: &str,
     frame: &Value,
 ) -> Result<Value, (&'static str, String)> {
-    let store = state.metadata.as_ref().ok_or((
-        "host_operation_failed",
-        "Preference store is not available".into(),
-    ))?;
+    let store = &state.metadata;
     let key = preference_key(frame)?;
     let response = |operation: &str, fields: &[(&str, Value)]| {
         let mut object = serde_json::Map::new();
@@ -3069,11 +3297,19 @@ mod tests {
         let public = temp.join("public");
         fs::create_dir_all(&public).unwrap();
         fs::write(public.join("index.html"), "<h1>Picot native host</h1>").unwrap();
-        let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
-        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
-        let host = HostServer::start(public, NativePiManager::new(32), auth, None)
-            .await
-            .unwrap();
+        let metadata = Arc::new(Mutex::new(
+            MetadataStore::open(&temp.join("picot.sqlite3")).unwrap(),
+        ));
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(metadata.clone())));
+        let host = HostServer::start(
+            public,
+            NativePiManager::new(32),
+            auth,
+            None,
+            metadata.clone(),
+        )
+        .await
+        .unwrap();
 
         let root = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
@@ -3116,9 +3352,11 @@ mod tests {
         let public = temp.join("public");
         fs::create_dir_all(&public).unwrap();
         fs::write(public.join("index.html"), "Picot").unwrap();
-        let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
-        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
-        let host = HostServer::start(public, NativePiManager::new(32), auth, None)
+        let metadata = Arc::new(Mutex::new(
+            MetadataStore::open(&temp.join("picot.sqlite3")).unwrap(),
+        ));
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(metadata.clone())));
+        let host = HostServer::start(public, NativePiManager::new(32), auth, None, metadata)
             .await
             .unwrap();
         let client = reqwest::Client::new();
@@ -3215,11 +3453,19 @@ mod tests {
         )
         .unwrap();
         fs::write(public.join("native/app.js"), "export const marker = 1;").unwrap();
-        let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
-        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
-        let host = HostServer::start(public, NativePiManager::new(32), auth, None)
-            .await
-            .unwrap();
+        let metadata = Arc::new(Mutex::new(
+            MetadataStore::open(&temp.join("picot.sqlite3")).unwrap(),
+        ));
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(metadata.clone())));
+        let host = HostServer::start(
+            public,
+            NativePiManager::new(32),
+            auth,
+            None,
+            metadata.clone(),
+        )
+        .await
+        .unwrap();
 
         // The entry document's <base> should point at a `/v/<fingerprint>/`
         // path derived from the bundle contents, not the literal "/" that's
@@ -3261,11 +3507,19 @@ mod tests {
         let public = temp.join("public");
         fs::create_dir_all(&public).unwrap();
         fs::write(public.join("index.html"), "<h1>Picot native host</h1>").unwrap();
-        let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
-        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
-        let host = HostServer::start(public, NativePiManager::new(32), auth, None)
-            .await
-            .unwrap();
+        let metadata = Arc::new(Mutex::new(
+            MetadataStore::open(&temp.join("picot.sqlite3")).unwrap(),
+        ));
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(metadata.clone())));
+        let host = HostServer::start(
+            public,
+            NativePiManager::new(32),
+            auth,
+            None,
+            metadata.clone(),
+        )
+        .await
+        .unwrap();
 
         let body: serde_json::Value = reqwest::get(format!("{}/health/runtime", host.origin()))
             .await
@@ -3282,6 +3536,131 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scheduled_tasks_http_routes_support_full_crud_and_manual_run_lifecycle() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp = std::env::temp_dir().join(format!("picot-host-scheduled-tasks-{nonce}"));
+        let public = temp.join("public");
+        let workspace = temp.join("workspace");
+        fs::create_dir_all(&public).unwrap();
+        fs::create_dir_all(&workspace).unwrap();
+        fs::write(public.join("index.html"), "<h1>Picot native host</h1>").unwrap();
+        let metadata = Arc::new(Mutex::new(
+            MetadataStore::open(&temp.join("picot.sqlite3")).unwrap(),
+        ));
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(metadata.clone())));
+        let host = HostServer::start(
+            public,
+            NativePiManager::new(32),
+            auth,
+            None,
+            metadata.clone(),
+        )
+        .await
+        .unwrap();
+        host.register_workspace("workspace-a", workspace).unwrap();
+
+        let client = reqwest::Client::new();
+
+        // Creating a task for an unknown workspace is rejected.
+        let missing_workspace = client
+            .post(format!("{}/v2/scheduled-tasks", host.origin()))
+            .json(&json!({
+                "workspaceId": "no-such-workspace",
+                "prompt": "hi",
+                "frequency": "once",
+                "anchorAt": 1,
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(missing_workspace.status(), 404);
+
+        let created: serde_json::Value = client
+            .post(format!("{}/v2/scheduled-tasks", host.origin()))
+            .json(&json!({
+                "workspaceId": "workspace-a",
+                "prompt": "Summarize open PRs",
+                "model": "claude-haiku-4-5",
+                "frequency": "daily",
+                "anchorAt": 1_000,
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(created["workspaceId"], "workspace-a");
+        assert_eq!(created["status"], "pending");
+        assert_eq!(created["model"], "claude-haiku-4-5");
+        let id = created["id"].as_str().unwrap().to_string();
+
+        let listed: serde_json::Value = client
+            .get(format!(
+                "{}/v2/scheduled-tasks?workspaceId=workspace-a",
+                host.origin()
+            ))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(listed["tasks"].as_array().unwrap().len(), 1);
+        assert_eq!(listed["tasks"][0]["id"], id);
+
+        let updated: serde_json::Value = client
+            .patch(format!("{}/v2/scheduled-tasks/{id}", host.origin()))
+            .json(&json!({ "enabled": false, "prompt": "Summarize open PRs and flag stale ones" }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(updated["enabled"], false);
+        assert_eq!(updated["prompt"], "Summarize open PRs and flag stale ones");
+        // Untouched fields survive a partial patch.
+        assert_eq!(updated["model"], "claude-haiku-4-5");
+
+        // run-now on an unknown task id is a clean 404, not a panic.
+        let missing_run = client
+            .post(format!(
+                "{}/v2/scheduled-tasks/does-not-exist/run-now",
+                host.origin()
+            ))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(missing_run.status(), 404);
+
+        let deleted = client
+            .delete(format!("{}/v2/scheduled-tasks/{id}", host.origin()))
+            .send()
+            .await
+            .unwrap();
+        assert!(deleted.status().is_success());
+        let after_delete: serde_json::Value = client
+            .get(format!(
+                "{}/v2/scheduled-tasks?workspaceId=workspace-a",
+                host.origin()
+            ))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert!(after_delete["tasks"].as_array().unwrap().is_empty());
+
+        host.stop();
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[tokio::test]
     async fn health_model_test_reports_connectivity_failure_for_unreachable_provider() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -3291,11 +3670,19 @@ mod tests {
         let public = temp.join("public");
         fs::create_dir_all(&public).unwrap();
         fs::write(public.join("index.html"), "<h1>Picot native host</h1>").unwrap();
-        let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
-        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
-        let host = HostServer::start(public, NativePiManager::new(32), auth, None)
-            .await
-            .unwrap();
+        let metadata = Arc::new(Mutex::new(
+            MetadataStore::open(&temp.join("picot.sqlite3")).unwrap(),
+        ));
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(metadata.clone())));
+        let host = HostServer::start(
+            public,
+            NativePiManager::new(32),
+            auth,
+            None,
+            metadata.clone(),
+        )
+        .await
+        .unwrap();
 
         let client = reqwest::Client::new();
         let response = client
@@ -3331,11 +3718,19 @@ mod tests {
         let public = temp.join("public");
         fs::create_dir_all(&public).unwrap();
         fs::write(public.join("index.html"), "<h1>Picot native host</h1>").unwrap();
-        let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
-        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
-        let host = HostServer::start(public, NativePiManager::new(32), auth, None)
-            .await
-            .unwrap();
+        let metadata = Arc::new(Mutex::new(
+            MetadataStore::open(&temp.join("picot.sqlite3")).unwrap(),
+        ));
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(metadata.clone())));
+        let host = HostServer::start(
+            public,
+            NativePiManager::new(32),
+            auth,
+            None,
+            metadata.clone(),
+        )
+        .await
+        .unwrap();
 
         let client = reqwest::Client::new();
         let response = client
@@ -3365,9 +3760,11 @@ mod tests {
         let public = temp.join("public");
         fs::create_dir_all(&public).unwrap();
         fs::write(public.join("index.html"), "Picot").unwrap();
-        let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
-        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
-        let host = HostServer::start(public, NativePiManager::new(32), auth, None)
+        let metadata = Arc::new(Mutex::new(
+            MetadataStore::open(&temp.join("picot.sqlite3")).unwrap(),
+        ));
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(metadata.clone())));
+        let host = HostServer::start(public, NativePiManager::new(32), auth, None, metadata)
             .await
             .unwrap();
         let token = "picot_device_invalid";
@@ -3394,12 +3791,14 @@ mod tests {
         let public = temp.join("public");
         fs::create_dir_all(&public).unwrap();
         fs::write(public.join("index.html"), "Picot").unwrap();
-        let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
-        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
+        let metadata = Arc::new(Mutex::new(
+            MetadataStore::open(&temp.join("picot.sqlite3")).unwrap(),
+        ));
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(metadata.clone())));
         let runtimes = NativePiManager::new(32);
         let target = RuntimeTarget::new("workspace-a", "session-a", "instance-a");
         let mut fake = runtimes.register_in_memory(target.clone()).unwrap();
-        let host = HostServer::start(public, runtimes, auth, None)
+        let host = HostServer::start(public, runtimes, auth, None, metadata.clone())
             .await
             .unwrap();
         let ws_url = host.origin().replace("http://", "ws://") + "/v2/ws";
@@ -3487,7 +3886,7 @@ mod tests {
             auth,
             std::collections::HashMap::new(),
             None,
-            Some(Arc::clone(&metadata)),
+            Arc::clone(&metadata),
         )
         .await
         .unwrap();
@@ -3635,12 +4034,14 @@ mod tests {
         let public = temp.join("public");
         fs::create_dir_all(&public).unwrap();
         fs::write(public.join("index.html"), "Picot").unwrap();
-        let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
-        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
+        let metadata = Arc::new(Mutex::new(
+            MetadataStore::open(&temp.join("picot.sqlite3")).unwrap(),
+        ));
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(metadata.clone())));
         let runtimes = NativePiManager::new(32);
         let target = RuntimeTarget::new("workspace-a", "session-a", "instance-a");
         let mut fake = runtimes.register_in_memory(target.clone()).unwrap();
-        let host = HostServer::start(public, runtimes, auth, None)
+        let host = HostServer::start(public, runtimes, auth, None, metadata)
             .await
             .unwrap();
         let ws_url = host.origin().replace("http://", "ws://") + "/v2/ws";
@@ -3727,8 +4128,10 @@ mod tests {
         let public = temp.join("public");
         fs::create_dir_all(&public).unwrap();
         fs::write(public.join("index.html"), "Picot").unwrap();
-        let metadata = MetadataStore::open(&temp.join("picot.sqlite3")).unwrap();
-        let auth = Arc::new(Mutex::new(RemoteAuth::new(Arc::new(Mutex::new(metadata)))));
+        let metadata = Arc::new(Mutex::new(
+            MetadataStore::open(&temp.join("picot.sqlite3")).unwrap(),
+        ));
+        let auth = Arc::new(Mutex::new(RemoteAuth::new(metadata.clone())));
         let runtimes = NativePiManager::new(32);
         let target = RuntimeTarget::new("workspace-a", "session-a", "instance-a");
         let mut fake = runtimes.register_in_memory(target.clone()).unwrap();
@@ -3743,7 +4146,7 @@ mod tests {
         .unwrap();
         tokio::task::yield_now().await;
 
-        let host = HostServer::start(public, runtimes, auth, None)
+        let host = HostServer::start(public, runtimes, auth, None, metadata.clone())
             .await
             .unwrap();
         let ws_url = host.origin().replace("http://", "ws://") + "/v2/ws";
