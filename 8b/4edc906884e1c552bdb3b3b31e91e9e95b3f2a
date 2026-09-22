@@ -1,0 +1,28 @@
+public/native/features/terminal-panel.css
+  s_9a7119b6c5e3bf::t_4e8f7060ed4590 128,150
+  s_9a7119b6c5e3bf::t_af6abd2caacc5d 59-60,90-92,102,105-106
+public/terminal-panel.js
+  s_9a7119b6c5e3bf::t_9912910acbc344 21
+  s_9a7119b6c5e3bf::t_07bc1635e4dd31 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "8b4edc906884e1c552bdb3b3b31e91e9e95b3f2a",
+  "prompts": {},
+  "humans": {
+    "h_d9094605f62439": {
+      "author": "Shixin Guo <shixin.guo@zoom.us>"
+    }
+  },
+  "sessions": {
+    "s_9a7119b6c5e3bf": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0c653-f2e1-7033-bab4-04a9cfabfaf3",
+        "model": "deepseek_v4_flash"
+      },
+      "human_author": "Shixin Guo <shixin.guo@zoom.us>"
+    }
+  }
+}
