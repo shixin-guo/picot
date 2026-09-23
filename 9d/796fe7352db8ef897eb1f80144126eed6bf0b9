@@ -1,0 +1,61 @@
+src-tauri/src/main.rs
+  s_6fd621b4a4eb08::t_043e97ef39488a 506
+  s_6fd621b4a4eb08::t_4853b2c5da6e62 500,502-505
+  s_6fd621b4a4eb08::t_5dff2db26a2102 484-486,491-499,501,508
+  s_6fd621b4a4eb08::t_3f6866ad03266b 456-471,473,477-483,487-490,507
+  s_6fd621b4a4eb08::t_46ee5d2005b7c1 509
+extensions/picot-config.ts
+  s_6fd621b4a4eb08::t_2873db02e86647 1223-1226
+src-tauri/Cargo.toml
+  s_6fd621b4a4eb08::t_89be8e06b6eed9 58
+  s_6fd621b4a4eb08::t_76372dec761dbe 56
+src-tauri/src/host_server.rs
+  s_6fd621b4a4eb08::t_21241261e3d8f0 2413-2415
+  s_6fd621b4a4eb08::t_74055de6ab78e2 2401-2412
+src-tauri/src/host_data.rs
+  s_6fd621b4a4eb08::t_21241261e3d8f0 2466-2467
+src-tauri/src/session_ui_profile_store.rs
+  s_6fd621b4a4eb08::t_3fff7b1b48553e 199,334,336-338
+  s_6fd621b4a4eb08::t_21241261e3d8f0 214-220,293-323
+  s_6fd621b4a4eb08::t_74055de6ab78e2 88-99,112-113,212-213,228,324
+  s_6fd621b4a4eb08::t_8e9fbabbe3690a 111
+  s_6fd621b4a4eb08::t_1c80b8bb2ea983 114-116
+  s_6fd621b4a4eb08::t_172c31ffecac56 290-292
+  s_6fd621b4a4eb08::t_878c2e805c0611 325
+src-tauri/src/host_router.rs
+  s_6fd621b4a4eb08::t_21241261e3d8f0 178-180
+src-tauri/src/native_pi_manager.rs
+  s_6fd621b4a4eb08::t_21241261e3d8f0 912-915,930-933
+public/native/app.js
+  s_6fd621b4a4eb08::t_2873db02e86647 3003-3006
+  s_6fd621b4a4eb08::t_3fff7b1b48553e 234,242,252,261,1027-1028,1030-1031,1035,2558,2560-2561,2563-2564,2947,2951-2958,2967,2969-2970
+  s_6fd621b4a4eb08::t_159db98050dba1 1029
+  s_6fd621b4a4eb08::t_cff2056984f409 1032-1034
+  s_6fd621b4a4eb08::t_14c4273e2255e1 1036-1037
+  s_6fd621b4a4eb08::t_302e2ae88f099c 2555-2557
+  s_6fd621b4a4eb08::t_8797514bb20256 2562
+  s_6fd621b4a4eb08::t_476dfbb4a66c32 2971-2973
+src-tauri/Cargo.lock
+  s_6fd621b4a4eb08::t_d96def01b97ad1 2810,2812-2813,2815-2818,2820,2840,2901-2913,3256-3257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "9d796fe7352db8ef897eb1f80144126eed6bf0b9",
+  "prompts": {},
+  "humans": {
+    "h_d9094605f62439": {
+      "author": "Shixin Guo <shixin.guo@zoom.us>"
+    }
+  },
+  "sessions": {
+    "s_6fd621b4a4eb08": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0cc62-6e69-7653-a5b9-110d2e9c9f19",
+        "model": "deepseek_v4_flash"
+      },
+      "human_author": "Shixin Guo <shixin.guo@zoom.us>"
+    }
+  }
+}
