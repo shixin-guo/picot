@@ -1,0 +1,34 @@
+public/native/app.js
+  s_fe5f52b36a37cf::t_90fe6dc2c6b284 1046-1052,3050,3267,3323
+  s_fe5f52b36a37cf::t_9424e095a39f21 3047-3049
+  s_fe5f52b36a37cf::t_87198f58907042 3051-3052
+  s_fe5f52b36a37cf::t_b058de6783eb12 3264-3266
+  s_fe5f52b36a37cf::t_d42070739099a7 3320-3322
+  s_fe5f52b36a37cf::t_b16d975a1546ab 3324-3325
+  s_fe5f52b36a37cf::t_df0f5cd10326c2 40,298-301,305-307,1370-1375,3006-3008,3013,3024-3046,3061,3147-3148,3230-3231,3236,3258-3263,3305,3315-3319
+extensions/picot-config.ts
+  s_fe5f52b36a37cf::t_db64bd153b7f96 344,368-380,382-391,720,1154-1157,1205-1208,1272,1293-1295,1305-1308,1316-1319
+public/native/settings/models-page.js
+  s_fe5f52b36a37cf::t_184c4be3fe16c3 896,1556
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7c1652cc537c675a8354f60116f978e4d8f0dab7",
+  "prompts": {},
+  "humans": {
+    "h_d9094605f62439": {
+      "author": "Shixin Guo <shixin.guo@zoom.us>"
+    }
+  },
+  "sessions": {
+    "s_fe5f52b36a37cf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ccdb-c017-7230-b863-675938463b67",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "Shixin Guo <shixin.guo@zoom.us>"
+    }
+  }
+}
