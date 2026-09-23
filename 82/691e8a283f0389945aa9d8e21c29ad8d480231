@@ -1,0 +1,12 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "82691e8a283f0389945aa9d8e21c29ad8d480231",
+  "prompts": {},
+  "humans": {
+    "h_d9094605f62439": {
+      "author": "Shixin Guo <shixin.guo@zoom.us>"
+    }
+  }
+}
